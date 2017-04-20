@@ -242,7 +242,7 @@ def read_castep_file(cst_path):
 
     with open(cst_path, 'r') as cst:
 
-        for ln in cst:
+        for ln_idx, ln in enumerate(cst):
 
             ln_s = ln.strip().split()
 
@@ -497,7 +497,14 @@ def read_castep_file(cst_path):
                         bfgs_iter_idx += 1
                         scf_cycle_type_idx.append(1)
 
-                    λ = float(ln_s[-1].split('=')[-1].split(')')[0])
+                    try:
+                        λ = float(ln_s[-1].split('=')[-1].split(')')[0])
+
+                    except ValueError:
+
+                        # Sometimes get: "(lambda=**********)"; perhaps if larger than 999.000000?
+                        λ = np.nan
+
                     bfgs_lambda.append(λ)
 
                     if BFGS_IMPROVE_LN.format(bfgs_iter_idx) in ln:

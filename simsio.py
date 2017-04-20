@@ -105,6 +105,7 @@ def read_castep_file(cst_path):
     PARAM_NUM_ELEC = 'number of  electrons                           :'
     PARAM_NET_CHARGE = 'net charge of system                           :'
     PARAM_NUM_BANDS = 'number of bands                                :'
+    PARAM_ELEC_EN_TOL = 'total energy / atom convergence tol.           :'
     BASIS_SET_PARAM_FBC = 'finite basis set correction                    :'
     BASIS_SET_PARAM_NUM_EN = 'number of sample energies                      :'
     FBC = 'Calculating finite basis set correction'
@@ -154,6 +155,7 @@ def read_castep_file(cst_path):
     ecut = None
     num_elec = None
     num_bands = None
+    elec_energy_tol = None
     net_charge = None
     sym_max_deviation = None
     sym_num_ops = None
@@ -425,6 +427,9 @@ def read_castep_file(cst_path):
                 elif PARAM_NET_CHARGE in ln:
                     net_charge = float(ln_s[-1])
 
+                elif PARAM_ELEC_EN_TOL in ln:
+                    elec_energy_tol = float(ln_s[-2])
+
                 elif GO_PARAM_WRITE_GEOM in ln:
                     write_geom = True if ln_s[-1] == 'on' else False
 
@@ -560,6 +565,7 @@ def read_castep_file(cst_path):
             'num_electrons':            num_elec,
             'num_bands':                num_bands,
             'net_charge':               net_charge,
+            'elec_energy_tol':          elec_energy_tol,
             'kpoint_mp_grid':           kpoint_mp_grid,
             'kpoint_mp_offset':         kpoint_mp_offset,
             'kpoint_num':               kpoint_num,

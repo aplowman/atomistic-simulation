@@ -1,5 +1,6 @@
 import os
 import re
+import pickle
 
 def find_files_in_dir(dir_path, match_regex, recursive=False):
 
@@ -32,3 +33,18 @@ def find_files_in_dir(dir_path, match_regex, recursive=False):
             break        
 
     return matched_files
+
+def write_pickle(obj, file_path):
+
+    """ Write `obj` to a pickle file at `file_path`. """
+
+    with open(file_path,'wb') as f:
+        pickle.dump(obj, f)
+
+def read_pickle(file_path):
+
+    """ Return object in pickle file given by `file_path`. """
+
+    with open(file_path,'rb') as f:
+        obj = pickle.load(f)
+    return obj    

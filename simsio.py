@@ -106,6 +106,7 @@ def read_castep_file(cst_path):
     PARAM_NUM_ELEC = 'number of  electrons                           :'
     PARAM_NET_CHARGE = 'net charge of system                           :'
     PARAM_NUM_BANDS = 'number of bands                                :'
+    PARAM_METALLIC = 'Method: Treating system as metallic'
     PARAM_ELEC_EN_TOL = 'total energy / atom convergence tol.           :'
     BASIS_SET_PARAM_FBC = 'finite basis set correction                    :'
     BASIS_SET_PARAM_NUM_EN = 'number of sample energies                      :'
@@ -156,6 +157,8 @@ def read_castep_file(cst_path):
     ecut = None
     num_elec = None
     num_bands = None
+    metallic = False
+    scf_num_cols = 3
     elec_energy_tol = None
     net_charge = None
     sym_max_deviation = None
@@ -365,15 +368,24 @@ def read_castep_file(cst_path):
                     scf_cycle_data = []
 
                 elif scf_iter_idx >= 0:
-
-                    scf_iter_data = np.ones(4) * np.nan
+                    
+                    scf_iter_data = np.ones(scf_num_cols) * np.nan
 
                     if scf_iter_idx == 0:
-                        scf_iter_data[0:2] = [float(ln_s[i]) for i in [1,2]]
-                        scf_iter_data[3] = float(ln_s[3])
+
+                        if metallic:
+
+                            scf_iter_data[0:2] = [float(ln_s[i]) for i in [1,2]]
+                            scf_iter_data[3] = float(ln_s[3])
+
+                        else:
+                            
+                            scf_iter_data[0] = float(ln_s[1])
+                            scf_iter_data[2] = float(ln_s[2])
 
                     else:
-                        scf_iter_data[0:4] = [float(ln_s[i]) for i in [1,2,3,4]]
+
+                        scf_iter_data = [float(ln_s[i]) for i in range(1, scf_num_cols+1)]
 
                     scf_cycle_data.append(scf_iter_data)
                     scf_iter_idx += 1
@@ -427,6 +439,10 @@ def read_castep_file(cst_path):
 
                 elif PARAM_NET_CHARGE in ln:
                     net_charge = float(ln_s[-1])
+
+                elif PARAM_METALLIC in ln:
+                    metallic = True
+                    scf_num_cols = 4
 
                 elif PARAM_ELEC_EN_TOL in ln:
                     elec_energy_tol = float(ln_s[-2])
@@ -572,6 +588,7 @@ def read_castep_file(cst_path):
             'cut_off_energy':           ecut,
             'num_electrons':            num_elec,
             'num_bands':                num_bands,
+            'metallic':                 metallic,
             'net_charge':               net_charge,
             'elec_energy_tol':          elec_energy_tol,
             'kpoint_mp_grid':           kpoint_mp_grid,

@@ -119,7 +119,7 @@ def read_castep_file(cst_path):
     BFGS_END = 'BFGS: finished iteration'
     BFGS_IMPROVE_LN = BFGS_IMPROVE + '{:10d} with line'
     BFGS_IMPROVE_QD = BFGS_IMPROVE + '{:10d} with quad'
-    SCF_FINAL_EN = 'Final energy, E             ='
+    SCF_FINAL_EN = 'Final energy ='
     SCF_FINAL_FEN = 'Final free energy (E-TS)    ='
     SCF_FINAL_ZEN = 'NB est. 0K energy (E-0.5TS)      ='
     BFGS_DE = '|  dE/ion   |'
@@ -135,7 +135,7 @@ def read_castep_file(cst_path):
     CON_FORCES_GO_END = '*                                                                                  *'
     CON_SYM_FORCES_GO_START = '************************** Constrained Symmetrised Forces **************************'
     CON_SYM_FORCES_GO_END = CON_FORCES_GO_END
-    CON_SYM_FORCES_SP_START = '************** Constrained Symmetrised Forces **************'    
+    CON_SYM_FORCES_SP_START = '************** Constrained Symmetrised Forces **************'
     CON_SYM_FORCES_SP_END = UNCON_FORCES_END
     BFGS_CYCLE_TYPE_STR = np.array(['Initial', 'Trial guess', 'Line minimization', 'Quad minimization'])
     CELL_CONTS_START_END = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
@@ -368,7 +368,7 @@ def read_castep_file(cst_path):
                     scf_cycle_data = []
 
                 elif scf_iter_idx >= 0:
-                    
+
                     scf_iter_data = np.ones(scf_num_cols) * np.nan
 
                     if scf_iter_idx == 0:
@@ -379,7 +379,7 @@ def read_castep_file(cst_path):
                             scf_iter_data[3] = float(ln_s[3])
 
                         else:
-                            
+
                             scf_iter_data[0] = float(ln_s[1])
                             scf_iter_data[2] = float(ln_s[2])
 
@@ -442,6 +442,7 @@ def read_castep_file(cst_path):
 
                 elif PARAM_METALLIC in ln:
                     metallic = True
+                    SCF_FINAL_EN = 'Final energy, E             ='
                     scf_num_cols = 4
 
                 elif PARAM_ELEC_EN_TOL in ln:
@@ -894,4 +895,4 @@ def get_LAMMPS_compatible_box(box_cart):
     return np.array([
         [a_x, a_y, a_z],
         [b_x, b_y, b_z],
-        [c_x, c_y, c_z]]).T    
+        [c_x, c_y, c_z]]).T

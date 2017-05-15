@@ -655,7 +655,9 @@ def read_castep_geom_file(geom_path):
         Important note regarding returned dict:
             - Returned arrays of vectors are formed of **column** vectors.
 
-        Tested with CASTEP versions: 17.2
+        Tested with CASTEP versions:
+            17.2,
+            16.11
 
         Structure of .geom file:
 
@@ -685,30 +687,29 @@ def read_castep_geom_file(geom_path):
             Note: we assume that the ions are listed in the same order for ion positions
             and forces.
 
+        - Note:
+            I don't Understand how the energy and free energy values are calculated as
+            reported in the .geom file. For metallic systems, this energy seems to be
+            closest to the "Final free energy (E-TS)" reported at the end of the last
+            SCF cycle. (but not exactly the same (given rounding)).
+
+            In the .castep file, the "BFGS: Final Enthalpy     =" seems to match the
+            "Final free energy (E-TS)" reported at the end of the last SCF cycle
+            (given rounding).
+
     """
 
-    # Seems to be small discrepencies between ionic positions, forces in
-    # GEOM file and those reported in .castep file. Need to figure this out.
+    # As used in CASTEP v16.11 and v17.2, physical constants from:
+    #   [1] CODATA RECOMMENDED VALUES OF THE FUNDAMENTAL PHYSICAL CONSTANTS: 2010
 
-    # Physical constants from:
-    #   CRC Handbook of Chemistry and Physics, 95th ed. (2014-2015)
-
-    # Atomic unit of length is the Bohr radius:
-    A_0_SI = 0.52917721092e-10      # m
-    E_h_SI = 4.35974434e-18         # J
-    e_SI = 1.602176565e-19          # C
+    A_0_SI = 0.52917721092e-10      # m  [1]
+    E_h_SI = 4.35974434e-18         # J  [1]
+    E_h = 27.21138505               # eV [1]
+    e_SI = 1.602176565e-19          # C  [1]
     F_SI = E_h_SI / A_0_SI          # N
-    F_SI_w = 8.2387225e-8           # N
-    F_SI_n = 8.23872336e-8
 
     A_0 = A_0_SI * 1e10             # Angstrom
-    E_h = E_h_SI * e_SI             # eV
     F = F_SI * (1e-10 / e_SI)       # eV / Angstrom
-    F_w = F_SI_w * (1e-10 / e_SI)   # eV / Angstrom
-    F_n = F_SI_n * (1e-10 / e_SI)   # eV / Angstrom
-
-    # Atomic unit of energy is the Hartree:
-    E_h = 27.21138505   # eV
 
     if not os.path.isfile(geom_path):
         raise IOError('File not found: {}'.format(geom_path))
@@ -739,6 +740,7 @@ def read_castep_geom_file(geom_path):
     current_bfgs_forces = []
 
     species_set = False
+    iter_num_line = False
     species = []
     species_idx = []
 
@@ -750,7 +752,21 @@ def read_castep_geom_file(geom_path):
 
             ln_s = ln.strip().split()
 
-            if ITER_NUM in ln:
+            # For CASTEP version 16.11, iteration number is a lone integer line
+            #   - we assume there are no other lines which are a single integer
+            # For CASTEP version 17.2, iteration number line has ITER_NUM in line
+            if len(ln_s) == 1:
+
+                try:
+                    int(ln_s[0])
+                    iter_num_line = True
+
+                except ValueError as e:
+                    pass
+
+            if (ITER_NUM in ln) or iter_num_line:
+
+                iter_num_line = False
 
                 if bfgs_iter_idx > 0:
 
@@ -814,6 +830,9 @@ def read_castep_geom_file(geom_path):
                 force_xyz = [float(ln_s[i]) for i in [2,3,4]]
                 current_bfgs_forces.append(np.array(force_xyz)[:, np.newaxis])
 
+        # Save the ion positions and forces for the final BFGS step:
+        all_ions.append(np.hstack(current_bfgs_ions))
+        all_forces.append(np.hstack(current_bfgs_forces))
 
     # Convert to numpy arrays where sensible
     energies = np.array(energies)
@@ -830,7 +849,7 @@ def read_castep_geom_file(geom_path):
     free_energies *= E_h
     ions *= A_0
     all_cells *= A_0
-    forces *= F_n
+    forces *= F
 
     out = {
         'energies':         energies,

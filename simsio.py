@@ -103,6 +103,7 @@ def read_castep_file(cst_path):
 
     VERS = 'CASTEP version'
     PARAM_ECUT = 'plane wave basis set cut-off                   :'
+    PARAM_FINE_GRID = 'size of   fine   gmax                          :'
     PARAM_NUM_ELEC = 'number of  electrons                           :'
     PARAM_NET_CHARGE = 'net charge of system                           :'
     PARAM_NUM_BANDS = 'number of bands                                :'
@@ -155,6 +156,7 @@ def read_castep_file(cst_path):
 
     version = None
     ecut = None
+    fine_grid = None
     num_elec = None
     num_bands = None
     metallic = False
@@ -431,6 +433,9 @@ def read_castep_file(cst_path):
                 elif PARAM_ECUT in ln:
                     ecut = float(ln_s[-2])
 
+                elif PARAM_FINE_GRID in ln:
+                    fine_grid = float(ln_s[-2])
+                
                 elif PARAM_NUM_ELEC in ln:
                     num_elec = float(ln_s[-1])
 
@@ -587,6 +592,7 @@ def read_castep_file(cst_path):
 
         params = {
             'cut_off_energy':           ecut,
+            'fine_grid_size':           fine_grid,
             'num_electrons':            num_elec,
             'num_bands':                num_bands,
             'metallic':                 metallic,

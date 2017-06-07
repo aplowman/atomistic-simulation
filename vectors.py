@@ -1,41 +1,42 @@
 import numpy as np
 from numpy import linalg as la
 
-def row_wise_dot(a, b):
 
+def row_wise_dot(a, b):
     """ Compute the dot product between rows of a and rows of b."""
 
     return np.einsum('ij,ij->i', a, b)
 
-def col_wise_dot(a, b):
 
+def col_wise_dot(a, b):
     """ Compute the dot product between columns of a and columns of b."""
 
     return np.einsum('ij,ij->j', a, b)
 
-def row_wise_cos(a, b):
 
+def row_wise_cos(a, b):
     """ Given two arrays of row vectors a and b, find the pairwise cosines between a and b."""
 
     cosθ = row_wise_dot(a, b) / (la.norm(a, axis=1) * la.norm(b, axis=1))
     return cosθ
 
-def col_wise_cos(a, b):
 
+def col_wise_cos(a, b):
     """ Given two arrays of column vectors a and b, find the pairwise cosines between a and b."""
 
     cosθ = col_wise_dot(a, b) / (la.norm(a, axis=0) * la.norm(b, axis=0))
     return cosθ
 
-def col_wise_sin(a, b):
 
+def col_wise_sin(a, b):
     """ Given two arrays of column vectors a and b, find the pairwise sines between a and b."""
 
-    sinθ = la.norm(np.cross(a, b, axis=0), axis=0) / (la.norm(a, axis=0) * la.norm(b, axis=0))
+    sinθ = la.norm(np.cross(a, b, axis=0), axis=0) / \
+        (la.norm(a, axis=0) * la.norm(b, axis=0))
     return sinθ
 
-def col_wise_angles(a, b, degrees=False):
 
+def col_wise_angles(a, b, degrees=False):
     """ a, b are 3 x N arrays whose columns represented vectors to find the angles betweeen."""
 
     A = la.norm(np.cross(a, b, axis=0), axis=0)
@@ -47,26 +48,26 @@ def col_wise_angles(a, b, degrees=False):
 
     return angles
 
-def snap_arr_to_val(arr, val, tol):
 
+def snap_arr_to_val(arr, val, tol):
     """ Returns a copy of `arr` where elements in `arr` which are close
         to `val` are set to be exactly `val` if within tolerance `tol`.
 
     """
 
     out = np.copy(arr)
-    out[abs(arr-val) < tol] = val
+    out[abs(arr - val) < tol] = val
 
     return out
 
-def is_arr_int(arr):
 
+def is_arr_int(arr):
     """ Finds if all the elements in an array are integers. Returns bool."""
 
     return np.all(np.equal(np.mod(arr, 1), 0))
 
-def project_vec_to_plane(vec, plane_normal):
 
+def project_vec_to_plane(vec, plane_normal):
     """
         Returns the vector that is the projection of `vec` onto the plane given by
         `plane_normal`.
@@ -76,12 +77,13 @@ def project_vec_to_plane(vec, plane_normal):
 
     """
 
-    p = vec - (np.einsum('ij, ik->j', vec, plane_normal) / la.norm(plane_normal)**2) * plane_normal
+    p = vec - (np.einsum('ij, ik->j', vec, plane_normal) /
+               la.norm(plane_normal)**2) * plane_normal
 
     return p
 
-def rotation_matrix(axis, angle, degrees=False):
 
+def rotation_matrix(axis, angle, degrees=False):
     """ 
         Generates the rotation matrix to act on column vectors by pre-multiplication
         for a given rotation axis and angle. `axis` is a 1D array of length 3 or a 1 x 3
@@ -113,3 +115,67 @@ def rotation_matrix(axis, angle, degrees=False):
         (1 - np.cos(angle)) * np.dot(cross_prod_mat, cross_prod_mat))
 
     return rot_mat
+
+
+def get_equal_indices(arr, lone_elems=False):
+    """
+    Return the indices along the first dimension of an array which index equal sub-arrays
+
+    Parameters
+    ----------
+    arr : ndarray
+        Array of any shape whose elements along its first dimension are compared
+        for equality.
+    lone_elems : bool
+        If True, the returned list may include single-element lists representing 
+        elements which are not repeated.
+
+    Returns
+    -------
+    list of list of int
+        A list of lists, each of which contains indices of `arr` which index
+        equal subarrays. Each sublist is ordered.
+
+    Examples
+    --------
+
+    1D example:
+
+    >>> a = np.random.randint(0,9, (10))
+    >>> get_equal_indices(a, lone_elems=False)
+    [[0, 6], [2, 9], [4, 7, 8]] # random    
+    >>> get_equal_indices(a, lone_elems=True)
+    [[0, 6], [1], [2, 9], [3], [4, 7, 8], [5]] # random
+
+    3D example:
+
+    >>> a = np.random.randint(0, 9, (100, 2, 2))
+    >>> get_equal_indices(a, lone_elems=False)
+    [[18, 71]] # random
+
+    """
+
+    a_dims = len(arr.shape)
+    c = np.isclose(arr, arr[:, np.newaxis])
+
+    if a_dims > 1:
+        c = np.all(c, axis=tuple(range(2, a_dims + 1)))
+
+    w = np.where(c.T)
+    all_same_idx = []
+
+    for i in set(w[0]):
+
+        col_idx = np.where(w[0] == i)[0]
+
+        if len(col_idx) == 1 and not lone_elems:
+            continue
+
+        same_idx = list(w[1][col_idx])
+
+        if same_idx not in all_same_idx:
+            all_same_idx.append(same_idx)
+
+    all_same_idx = [list(i) for i in all_same_idx]
+
+    return all_same_idx

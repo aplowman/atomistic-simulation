@@ -84,10 +84,10 @@ def project_vec_to_plane(vec, plane_normal):
 
 
 def rotation_matrix(axis, angle, degrees=False):
-    """ 
+    """
         Generates the rotation matrix to act on column vectors by pre-multiplication
         for a given rotation axis and angle. `axis` is a 1D array of length 3 or a 1 x 3
-        or 3 x 1 array. `angle` is the rotation angle in radians (or degrees if degrees 
+        or 3 x 1 array. `angle` is the rotation angle in radians (or degrees if degrees
         is True)
 
     """
@@ -119,7 +119,7 @@ def rotation_matrix(axis, angle, degrees=False):
 
 def get_equal_indices(arr, lone_elems=False):
     """
-    Return the indices along the first dimension of an array which index equal sub-arrays
+    Return the indices along the first dimension of an array which index equal sub-arrays.
 
     Parameters
     ----------
@@ -127,7 +127,7 @@ def get_equal_indices(arr, lone_elems=False):
         Array of any shape whose elements along its first dimension are compared
         for equality.
     lone_elems : bool
-        If True, the returned list may include single-element lists representing 
+        If True, the returned list may include single-element lists representing
         elements which are not repeated.
 
     Returns
@@ -143,7 +143,7 @@ def get_equal_indices(arr, lone_elems=False):
 
     >>> a = np.random.randint(0,9, (10))
     >>> get_equal_indices(a, lone_elems=False)
-    [[0, 6], [2, 9], [4, 7, 8]] # random    
+    [[0, 6], [2, 9], [4, 7, 8]] # random
     >>> get_equal_indices(a, lone_elems=True)
     [[0, 6], [1], [2, 9], [3], [4, 7, 8], [5]] # random
 
@@ -179,3 +179,70 @@ def get_equal_indices(arr, lone_elems=False):
     all_same_idx = [list(i) for i in all_same_idx]
 
     return all_same_idx
+
+def find_unique_int_vecs(s):
+    """
+    Find non-collinear integer vectors within an origin-centered cube of given size.
+
+    The zero vector is excluded.
+
+    Parameters
+    ----------
+    s : int
+        Size of half the cube edge, such that vectors have maximum component |s|.
+
+    Returns
+    -------
+    ndarray
+        Array of column vectors.
+
+    Examples
+    --------
+    >>> find_unique_int_vecs(1)
+    [[ 0  0  1]
+     [ 0  1  0]
+     [ 0  1  1]
+     [ 0  1 -1]
+     [ 1 -1  0]
+     [ 1 -1  1]
+     [ 1 -1 -1]
+     [ 1  0  0]
+     [ 1  0  1]
+     [ 1  0 -1]
+     [ 1  1  0]
+     [ 1  1  1]
+     [ 1  1 -1]]
+
+    """
+
+    s_i = np.zeros((2*s)+1, dtype=int)
+    s_i[1::2] = np.arange(1,s+1)
+    s_i[2::2] = -np.arange(1,s+1)
+
+    a = np.vstack(np.meshgrid(s_i, s_i, s_i)).reshape((3,-1)).T
+    a[:,[0, 1]] = a[:,[1, 0]]
+
+    # Remove the zero vector
+    a = a[1:]
+
+    # Use cross product to find which vectors are collinear
+    c = np.cross(a, a[:, np.newaxis])
+    w = np.where(np.all(c == 0, axis=-1).T)
+
+    all_remove_idx = []
+
+    # Get the indices of collinear vectors
+    for i in set(w[0]):
+
+        col_idx = np.where(w[0] == i)[0]
+
+        if len(col_idx) != 1:
+            all_remove_idx.extend(w[1][col_idx[1:]])
+
+    all_remove_idx = list(set(all_remove_idx))
+
+    # Remove collinear vectors
+    a = np.delete(a, all_remove_idx, axis=0)
+    a = a[np.lexsort((a[:,1], a[:,0]))]
+
+    return a

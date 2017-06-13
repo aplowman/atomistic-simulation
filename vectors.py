@@ -117,7 +117,7 @@ def rotation_matrix(axis, angle, degrees=False):
     return rot_mat
 
 
-def get_equal_indices(arr, lone_elems=False, scale_factors=None):
+def get_equal_indices(arr, scale_factors=None):
     """
     Return the indices along the first dimension of an array which index equal
     sub-arrays.
@@ -127,44 +127,47 @@ def get_equal_indices(arr, lone_elems=False, scale_factors=None):
     arr : ndarray
         Array of any shape whose elements along its first dimension are 
         compared for equality.
-    lone_elems : bool
-        If True, the returned list may include single-element lists 
-        representing elements which are not repeated.
-    scale_factors : list of float or list of int
-        Subarrays which are equal up to any multiplicative factor in this list
-        are determined to be equal.
+    scale_factors : list of float or list of int, optional
+        Multiplicative factors to use when checking for equality between
+        subarrays. Each factor is checked independently.
 
     Returns
     -------
-    list of list of int
-        A list of lists, each of which contains indices of `arr` which index
-        equal subarrays. Each sublist is ordered.
+    tuple of dict of int: list of int
+        Each tuple item corresponds to a scale factor for which each dict maps
+        a subarray index to a list of equivalent subarray indices given that
+        scale factor. Length of returned tuple is equal to length of
+        `scale_factors` or 1 if `scale_factors` is not specified.
+
+    Notes
+    -----
+    If we have a scale factor `s` which returns {a: [b, c, ...]}, then the 
+    inverse scale factor `1/s` will return {b: [a], c: [a], ...}.
+
 
     Examples
     --------
 
-    1D example:
+    1D examples:
 
-    >>> a = np.random.randint(0, 9, (10))
-    [5 1 4 6 1 8 2 7 4 7] # random
-    >>> get_equal_indices(a, lone_elems=False)
-    [[1, 4], [2, 8], [7, 9]]
-    >>> get_equal_indices(a, lone_elems=True)
-    [[0], [1, 4], [2, 8], [3], [5], [6], [7, 9]]
+    >>> a = np.array([5, 1, 4, 6, 1, 8, 2, 7, 4, 7])
+    >>> get_equal_indices(a)
+    ({1: [4], 2: [8], 7: [9]},)
+
+    >>> a = np.array([1, -1, -1, 2])
+    >>> get_equal_indices(a, scale_factors=[1, -1, -2, -0.5])
+    ({1: [2]}, {0: [1, 2]}, {1: [3], 2: [3]}, {3: [1, 2]})
 
     2D example:
 
     >>> a = np.array([[1., 2.], [3., 4.], [-0.4, -0.8]])
     >>> get_equal_indices(a, scale_factors=[-0.4])
-    [[0, 2]]
+    ({0: [2]},)
 
     """
 
     if scale_factors is None:
         scale_factors = [1]
-
-    else:
-        scale_factors.append(1)
 
     a_dims = len(arr.shape)
     arr_B = arr[:, np.newaxis]
@@ -173,35 +176,39 @@ def get_equal_indices(arr, lone_elems=False, scale_factors=None):
     sf = np.array(scale_factors).reshape(sf_shape)
 
     bc = np.broadcast_arrays(arr, arr_B, sf)
-    c = np.isclose(bc[0] * bc[2], bc[1])
+    c = np.isclose(bc[0], bc[1] * bc[2])
 
     if a_dims > 1:
         c = np.all(c, axis=tuple(range(3, a_dims + 2)))
 
-    # Check over scale factors:
-    c_sf = np.any(c, axis=0)
+    out = ()
+    for c_sub in c:
 
-    # If non-unit scale factors used, array won't be symmetric,
-    # so coerce into a symmetric array:
-    c_sf_t = np.logical_or(c_sf, c_sf.T)
-    w = np.where(c_sf_t)
-    all_same_idx = []
+        w2 = np.where(c_sub)
+        d = {}
+        skip_idx = []
 
-    for i in set(w[0]):
+        for i in set(w2[0]):
 
-        row_idx = np.where(w[0] == i)[0]
+            if i not in skip_idx:
 
-        if len(row_idx) == 1 and not lone_elems:
-            continue
+                row_idx = np.where(w2[0] == i)[0]
+                same_idx = list(w2[1][row_idx])
 
-        same_idx = list(w[1][row_idx])
+                if i in same_idx:
 
-        if same_idx not in all_same_idx:
-            all_same_idx.append(same_idx)
+                    if len(row_idx) == 1:
+                        continue
 
-    all_same_idx = [list(i) for i in all_same_idx]
+                    elif len(row_idx) > 1:
+                        same_idx.remove(i)
 
-    return all_same_idx
+                d.update({i: same_idx})
+                skip_idx += same_idx
+
+        out += (d,)
+
+    return out
 
 
 def find_unique_int_vecs(s):

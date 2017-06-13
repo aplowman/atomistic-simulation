@@ -117,18 +117,22 @@ def rotation_matrix(axis, angle, degrees=False):
     return rot_mat
 
 
-def get_equal_indices(arr, lone_elems=False):
+def get_equal_indices(arr, lone_elems=False, scale_factors=None):
     """
-    Return the indices along the first dimension of an array which index equal sub-arrays.
+    Return the indices along the first dimension of an array which index equal
+    sub-arrays.
 
     Parameters
     ----------
     arr : ndarray
-        Array of any shape whose elements along its first dimension are compared
-        for equality.
+        Array of any shape whose elements along its first dimension are 
+        compared for equality.
     lone_elems : bool
-        If True, the returned list may include single-element lists representing
-        elements which are not repeated.
+        If True, the returned list may include single-element lists 
+        representing elements which are not repeated.
+    scale_factors : list of float or list of int
+        Subarrays which are equal up to any multiplicative factor in this list
+        are determined to be equal.
 
     Returns
     -------
@@ -141,37 +145,56 @@ def get_equal_indices(arr, lone_elems=False):
 
     1D example:
 
-    >>> a = np.random.randint(0,9, (10))
+    >>> a = np.random.randint(0, 9, (10))
+    [5 1 4 6 1 8 2 7 4 7] # random
     >>> get_equal_indices(a, lone_elems=False)
-    [[0, 6], [2, 9], [4, 7, 8]] # random
+    [[1, 4], [2, 8], [7, 9]]
     >>> get_equal_indices(a, lone_elems=True)
-    [[0, 6], [1], [2, 9], [3], [4, 7, 8], [5]] # random
+    [[0], [1, 4], [2, 8], [3], [5], [6], [7, 9]]
 
-    3D example:
+    2D example:
 
-    >>> a = np.random.randint(0, 9, (100, 2, 2))
-    >>> get_equal_indices(a, lone_elems=False)
-    [[18, 71]] # random
+    >>> a = np.array([[1., 2.], [3., 4.], [-0.4, -0.8]])
+    >>> get_equal_indices(a, scale_factors=[-0.4])
+    [[0, 2]]
 
     """
 
+    if scale_factors is None:
+        scale_factors = [1]
+
+    else:
+        scale_factors.append(1)
+
     a_dims = len(arr.shape)
-    c = np.isclose(arr, arr[:, np.newaxis])
+    arr_B = arr[:, np.newaxis]
+
+    sf_shape = tuple([len(scale_factors)] + [1] * (a_dims + 1))
+    sf = np.array(scale_factors).reshape(sf_shape)
+
+    bc = np.broadcast_arrays(arr, arr_B, sf)
+    c = np.isclose(bc[0] * bc[2], bc[1])
 
     if a_dims > 1:
-        c = np.all(c, axis=tuple(range(2, a_dims + 1)))
+        c = np.all(c, axis=tuple(range(3, a_dims + 2)))
 
-    w = np.where(c.T)
+    # Check over scale factors:
+    c_sf = np.any(c, axis=0)
+
+    # If non-unit scale factors used, array won't be symmetric,
+    # so coerce into a symmetric array:
+    c_sf_t = np.logical_or(c_sf, c_sf.T)
+    w = np.where(c_sf_t)
     all_same_idx = []
 
     for i in set(w[0]):
 
-        col_idx = np.where(w[0] == i)[0]
+        row_idx = np.where(w[0] == i)[0]
 
-        if len(col_idx) == 1 and not lone_elems:
+        if len(row_idx) == 1 and not lone_elems:
             continue
 
-        same_idx = list(w[1][col_idx])
+        same_idx = list(w[1][row_idx])
 
         if same_idx not in all_same_idx:
             all_same_idx.append(same_idx)
@@ -180,16 +203,19 @@ def get_equal_indices(arr, lone_elems=False):
 
     return all_same_idx
 
+
 def find_unique_int_vecs(s):
     """
-    Find non-collinear integer vectors within an origin-centered cube of given size.
+    Find non-collinear integer vectors within an origin-centered cube of given
+    size.
 
     The zero vector is excluded.
 
     Parameters
     ----------
     s : int
-        Size of half the cube edge, such that vectors have maximum component |s|.
+        Size of half the cube edge, such that vectors have maximum component
+        |s|.
 
     Returns
     -------
@@ -215,12 +241,12 @@ def find_unique_int_vecs(s):
 
     """
 
-    s_i = np.zeros((2*s)+1, dtype=int)
-    s_i[1::2] = np.arange(1,s+1)
-    s_i[2::2] = -np.arange(1,s+1)
+    s_i = np.zeros((2 * s) + 1, dtype=int)
+    s_i[1::2] = np.arange(1, s + 1)
+    s_i[2::2] = -np.arange(1, s + 1)
 
-    a = np.vstack(np.meshgrid(s_i, s_i, s_i)).reshape((3,-1)).T
-    a[:,[0, 1]] = a[:,[1, 0]]
+    a = np.vstack(np.meshgrid(s_i, s_i, s_i)).reshape((3, -1)).T
+    a[:, [0, 1]] = a[:, [1, 0]]
 
     # Remove the zero vector
     a = a[1:]
@@ -243,6 +269,6 @@ def find_unique_int_vecs(s):
 
     # Remove collinear vectors
     a = np.delete(a, all_remove_idx, axis=0)
-    a = a[np.lexsort((a[:,1], a[:,0]))]
+    a = a[np.lexsort((a[:, 1], a[:, 0]))]
 
     return a

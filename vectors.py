@@ -83,38 +83,69 @@ def project_vec_to_plane(vec, plane_normal):
     return p
 
 
-def rotation_matrix(axis, angle, degrees=False):
-    """
-        Generates the rotation matrix to act on column vectors by pre-multiplication
-        for a given rotation axis and angle. `axis` is a 1D array of length 3 or a 1 x 3
-        or 3 x 1 array. `angle` is the rotation angle in radians (or degrees if degrees
-        is True)
+def rotation_matrix(axes, angles, degrees=False):
+
+    """ 
+    Generates pre-multiplication rotation matrices for given axes and angles.
+
+    Parameters
+    ----------
+    axes : ndarray
+        Array of shape (N, 3), which if N is 1, will be tiled to the size (M, 3).
+        Otherwise, N must be equal to M (for M, see `angles`). 
+    angles : ndarray
+        Array of shape (M). 
+    degrees : bool (optional)
+        If True, `angles` interpreted as degrees.
+
+    Returns
+    -------
+    ndarray of shape (N or M, 3, 3). 
+
+    Notes
+    -----
+    Computed using the Rodrigues' rotation formula.
+        
+
 
     """
 
-    # Remove extra dimensions
-    axis = axis.squeeze()
-
+    # Tile axis and angle arrays so they have the same dimension
+    if axes.shape[0] == angles.shape[0]:
+        n = axes.shape[0]
+    else:
+        if axes.shape[0] == 1:
+            n = angles.shape[0]
+            axes = np.tile(axes,(n,1))
+        elif angles.shape[0] == 1:
+            n = axes.shape[0]
+            angles = np.tile(angles,(n,1))
+        else:
+            raise ValueError(
+                'Incompatible dimensions: the first dimension of `axes`'
+                'or `angles` must be one otherwise the first dimensions of `axes`' 
+                'and `angles` must be equal.')
+        
+    print(axes)
     # Convert to radians if necessary
     if degrees:
         angle = np.deg2rad(angle)
 
-    # Normalise axis to a unit vector:
-    axis_unit = axis / la.norm(axis)
+    # Normalise axes to unit vectors:
+    axes = axes / np.linalg.norm(axes, axis=1)[:,newaxis]
 
-    # Find the rotation matrix for a rotation about `axis` by `angle`
-    cross_prod_mat = np.zeros((3, 3))
-    cross_prod_mat[0][1] = -axis_unit[2]
-    cross_prod_mat[0][2] = axis_unit[1]
-    cross_prod_mat[1][0] = axis_unit[2]
-    cross_prod_mat[1][2] = -axis_unit[0]
-    cross_prod_mat[2][0] = -axis_unit[1]
-    cross_prod_mat[2][1] = axis_unit[0]
+    cross_prod_mat = np.zeros((n, 3, 3))
+    cross_prod_mat[:,0,1] = -axes[:,2]
+    cross_prod_mat[:,0,2] = axes[:,1]
+    cross_prod_mat[:,1,0] = axes[:,2]
+    cross_prod_mat[:,1,2] = -axes[:,0]
+    cross_prod_mat[:,2,0] = -axes[:,1]
+    cross_prod_mat[:,2,1] = axes[:,0]
 
-    rot_mat = np.eye(3) + (np.sin(angle) * cross_prod_mat) + (
-        (1 - np.cos(angle)) * np.dot(cross_prod_mat, cross_prod_mat))
+    rot_mats = np.tile(np.eye(3),(n,1,1)) + (np.sin(angles)[:,np.newaxis,np.newaxis] * cross_prod_mat) + (
+            (1 - np.cos(angles)[:,np.newaxis,np.newaxis]) * (cross_prod_mat @ cross_prod_mat))
 
-    return rot_mat
+    return rot_mats
 
 
 def get_equal_indices(arr, scale_factors=None):

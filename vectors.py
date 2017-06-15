@@ -137,6 +137,18 @@ def rotation_matrix(axes, angles, degrees=False):
             [ 0.        ,  1.        ,  0.        ],
             [-0.70710678,  0.        ,  0.70710678]]])
 
+    Find the rotation matrices about different axes and angles:
+
+    >>> rotation_matrix(
+        np.array([[0,0,1], [0,1,0]]), np.array([np.pi/4, -np.pi/4]))
+    array([[[ 0.70710678, -0.70710678,  0.        ],
+            [ 0.70710678,  0.70710678,  0.        ],
+            [ 0.        ,  0.        ,  1.        ]],
+
+           [[ 0.70710678,  0.        , -0.70710678],
+            [ 0.        ,  1.        ,  0.        ],
+            [ 0.70710678,  0.        ,  0.70710678]]])
+
     """
 
     # Check dimensions

@@ -84,66 +84,94 @@ def project_vec_to_plane(vec, plane_normal):
 
 
 def rotation_matrix(axes, angles, degrees=False):
-
-    """ 
+    """
     Generates pre-multiplication rotation matrices for given axes and angles.
 
     Parameters
     ----------
     axes : ndarray
-        Array of shape (N, 3), which if N is 1, will be tiled to the size (M, 3).
-        Otherwise, N must be equal to M (for M, see `angles`). 
+        Array of shape (N, 3), which if N is 1, will be tiled to the size
+        (M, 3). Otherwise, N must be equal to M (for M, see `angles`).
     angles : ndarray
-        Array of shape (M). 
+        Array of shape (M).
     degrees : bool (optional)
         If True, `angles` interpreted as degrees.
 
     Returns
     -------
-    ndarray of shape (N or M, 3, 3). 
+    ndarray of shape (N or M, 3, 3).
 
     Notes
     -----
     Computed using the Rodrigues' rotation formula.
-        
 
+    Examples
+    --------
+
+    Find the rotation matrix for a single axis and angle:
+
+    >>> rotation_matrix(np.array([[0,0,1]]), np.array([np.pi/4]))
+    array([[[ 0.70710678, -0.70710678,  0.        ],
+            [ 0.70710678,  0.70710678,  0.        ],
+            [ 0.        ,  0.        ,  1.        ]]])
+
+    Find the rotation matrices for different angles about the same axis:
+
+    >>> rotation_matrix(np.array([[0,0,1]]), np.array([np.pi/4, -np.pi/4]))
+    array([[[ 0.70710678, -0.70710678,  0.        ],
+            [ 0.70710678,  0.70710678,  0.        ],
+            [ 0.        ,  0.        ,  1.        ]],
+
+           [[ 0.70710678,  0.70710678,  0.        ],
+            [-0.70710678,  0.70710678,  0.        ],
+            [ 0.        ,  0.        ,  1.        ]]])
+
+    Find the rotation matrices about different axes by the same angle:
+
+    >>> rotation_matrix(np.array([[0,0,1], [0,1,0]]), np.array([np.pi/4]))
+    array([[[ 0.70710678, -0.70710678,  0.        ],
+            [ 0.70710678,  0.70710678,  0.        ],
+            [ 0.        ,  0.        ,  1.        ]],
+
+           [[ 0.70710678,  0.        ,  0.70710678],
+            [ 0.        ,  1.        ,  0.        ],
+            [-0.70710678,  0.        ,  0.70710678]]])
 
     """
 
-    # Tile axis and angle arrays so they have the same dimension
+    # Check dimensions
     if axes.shape[0] == angles.shape[0]:
         n = axes.shape[0]
     else:
         if axes.shape[0] == 1:
             n = angles.shape[0]
-            axes = np.tile(axes,(n,1))
         elif angles.shape[0] == 1:
             n = axes.shape[0]
-            angles = np.tile(angles,(n,1))
         else:
             raise ValueError(
-                'Incompatible dimensions: the first dimension of `axes`'
-                'or `angles` must be one otherwise the first dimensions of `axes`' 
+                'Incompatible dimensions: the first dimension of `axes` or'
+                '`angles` must be one otherwise the first dimensions of `axes`'
                 'and `angles` must be equal.')
-        
-    print(axes)
+
     # Convert to radians if necessary
     if degrees:
         angle = np.deg2rad(angle)
 
     # Normalise axes to unit vectors:
-    axes = axes / np.linalg.norm(axes, axis=1)[:,newaxis]
+    axes = axes / np.linalg.norm(axes, axis=1)[:, np.newaxis]
 
     cross_prod_mat = np.zeros((n, 3, 3))
-    cross_prod_mat[:,0,1] = -axes[:,2]
-    cross_prod_mat[:,0,2] = axes[:,1]
-    cross_prod_mat[:,1,0] = axes[:,2]
-    cross_prod_mat[:,1,2] = -axes[:,0]
-    cross_prod_mat[:,2,0] = -axes[:,1]
-    cross_prod_mat[:,2,1] = axes[:,0]
+    cross_prod_mat[:, 0, 1] = -axes[:, 2]
+    cross_prod_mat[:, 0, 2] = axes[:, 1]
+    cross_prod_mat[:, 1, 0] = axes[:, 2]
+    cross_prod_mat[:, 1, 2] = -axes[:, 0]
+    cross_prod_mat[:, 2, 0] = -axes[:, 1]
+    cross_prod_mat[:, 2, 1] = axes[:, 0]
 
-    rot_mats = np.tile(np.eye(3),(n,1,1)) + (np.sin(angles)[:,np.newaxis,np.newaxis] * cross_prod_mat) + (
-            (1 - np.cos(angles)[:,np.newaxis,np.newaxis]) * (cross_prod_mat @ cross_prod_mat))
+    rot_mats = np.tile(np.eye(3), (n, 1, 1)) + (
+        np.sin(angles)[:, np.newaxis, np.newaxis] * cross_prod_mat) + (
+            (1 - np.cos(angles)[:, np.newaxis, np.newaxis]) * (
+                cross_prod_mat @ cross_prod_mat))
 
     return rot_mats
 

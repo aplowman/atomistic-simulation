@@ -117,8 +117,6 @@ def rotation_matrix(axes, angles, degrees=False):
             [ 0.70710678,  0.70710678,  0.        ],
             [ 0.        ,  0.        ,  1.        ]]])
 
-    Find the rotation matrices for different angles about the same axis:
-
     Find the rotation matrix for a single axis and angle:
 
     >>> rotation_matrix(np.array([[0,0,1]]), np.array([np.pi/4]))

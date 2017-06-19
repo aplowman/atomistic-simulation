@@ -162,13 +162,13 @@ def rotation_matrix(axes, angles, degrees=False):
 
     # Check dimensions
 
-    if len(axes.shape) == 1:
+    if axes.ndim == 1:
         axes = axes[np.newaxis]
 
     angles_err_msg = '`angles` must be a number or array of shape (M,).'
 
     if isinstance(angles, np.ndarray):
-        if len(angles.shape) != 1:
+        if angles.ndim != 1:
             raise ValueError(angles_err_msg)
 
     else:

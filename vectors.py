@@ -90,10 +90,12 @@ def rotation_matrix(axes, angles, degrees=False):
     Parameters
     ----------
     axes : ndarray
-        Array of shape (N, 3), which if N is 1, will be tiled to the size
-        (M, 3). Otherwise, N must be equal to M (for M, see `angles`).
-    angles : ndarray
-        Array of shape (M).
+        Array of shape (N, 3) or (3,), which if N is 1 or shape is (3,), will
+        be tiled to the size (M, 3). Otherwise, N must be equal to M (for M,
+        see `angles`).
+    angles : ndarray or float or int
+        Array of shape (M,) or a number which will be converted to an array
+        with M = 1.
     degrees : bool (optional)
         If True, `angles` interpreted as degrees.
 
@@ -107,6 +109,15 @@ def rotation_matrix(axes, angles, degrees=False):
 
     Examples
     --------
+
+    Find the rotation matrix for a single axis and angle:
+
+    >>> rotation_matrix(np.array([0,0,1]), np.pi/4)
+    array([[[ 0.70710678, -0.70710678,  0.        ],
+            [ 0.70710678,  0.70710678,  0.        ],
+            [ 0.        ,  0.        ,  1.        ]]])
+
+    Find the rotation matrices for different angles about the same axis:
 
     Find the rotation matrix for a single axis and angle:
 
@@ -152,6 +163,23 @@ def rotation_matrix(axes, angles, degrees=False):
     """
 
     # Check dimensions
+
+    if len(axes.shape) == 1:
+        axes = axes[np.newaxis]
+
+    angles_err_msg = '`angles` must be a number or array of shape (M,).'
+
+    if isinstance(angles, np.ndarray):
+        if len(angles.shape) != 1:
+            raise ValueError(angles_err_msg)
+
+    else:
+        try:
+            angles = np.array([angles])
+
+        except ValueError:
+            print(angles_err_msg)
+
     if axes.shape[0] == angles.shape[0]:
         n = axes.shape[0]
     else:
@@ -196,7 +224,7 @@ def get_equal_indices(arr, scale_factors=None):
     Parameters
     ----------
     arr : ndarray
-        Array of any shape whose elements along its first dimension are 
+        Array of any shape whose elements along its first dimension are
         compared for equality.
     scale_factors : list of float or list of int, optional
         Multiplicative factors to use when checking for equality between
@@ -212,7 +240,7 @@ def get_equal_indices(arr, scale_factors=None):
 
     Notes
     -----
-    If we have a scale factor `s` which returns {a: [b, c, ...]}, then the 
+    If we have a scale factor `s` which returns {a: [b, c, ...]}, then the
     inverse scale factor `1/s` will return {b: [a], c: [a], ...}.
 
 

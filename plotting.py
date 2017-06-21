@@ -15,8 +15,6 @@ def get_grid_trace_plotly(vectors, grid_size, grid_origin=None, line_args=None,
         Multiples of grid units to draw.
     grid_origin : tuple of length 2
         The position on the grid which should coincide with the origin.
-    colour : str, optional
-        Colour of the grid. Defaults to 'silver'.
     line_args : dict, optional
         Used to set the properties of the grid lines. Defaults to None, in 
         which case silver lines of width 1 are drawn.

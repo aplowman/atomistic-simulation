@@ -2,7 +2,7 @@ import numpy as np
 import plotly.graph_objs as go
 
 
-def get_grid_trace_plotly(vectors, grid_size, line_args=None,
+def get_grid_trace_plotly(vectors, grid_size, grid_origin=None, line_args=None,
                           marker_args=None):
     """
     Return a list of Plotly Scatter traces which represent a grid.
@@ -11,8 +11,10 @@ def get_grid_trace_plotly(vectors, grid_size, line_args=None,
     ----------
     vectors : ndarray of shape (2,2)
         Define the unit vectors of the grid as 2D column vectors
-    grid_size: tuple of length 2
+    grid_size : tuple of length 2
         Multiples of grid units to draw.
+    grid_origin : tuple of length 2
+        The position on the grid which should coincide with the origin.
     colour : str, optional
         Colour of the grid. Defaults to 'silver'.
     line_args : dict, optional
@@ -28,6 +30,9 @@ def get_grid_trace_plotly(vectors, grid_size, line_args=None,
 
     """
 
+    if grid_origin is None:
+        grid_origin = (0, 0)
+
     if line_args is None:
         line_args = {
             'color': 'silver',
@@ -42,6 +47,11 @@ def get_grid_trace_plotly(vectors, grid_size, line_args=None,
 
     gd_lns_yy = np.array([[0, grid_size[1] - 1]] * (grid_size[0]))
     gd_lns_yx = np.array([[i, i] for i in range(grid_size[0])])
+
+    gd_lns_xx -= grid_origin[0]
+    gd_lns_xy -= grid_origin[1]
+    gd_lns_yx -= grid_origin[0]
+    gd_lns_yy -= grid_origin[1]
 
     (gd_lns_xx_v,
      gd_lns_xy_v) = np.einsum('ij,jkm->ikm',

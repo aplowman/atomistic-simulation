@@ -1,6 +1,8 @@
 import numpy as np
 from numpy import linalg as la
 
+from memory_profiler import profile
+
 
 def row_wise_dot(a, b):
     """ Compute the dot product between rows of a and rows of b."""
@@ -308,6 +310,7 @@ def get_equal_indices(arr, scale_factors=None):
     return out
 
 
+# @profile
 def find_unique_int_vecs(s):
     """
     Find non-collinear integer vectors within an origin-centered cube of given
@@ -318,8 +321,8 @@ def find_unique_int_vecs(s):
     Parameters
     ----------
     s : int
-        Size of half the cube edge, such that vectors have maximum component
-        |s|.
+        Size of half the cube edge, such that vectors have maximum components
+        |s|. Must be: 0 < s <= 127.
 
     Returns
     -------
@@ -345,18 +348,35 @@ def find_unique_int_vecs(s):
 
     """
 
-    s_i = np.zeros((2 * s) + 1, dtype=int)
+    if s > 127 or s < 1:
+        # Would need to change `s_i` dtype to np.int16 or beyond for s > 127:
+        raise ValueError('Seach size less than 1 or greater than 127 not'
+                         'supported.')
+
+    s_i = np.zeros((2 * s) + 1, dtype=np.int8)
     s_i[1::2] = np.arange(1, s + 1)
     s_i[2::2] = -np.arange(1, s + 1)
 
-    a = np.vstack(np.meshgrid(s_i, s_i, s_i)).reshape((3, -1)).T
+    a = np.vstack(np.meshgrid(s_i, s_i, s_i, copy=False)).reshape((3, -1)).T
     a[:, [0, 1]] = a[:, [1, 0]]
+
+    # print('s_i: {}\n'.format(s_i))
+
+    # print('a.shape: {}'.format(a.shape))
+    # print('a.nbytes: {}'.format(a.nbytes))
+    # print('a.itemsize: {}'.format(a.itemsize))
+    # print('a: \n{}\n'.format(a))
 
     # Remove the zero vector
     a = a[1:]
 
     # Use cross product to find which vectors are collinear
     c = np.cross(a, a[:, np.newaxis])
+    # print('c.shape: {}'.format(c.shape))
+    # print('c.nbytes: {}'.format(c.nbytes))
+    # print('c.itemsize: {}'.format(c.itemsize))
+    # print('c: \n{}\n'.format(c))
+
     w = np.where(np.all(c == 0, axis=-1).T)
 
     all_remove_idx = []

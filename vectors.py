@@ -396,3 +396,63 @@ def find_unique_int_vecs(s):
     a = a[np.lexsort((a[:, 1], a[:, 0]))]
 
     return a
+
+
+def find_parallel_vectors(vec_a, vec_b=None, print_progress=False):
+    """
+    Find which vectors in one array are (anti-)parallel to those in another.
+
+    Parameters
+    ----------
+    vec_a : ndarray of shape (3, N)
+        First array of column vectors.
+    vec_b : ndarray of shape (3, M), optional
+        Second array of column vectors. Defaults to None, in which case the
+        vectors in `vec_a` are compared with one another.
+    print_progress : bool, optional
+        If True, print a progress percentage, default is False.
+
+    Returns
+    -------
+    dict of int : list of int
+        Each key is an index of `vec_a`. Each values is a list of indices
+        which index `vec_b` vectors that are parallel or anti-parallel to the
+        `vec_a` vector indexed by the key.
+
+    """
+
+    parallel_idx = {}
+    skip_idx = []
+    optimise = False
+    num_iter = vec_a.shape[1]
+
+    if vec_b is None:
+        vec_b = vec_a
+        optimise = True
+
+    for v_i_idx, v_i in enumerate(vec_a.T[:, np.newaxis]):
+
+        if v_i_idx in skip_idx:
+            continue
+
+        if print_progress:
+            print('{:6.2f}% complete'.format(
+                100 * v_i_idx / num_iter), end='\r')
+
+        start_idx = v_i_idx + 1 if optimise else 0
+        xx = np.cross(vec_b[:, start_idx:], v_i, axisa=0, axisc=0)
+        aa = np.all(np.isclose(xx, 0), axis=0)
+        ww = np.where(aa)[0] + start_idx
+
+        if len(ww) > 1 or (optimise and len(ww) > 0):
+
+            ww_l = list(ww)
+            parallel_idx.update({v_i_idx: ww_l})
+
+            if optimise:
+                skip_idx.extend(ww_l)
+
+    if print_progress:
+        print('100.00% complete')
+
+    return parallel_idx

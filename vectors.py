@@ -193,7 +193,7 @@ def rotation_matrix(axes, angles, degrees=False):
 
     # Convert to radians if necessary
     if degrees:
-        angle = np.deg2rad(angle)
+        angles = np.deg2rad(angles)
 
     # Normalise axes to unit vectors:
     axes = axes / np.linalg.norm(axes, axis=1)[:, np.newaxis]

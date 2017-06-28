@@ -286,6 +286,14 @@ class BravaisLattice(object):
         -------
         None
 
+        TODO:
+        -   Fix bug: if `periodic_sites` is True for face-centred, we don't get
+            all the expected lattice sites shown. Need to change the method for
+            doing this.
+        -   Add plotting of specified crystallographic planes using Plotly's
+            mesh3D trace type.
+
+
         """
 
         lat_xyz = geometry.get_box_xyz(self.vecs)[0]
@@ -347,9 +355,6 @@ class BravaisLattice(object):
         layout = graph_objs.Layout(
             width=650,
             scene={
-                'xaxis': {},
-                'yaxis': {},
-                'zaxis': {},
                 'aspectmode': 'data'
             }
         )

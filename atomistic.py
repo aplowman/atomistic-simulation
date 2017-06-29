@@ -1,13 +1,128 @@
 import numpy as np
+import os
 from plotly import graph_objs
 from plotly.offline import init_notebook_mode, plot, iplot
 import geometry
 import vectors
 import utils
+import readwrite
+
+REF_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ref')
+
+
+class CrystalStructure(object):
+    """
+    Class to represent a crystal structure with a lattice and atomic motif.
+
+    Parameters
+    ----------
+    bravais_lattice : BravaisLattice
+    motif : dict
+        atom_sites : ndarray of shape (3, P)
+            Array of column vectors representing positions of the atoms
+            associated with each lattice site. Given in fractional coordinates
+            of the lattice unit cell.
+        species : list of length P of str
+            Species names associated with each atom site.
+
+    Attributes
+    ----------
+    bravais_lattice: BravaisLattice
+    motif: dict
+    lat_sites_std : ndarray of shape (3, N)
+    lat_sites_frac : ndarray of shape (3, N)
+    atom_sites_std : ndarray of shape (3, M)
+    atom_sites_frac : ndarray of shape (3, M)
+
+    """
+
+    def __init__(self, bravais_lattice, motif):
+        """
+        Constructor method for CrystalStructure object.
+        """
+
+        self.bravais_lattice = bravais_lattice
+        self.motif = motif
+        self.lat_sites_frac = bravais_lattice.lat_sites_frac
+        self.lat_sites_std = bravais_lattice.lat_sites_std
+
+        # Add atomic motif to each lattice site
+        self.atom_sites_frac = np.concatenate(
+            self.lat_sites_frac + motif['atom_sites'].T.reshape(
+                (-1, 3, 1)), axis=1)
+
+        self.species_idx = np.repeat(
+            np.arange(self.motif['atom_sites'].shape[1]),
+            self.lat_sites_frac.shape[1])
+
+        self.species = motif['species']
+
+        self.atom_sites_std = np.dot(
+            self.bravais_lattice.vecs, self.atom_sites_frac)
+
+    def visualise(self, periodic_sites=False):
+        """
+        Plot the crystal structure using Plotly.
+
+        Parameters
+        ----------
+        periodic_sites : bool, optional
+            If True, show atom and lattice sites in the unit cell which are
+            periodically equivalent. Helpful for visualising lattices. Default
+            is False.
+
+        Returns
+        -------
+        None
+
+        """
+
+        # Get the data for the Bravais lattice:
+        b_data = self.bravais_lattice.get_plotly_figure(periodic_sites)
+
+        # Get colours for atom species:
+        atom_cols = readwrite.read_pickle(
+            os.path.join(REF_PATH, 'jmol_colours.pickle'))
+
+        for sp_idx in set(self.species_idx):
+
+            atom_idx = np.where(self.species_idx == sp_idx)[0]
+            atom_sites_sp = self.atom_sites_std[:, atom_idx]
+            sp_col = str(atom_cols[self.species[sp_idx]])
+
+            atom_site_props = {
+                'mode': 'markers',
+                'marker': {
+                    'symbol': 'o',
+                    'size': 7,
+                    'color': 'rgb' + sp_col
+                },
+                'name': self.species[sp_idx],
+                'legendgroup': self.species[sp_idx]
+            }
+
+            # Add traces for this atom species to the Bravais lattice data:
+            b_data.append(
+                graph_objs.Scatter3d(
+                    x=self.atom_sites_std[0, atom_idx],
+                    y=self.atom_sites_std[1, atom_idx],
+                    z=self.atom_sites_std[2, atom_idx],
+                    **atom_site_props
+                )
+            )
+
+        layout = graph_objs.Layout(
+            width=650,
+            scene={
+                'aspectmode': 'data'
+            }
+        )
+
+        fig = graph_objs.Figure(data=b_data, layout=layout)
+        iplot(fig)
 
 
 class BravaisLattice(object):
-
     """
     Class to represent a Bravais lattice unit cell.
 
@@ -105,7 +220,7 @@ class BravaisLattice(object):
 
     def __init__(self, lattice_system, centring_type=None,
                  a=None, b=None, c=None, α=None, β=None, γ=None):
-        """Constructor for Bravais lattice object."""
+        """Constructor method for BravaisLattice object."""
 
         if centring_type is None:
             if lattice_system == 'rhombohedral':
@@ -272,7 +387,7 @@ class BravaisLattice(object):
         self.lat_sites_frac = lat_sites_frac
         self.lat_sites_std = vectors.snap_arr_to_val(lat_sites_std, 0, 1e-15)
 
-    def plot(self, periodic_sites=False):
+    def visualise(self, periodic_sites=False):
         """
         Plot the lattice unit cell with lattice points using Plotly.
 
@@ -286,13 +401,38 @@ class BravaisLattice(object):
         -------
         None
 
+        """
+
+        data = self.get_fig_data(periodic_sites)
+        layout = graph_objs.Layout(
+            width=650,
+            scene={
+                'aspectmode': 'data'
+            }
+        )
+        fig = graph_objs.Figure(data=data, layout=layout)
+        iplot(fig)
+
+    def get_fig_data(self, periodic_sites):
+        """
+        Get the Plotly traces for visualising the Bravais lattice.
+
+        Parameters
+        ----------
+        periodic_sites : bool, optional
+            If True, show lattice sites in the unit cell which are periodically
+            equivalent. Helpful for visualising lattices. Default is False.
+
+        Returns
+        -------
+        list of Plotly trace objects
+
         TODO:
         -   Fix bug: if `periodic_sites` is True for face-centred, we don't get
             all the expected lattice sites shown. Need to change the method for
             doing this.
         -   Add plotting of specified crystallographic planes using Plotly's
             mesh3D trace type.
-
 
         """
 
@@ -337,7 +477,8 @@ class BravaisLattice(object):
                 [1, 1, 1]
             ])
 
-            periodic_edge_sites_std = np.dot(self.vecs, periodic_edge_sites.T)
+            periodic_edge_sites_std = np.dot(self.vecs,
+                                             periodic_edge_sites.T)
 
             for i in self.lat_sites_frac.T:
                 if i in periodic_edge_sites:
@@ -352,14 +493,7 @@ class BravaisLattice(object):
                     )
                     break
 
-        layout = graph_objs.Layout(
-            width=650,
-            scene={
-                'aspectmode': 'data'
-            }
-        )
-        fig = graph_objs.Figure(data=data, layout=layout)
-        iplot(fig)
+        return data
 
     def __repr__(self):
 

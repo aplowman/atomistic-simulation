@@ -78,7 +78,7 @@ class CrystalStructure(object):
         """
 
         # Get the data for the Bravais lattice:
-        b_data = self.bravais_lattice.get_plotly_figure(periodic_sites)
+        b_data = self.bravais_lattice.get_fig_data(periodic_sites)
 
         # Get colours for atom species:
         atom_cols = readwrite.read_pickle(
@@ -120,6 +120,39 @@ class CrystalStructure(object):
 
         fig = graph_objs.Figure(data=b_data, layout=layout)
         iplot(fig)
+
+    def __repr__(self):
+
+        return ('CrystalStructure(\n'
+                '\t' + self.bravais_lattice.__repr__() + '\n'
+                '\t' + '{!r}'.format(self.motif) + '\n'
+                ')')
+
+    def __str__(self):
+
+        motif_str = ''
+        for sp_idx, sp in enumerate(self.species):
+            motif_str += sp + ' @ ' + str(
+                self.motif['atom_sites'][:, sp_idx]) + '\n'
+
+        return ('{!s}-{!s} Bravais lattice + {!s}-atom motif\n\n'
+                'Lattice parameters:\n'
+                'a = {!s}\nb = {!s}\nc = {!s}\n'
+                'α = {!s}°\nβ = {!s}°\nγ = {!s}°\n'
+                '\nLattice vectors = \n{!s}\n'
+                '\nLattice sites (fractional) = \n{!s}\n'
+                '\nLattice sites (Cartesian) = \n{!s}\n'
+                '\nMotif in fractional coordinates of unit cell = \n{!s}\n').format(
+                    self.bravais_lattice.lattice_system,
+                    self.bravais_lattice.centring_type,
+                    self.atom_sites_frac.shape[1],
+                    self.bravais_lattice.a, self.bravais_lattice.b,
+                    self.bravais_lattice.c, self.bravais_lattice.α,
+                    self.bravais_lattice.β, self.bravais_lattice.γ,
+                    self.bravais_lattice.vecs,
+                    self.bravais_lattice.lat_sites_frac,
+                    self.bravais_lattice.lat_sites_std,
+                    motif_str)
 
 
 class BravaisLattice(object):

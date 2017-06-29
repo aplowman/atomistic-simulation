@@ -16,7 +16,7 @@ def get_grid_trace_plotly(vectors, grid_size, grid_origin=None, line_args=None,
     grid_origin : tuple of length 2
         The position on the grid which should coincide with the origin.
     line_args : dict, optional
-        Used to set the properties of the grid lines. Defaults to None, in 
+        Used to set the properties of the grid lines. Defaults to None, in
         which case silver lines of width 1 are drawn.
     marker_args : dict, optional
         Used to set the properties of markers used at grid line intersection
@@ -24,7 +24,11 @@ def get_grid_trace_plotly(vectors, grid_size, grid_origin=None, line_args=None,
 
     Returns
     -------
-    list of Plotly Scatter traces        
+    list of Plotly Scatter traces
+
+    TODO:
+    -   Investigate implementing in 3D. This would be good for showing the
+        Bravais lattice unit cells within a CrystalBox.
 
     """
 

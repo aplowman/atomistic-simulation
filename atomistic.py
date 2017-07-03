@@ -533,6 +533,10 @@ class BravaisLattice(object):
         lattice system.
     -   Fix bug: if we set hex a to be equal to the default for c, then we get
         an error: BravaisLattice('hexagonal', a=2)
+    -   Regarding resrictions/validations on lattice types, need to allow
+        restrictions to be "any n parameters must be..." rather than "the first
+        two parameters must be". E.g. monoclinic: "two of the angle parameters
+        must be 90 deg" rather than "parameters 3 and 5 must be 90 deg".
 
     """
 
@@ -588,7 +592,7 @@ class BravaisLattice(object):
             defaults = {0: 1, 1: 2, 2: 3, 3: 60, 4: 80, 5: 50}
 
         elif lattice_system == 'monoclinic':
-            equal_to = {3: 90, 5: 90}
+            equal_to = {3: 90}
             not_equal_to = {4: 90}
             equal_groups = [[3, 5]]
             unique_groups = [[0, 1, 2], [3, 4], [4, 5]]

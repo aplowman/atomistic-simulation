@@ -91,8 +91,7 @@ class CrystalBox(object):
             (half-)closed/open depending on the specified edge conditions.
 
         TODO:
-        -   check if I need a padding argument on get_bounding_box; previous
-            implementation of this class did use a padding. Not sure why.
+        -   Check that plotting atom indices is correct, think it's not.
 
         """
 
@@ -102,8 +101,10 @@ class CrystalBox(object):
         lat_vecs = crystal_structure.bravais_lattice.vecs
 
         # Get the bounding box of box_vecs whose vectors are parallel to the
-        # crystal lattice:
-        bounding_box = geometry.get_bounding_box(box_vecs, bound_vecs=lat_vecs)
+        # crystal lattice. Use padding to catch edge atoms which aren't on
+        # lattice sites.
+        bounding_box = geometry.get_bounding_box(
+            box_vecs, bound_vecs=lat_vecs, padding=1)
         box_vecs_inv = np.linalg.inv(box_vecs)
 
         b_box = bounding_box['bound_box'][0]
@@ -114,10 +115,8 @@ class CrystalBox(object):
         self.bounding_box = bounding_box
         self.crystal_structure = crystal_structure
 
-        # print('bounding_box: \n{}\n'.format(bounding_box))
-
         # Get all lattice sites within the bounding box, as column vectors:
-        ls_lat = np.vstack(np.meshgrid(
+        unit_cell_origins = np.vstack(np.meshgrid(
             range(b_box_origin_bv[0],
                   b_box_origin_bv[0] + b_box_bv[0] + 1),
             range(b_box_origin_bv[1],
@@ -125,21 +124,27 @@ class CrystalBox(object):
             range(b_box_origin_bv[2],
                   b_box_origin_bv[2] + b_box_bv[2] + 1))).reshape((3, -1))
 
+        # Consider all lattice sites within each unit cell origin:
+        ls_lat = np.concatenate(
+            unit_cell_origins + crystal_structure.lat_sites_frac.T.reshape(
+                (-1, 3, 1)), axis=1)
+
         # Transform lattice sites to original box basis
         ls_std = np.dot(lat_vecs, ls_lat)
         ls_box = np.dot(box_vecs_inv, ls_std)
 
         # Get all atom sites within the bounding box, as column vectors:
         as_lat = np.concatenate(
-            ls_lat + crystal_structure.atom_sites_frac.T.reshape(
+            ls_lat + crystal_structure.motif['atom_sites'].T.reshape(
                 (-1, 3, 1)), axis=1)
 
         as_std = np.dot(lat_vecs, as_lat)
         as_box = np.dot(box_vecs_inv, as_std)
 
-        species_idx = np.repeat(
-            np.arange(crystal_structure.atom_sites_frac.shape[1]),
-            ls_lat.shape[1])
+        species_idx = np.repeat(crystal_structure.lat_site_species_idx,
+                                ls_lat.shape[1])
+        motif_idx = np.repeat(crystal_structure.lat_site_motif_idx,
+                              ls_lat.shape[1])
 
         tol = 1e-14
         ls_box = vectors.snap_arr_to_val(ls_box, 0, tol)
@@ -177,7 +182,9 @@ class CrystalBox(object):
         inbox_atm_idx = np.where(cnd_atm)[0]
         as_box_in = as_box[:, inbox_atm_idx]
         as_std_in = as_std[:, inbox_atm_idx]
+
         species_idx = species_idx[inbox_atm_idx]
+        motif_idx = motif_idx[inbox_atm_idx]
 
         ls_std_in = vectors.snap_arr_to_val(ls_std_in, 0, tol)
         as_std_in = vectors.snap_arr_to_val(as_std_in, 0, tol)
@@ -188,7 +195,9 @@ class CrystalBox(object):
         self.atom_sites_std = as_std_in
         self.atom_sites_frac = as_box_in
         self.species_idx = species_idx
-        self.species = crystal_structure.species
+        self.motif_idx = motif_idx
+        self.species_set = crystal_structure.species_set
+        self.species_motif = crystal_structure.species_motif
 
     def visualise(self):
         """
@@ -234,7 +243,8 @@ class CrystalBox(object):
         ]
 
         bound_box_xyz = geometry.get_box_xyz(
-            self.bounding_box['bound_box'][0])[0]
+            self.bounding_box['bound_box'][0],
+            origin=self.bounding_box['bound_box_origin'])[0]
 
         # Add the bounding box trace:
         data.append(
@@ -255,12 +265,12 @@ class CrystalBox(object):
         atom_cols = readwrite.read_pickle(
             os.path.join(REF_PATH, 'jmol_colours.pickle'))
 
-        for sp_idx in set(self.species_idx):
+        for sp_idx, sp_name in enumerate(self.species_motif):
 
-            atom_idx = np.where(
-                self.species_idx == sp_idx)[0]
+            atom_idx = np.where(self.motif_idx == sp_idx)[0]
             atom_sites_sp = self.atom_sites_std[:, atom_idx]
-            sp_col = str(atom_cols[self.species[sp_idx]])
+            sp_col = str(
+                atom_cols[self.crystal_structure.motif['species'][sp_idx]])
 
             atom_site_props = {
                 'mode': 'markers',
@@ -269,17 +279,34 @@ class CrystalBox(object):
                     'size': 7,
                     'color': 'rgb' + sp_col
                 },
-                'name': self.species[sp_idx],
-                'legendgroup': self.species[sp_idx]
+                'name': sp_name,
+                'legendgroup': sp_name,
             }
 
-            # Add traces for all atoms
+            # Add traces for this atom species to the Bravais lattice data:
             data.append(
                 graph_objs.Scatter3d(
                     x=self.atom_sites_std[0, atom_idx],
                     y=self.atom_sites_std[1, atom_idx],
                     z=self.atom_sites_std[2, atom_idx],
                     **atom_site_props
+                )
+            )
+
+            # Add traces for atom numbers
+            data.append(
+                graph_objs.Scatter3d(
+                    x=self.atom_sites_std[0, atom_idx],
+                    y=self.atom_sites_std[1, atom_idx],
+                    z=self.atom_sites_std[2, atom_idx],
+                    **{
+                        'mode': 'text',
+                        'text': [str(i) for i in atom_idx],
+                        'name': 'Atom index',
+                        'legendgroup': 'Atom index',
+                        'showlegend': True if sp_idx == 0 else False,
+                        'visible': 'legendonly'
+                    }
                 )
             )
 
@@ -335,11 +362,44 @@ class CrystalStructure(object):
             self.lat_sites_frac + motif['atom_sites'].T.reshape(
                 (-1, 3, 1)), axis=1)
 
-        self.species_idx = np.repeat(
-            np.arange(self.motif['atom_sites'].shape[1]),
-            self.lat_sites_frac.shape[1])
+        # Get unique species in the motif
+        species_set = []
+        for m in motif['species']:
+            if m not in species_set:
+                species_set.append(m)
 
-        self.species = motif['species']
+        # Label species by their repetition in the motif
+        species_motif = []
+        species_map = []
+        species_count = [0] * len(species_set)
+        for m in motif['species']:
+            set_idx = species_set.index(m)
+            species_map.append(set_idx)
+            i = species_count[set_idx]
+            species_count[set_idx] += 1
+            species_motif.append(m + ' #{}'.format(i + 1))
+
+        # motif index (indexes species_motif) for a single lattice site:
+        self.lat_site_motif_idx = np.arange(self.motif['atom_sites'].shape[1])
+
+        # motif index (indexes species_motif) for all lattice sites:
+        self.motif_idx = np.repeat(self.lat_site_motif_idx,
+                                   self.lat_sites_frac.shape[1])
+
+        # species index (indexes species_set) for a single lattice site:
+        lat_site_species_idx = np.copy(self.lat_site_motif_idx)
+        for sm_idx, sm in enumerate(species_map):
+            if sm_idx != sm:
+                lat_site_species_idx[lat_site_species_idx == sm_idx] = sm
+
+        self.lat_site_species_idx = lat_site_species_idx
+
+        # species index (indexes species_set) for all lattice sites:
+        self.species_idx = np.repeat(self.lat_site_species_idx,
+                                     self.lat_sites_frac.shape[1])
+
+        self.species_set = species_set
+        self.species_motif = species_motif
 
         self.atom_sites_std = np.dot(
             self.bravais_lattice.vecs, self.atom_sites_frac)
@@ -368,11 +428,11 @@ class CrystalStructure(object):
         atom_cols = readwrite.read_pickle(
             os.path.join(REF_PATH, 'jmol_colours.pickle'))
 
-        for sp_idx in set(self.species_idx):
+        for sp_idx, sp_name in enumerate(self.species_motif):
 
-            atom_idx = np.where(self.species_idx == sp_idx)[0]
+            atom_idx = np.where(self.motif_idx == sp_idx)[0]
             atom_sites_sp = self.atom_sites_std[:, atom_idx]
-            sp_col = str(atom_cols[self.species[sp_idx]])
+            sp_col = str(atom_cols[self.motif['species'][sp_idx]])
 
             atom_site_props = {
                 'mode': 'markers',
@@ -381,8 +441,8 @@ class CrystalStructure(object):
                     'size': 7,
                     'color': 'rgb' + sp_col
                 },
-                'name': self.species[sp_idx],
-                'legendgroup': self.species[sp_idx]
+                'name': sp_name,
+                'legendgroup': sp_name,
             }
 
             # Add traces for this atom species to the Bravais lattice data:
@@ -392,6 +452,23 @@ class CrystalStructure(object):
                     y=self.atom_sites_std[1, atom_idx],
                     z=self.atom_sites_std[2, atom_idx],
                     **atom_site_props
+                )
+            )
+
+            # Add traces for atom numbers
+            b_data.append(
+                graph_objs.Scatter3d(
+                    x=self.atom_sites_std[0, atom_idx],
+                    y=self.atom_sites_std[1, atom_idx],
+                    z=self.atom_sites_std[2, atom_idx],
+                    **{
+                        'mode': 'text',
+                        'text': [str(i) for i in atom_idx],
+                        'name': 'Atom index',
+                        'legendgroup': 'Atom index',
+                        'showlegend': True if sp_idx == 0 else False,
+                        'visible': 'legendonly'
+                    }
                 )
             )
 
@@ -415,7 +492,7 @@ class CrystalStructure(object):
     def __str__(self):
 
         motif_str = ''
-        for sp_idx, sp in enumerate(self.species):
+        for sp_idx, sp in enumerate(self.species_motif):
             motif_str += sp + ' @ ' + str(
                 self.motif['atom_sites'][:, sp_idx]) + '\n'
 
@@ -430,7 +507,7 @@ class CrystalStructure(object):
                 'unit cell = \n{!s}\n').format(
                     self.bravais_lattice.lattice_system,
                     self.bravais_lattice.centring_type,
-                    self.atom_sites_frac.shape[1],
+                    self.motif['atom_sites'].shape[1],
                     self.bravais_lattice.a, self.bravais_lattice.b,
                     self.bravais_lattice.c, self.bravais_lattice.α,
                     self.bravais_lattice.β, self.bravais_lattice.γ,

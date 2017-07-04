@@ -132,7 +132,7 @@ def get_box_xyz(box, origin=None, faces=False):
     return xyz
 
 
-def get_bounding_box(box, bound_vecs=None):
+def get_bounding_box(box, bound_vecs=None, padding=0):
     """
     Find bounding boxes around parallelopipeds.
 
@@ -145,6 +145,11 @@ def get_bounding_box(box, bound_vecs=None):
         Array defining the vectors of which the computed bounding box edge
         vectors should be integer multiples. Default is identity matrix of
         shape (3, 3).
+    padding : int
+        Integer number of additional `bound_vecs` to include in the bounding
+        box in each direction as padding around the box. Note that as currently
+        implemented, this adds a total of (2 * padding) bound vecs magnitude to
+        each of the bounding box edge vectors.
 
     Returns
     -------
@@ -161,6 +166,10 @@ def get_bounding_box(box, bound_vecs=None):
         `bound_box_origin_bv` is an ndarray with shape (3, N) defining as
         3D-column vectors the origins of the bouding boxes in the `bound_vecs`
         basis.
+
+    TODO:
+    -   Allow compute non-integer bounding box (i.e. bounding box just
+        determined by directions of `bound_vecs`, not magnitudes.)
 
     """
 
@@ -179,11 +188,12 @@ def get_bounding_box(box, bound_vecs=None):
     maxs = vectors.snap_arr_to_val(
         np.max(corners_bound, axis=2)[:, :, np.newaxis], 0, tol)
 
-    mins_floor = np.floor(mins)
+    mins_floor = np.floor(mins) - padding
     maxs_ceil = np.ceil(maxs)
 
     bound_box_origin = np.concatenate(bound_vecs @ mins_floor, axis=1)
-    bound_box_bv = np.concatenate((maxs_ceil - mins_floor).astype(int), axis=1)
+    bound_box_bv = np.concatenate(
+        (maxs_ceil - mins_floor + padding).astype(int), axis=1)
     bound_box = vectors.snap_arr_to_val(
         bound_box_bv.T[:, np.newaxis] * bound_vecs[np.newaxis], 0, tol)
     bound_box_origin_bv = np.concatenate(mins_floor.astype(int), axis=1)

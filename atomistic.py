@@ -71,7 +71,7 @@ class AtomisticStructure(object):
 
     """
 
-    def __init__(self, atoms_sites, supercell, lattice_sites=None,
+    def __init__(self, atom_sites, supercell, lattice_sites=None,
                  crystals=None, crystal_structures=None, crystal_idx=None,
                  species_idx=None, motif_idx=None):
         """Constructor method for AtomisticStructure object."""
@@ -83,7 +83,7 @@ class AtomisticStructure(object):
         # 2.    Check set of indices in `crystal_idx` resolve in `crystals`.
 
         if crystal_idx is not None:
-            if len(crystal_idx) != atoms_sites.shape[1]:
+            if len(crystal_idx) != atom_sites.shape[1]:
                 raise ValueError('Length of `crystal_idx` must match number '
                                  'of atoms specified as column vectors in '
                                  '`atom_sites')
@@ -94,13 +94,13 @@ class AtomisticStructure(object):
                                  ' in `crystals`.')
 
         if species_idx is not None:
-            if len(species_idx) != atoms_sites.shape[1]:
+            if len(species_idx) != atom_sites.shape[1]:
                 raise ValueError('Length of `species_idx` must match number '
                                  'of atoms specified as column vectors in '
                                  '`atom_sites')
 
         if motif_idx is not None:
-            if len(motif_idx) != atoms_sites.shape[1]:
+            if len(motif_idx) != atom_sites.shape[1]:
                 raise ValueError('Length of `motif_idx` must match number '
                                  'of atoms specified as column vectors in '
                                  '`atom_sites')
@@ -119,13 +119,144 @@ class AtomisticStructure(object):
         self.motif_idx = motif_idx
 
     def visualise(self):
-        pass
 
-    def __str__(self):
-        pass
+        crystal_cols = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+                        '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 
-    def __repr__(self):
-        pass
+        # Get colours for atom species:
+        atom_cols = readwrite.read_pickle(
+            os.path.join(REF_PATH, 'jmol_colours.pickle'))
+
+        data = []
+
+        # Supercell box
+        sup_xyz = geometry.get_box_xyz(self.supercell)[0]
+        sup_props = {
+            'mode': 'lines',
+            'line': {
+                'color': '#98df8a'
+            }
+        }
+        data.append(
+            graph_objs.Scatter3d(
+                x=sup_xyz[0],
+                y=sup_xyz[1],
+                z=sup_xyz[2],
+                name='Supercell',
+                **sup_props
+            )
+        )
+
+        # Crystal boxes and atoms
+        for c_idx, c in enumerate(self.crystals):
+
+            # Crystal box
+            c_xyz = geometry.get_box_xyz(c['crystal'], origin=c['origin'])[0]
+            c_props = {
+                'mode': 'lines',
+                'line': {
+                    'color': crystal_cols[c_idx]
+                }
+            }
+            data.append(
+                graph_objs.Scatter3d(
+                    x=c_xyz[0],
+                    y=c_xyz[1],
+                    z=c_xyz[2],
+                    name='Crystal #{}'.format(c_idx + 1),
+                    **c_props
+                )
+            )
+
+            # lattice_site_props = {
+            #     'mode': 'markers',
+            #     'marker': {
+            #         'color': 'rgb(100,100,100)',
+            #         'symbol': 'x',
+            #         'size': 5
+            #     },
+            #     'name': 'Lattice sites',
+            #     'legendgroup': 'Lattice sites'
+            # }
+
+            # data.append(
+            #     graph_objs.Scatter3d(
+            #         x=self.lat_sites_std[0],
+            #         y=self.lat_sites_std[1],
+            #         z=self.lat_sites_std[2],
+            #         **lattice_site_props
+            #     )
+            # )
+
+            # Get CrystalStructure associated with this crystal:
+            cs = self.crystal_structures[self.crystals[c_idx]['cs_idx']]
+
+            # Get motif associated with this crystal:
+            sp_motif = cs.species_motif
+
+            # Get indices of atoms in this crystal
+            crys_atm_idx = np.where(self.crystal_idx == c_idx)[0]
+
+            for sp_idx, sp_name in enumerate(sp_motif):
+
+                atom_idx = np.where(self.motif_idx[crys_atm_idx] == sp_idx)[0]
+                atom_sites_sp = self.atom_sites[:, crys_atm_idx[atom_idx]]
+                sp_col = str(atom_cols[cs.motif['species'][sp_idx]])
+
+                trace_name = sp_name + ' (crystal #{})'.format(c_idx + 1)
+
+                atom_site_props = {
+                    'mode': 'markers',
+                    'marker': {
+                        'symbol': 'o',
+                        'size': 7,
+                        'color': 'rgb' + sp_col
+                    },
+                    'name': trace_name,
+                    'legendgroup': trace_name,
+                }
+
+                data.append(
+                    graph_objs.Scatter3d(
+                        x=atom_sites_sp[0],
+                        y=atom_sites_sp[1],
+                        z=atom_sites_sp[2],
+                        **atom_site_props
+                    )
+                )
+
+                # # Add traces for atom numbers
+                # data.append(
+                #     graph_objs.Scatter3d(
+                #         x=self.atom_sites_std[0, atom_idx],
+                #         y=self.atom_sites_std[1, atom_idx],
+                #         z=self.atom_sites_std[2, atom_idx],
+                #         **{
+                #             'mode': 'text',
+                #             'text': [str(i) for i in atom_idx],
+                #             'name': 'Atom index',
+                #             'legendgroup': 'Atom index',
+                #             'showlegend': True if sp_idx == 0 else False,
+                #             'visible': 'legendonly'
+                #         }
+                #     )
+                # )
+
+        layout = graph_objs.Layout(
+            width=650,
+            scene={
+                'aspectmode': 'data'
+            }
+        )
+
+        fig = graph_objs.Figure(data=data, layout=layout)
+        iplot(fig)
+
+    # def __str__(self):
+    #     pass
+
+    # def __repr__(self):
+    #     pass
 
 
 class BulkCrystal(AtomisticStructure):
@@ -140,12 +271,10 @@ class BulkCrystal(AtomisticStructure):
     def __init__(self, crystal_structure, box_lat):
         """Constructor method for BulkCrystal object."""
 
-        supercell = np.dot(crystal_structure.bravais_lattice.vectors, box_lat)
+        supercell = np.dot(crystal_structure.bravais_lattice.vecs, box_lat)
         cb = CrystalBox(crystal_structure, supercell)
         atom_sites = cb.atom_sites_std
         crystal_idx = np.zeros(atom_sites.shape[1])
-        css =
-
         crystals = [{
             'crystal': supercell,
             'origin': np.zeros((3, 1)),
@@ -161,11 +290,11 @@ class BulkCrystal(AtomisticStructure):
                          species_idx=cb.species_idx,
                          motif_idx=cb.motif_idx)
 
-    def __str__(self):
-        pass
+    # def __str__(self):
+    #     pass
 
-    def __repr__(self):
-        pass
+    # def __repr__(self):
+    #     pass
 
 
 class CrystalBox(object):
@@ -719,7 +848,7 @@ class BravaisLattice(object):
     γ : float
         Lattice parameter, angle in degrees between the first and second unit
         cell edge vectors.
-    vectors : ndarray of shape (3, 3)
+    vecs : ndarray of shape (3, 3)
         Array of column vectors defining the lattice unit cell
     lat_sites_std: ndarray of shape (3, N)
         Array of column vectors defining the Cartesian positions of lattice

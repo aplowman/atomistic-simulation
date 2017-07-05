@@ -1,6 +1,11 @@
 """
 Classes for generating atomistic structures useful for atomistic simulations.
 
+Attributes
+----------
+REF_PATH : str
+    The path of the `ref` directory, which contains reference data.
+
 TODO:
 -   Investigate building a helper class for structure visualisations which can
     be shared between BravaisLattice, CrystalStructure, CrystalBox etc. Or
@@ -18,6 +23,149 @@ import utils
 import readwrite
 
 REF_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ref')
+
+
+class AtomisticStructure(object):
+    """
+    Class to represent crystals of atoms
+
+    Attributes
+    ----------
+    atom_sites : ndarray of shape (3, N)
+        Array of column vectors representing the atom positions.
+    supercell : ndarray of shape (3, 3)
+        Array of column vectors representing supercell edge vectors.
+    lattice_sites : ndarray of shape (3, M), optional
+        Array of column vectors representing lattice site positions.
+    crystals : list of dict of (str : ndarray or int), optional
+        Each dict contains at least these keys:
+            `crystal` : ndarray of shape (3, 3)
+                Array of column vectors representing the crystal edge vectors.
+            `origin` : ndarray of shape (3, 1)
+                Column vector specifying the origin of this crystal.
+        Additional keys are:
+            'cs_idx': int
+                Index of `crystal_structures`, defining to which
+                CrystalStructure this crystal belongs.
+
+    crystal_structures : list of CrystalStructure, optional
+    crystal_idx : ndarray of shape (N,), optional
+        Defines to which crystal each atom belongs.
+    species_idx : ndarray of shape (N,), optional
+        Defines to which species each atom belongs, indexed within the atom's
+        crystal_structure. For atom index `i`, this indexes
+        `crystal_structures[
+            crystals[crystal_idx[i]]['cs_idx']]['species_set']`
+    motif_idx : ndarray of shape (N,), optional
+        Defines to which motif atom each atom belongs, indexed within the
+        atom's crystal_structure. For atom index `i`, this indexes
+        `crystal_structures[
+            crystals[crystal_idx[i]]['cs_idx']]['species_motif']`
+
+    Methods
+    -------
+    get_atom_species():
+        Return a str ndarray representing the species of each atom.
+    visualise():
+        Use a plotting library to visualise the atomistic structure.
+
+    """
+
+    def __init__(self, atoms_sites, supercell, lattice_sites=None,
+                 crystals=None, crystal_structures=None, crystal_idx=None,
+                 species_idx=None, motif_idx=None):
+        """Constructor method for AtomisticStructure object."""
+
+        # Input validation
+        # ----------------
+        # 1.    Check length of `crystal_idx`, `species_idx`, and `motif_idx`
+        #       match number of atoms in `atom_sites`.
+        # 2.    Check set of indices in `crystal_idx` resolve in `crystals`.
+
+        if crystal_idx is not None:
+            if len(crystal_idx) != atoms_sites.shape[1]:
+                raise ValueError('Length of `crystal_idx` must match number '
+                                 'of atoms specified as column vectors in '
+                                 '`atom_sites')
+
+            c_idx_set = sorted(list(set(crystal_idx)))
+            if c_idx_set[0] < 0 or c_idx_set[-1] >= len(crystals):
+                raise ValueError('Indices in `crystal_idx` must index elements'
+                                 ' in `crystals`.')
+
+        if species_idx is not None:
+            if len(species_idx) != atoms_sites.shape[1]:
+                raise ValueError('Length of `species_idx` must match number '
+                                 'of atoms specified as column vectors in '
+                                 '`atom_sites')
+
+        if motif_idx is not None:
+            if len(motif_idx) != atoms_sites.shape[1]:
+                raise ValueError('Length of `motif_idx` must match number '
+                                 'of atoms specified as column vectors in '
+                                 '`atom_sites')
+
+        # Set attributes
+        # --------------
+
+        self.atom_sites = atom_sites
+        self.supercell = supercell
+
+        self.lattice_sites = lattice_sites
+        self.crystals = crystals
+        self.crystal_structures = crystal_structures
+        self.crystal_idx = crystal_idx
+        self.species_idx = species_idx
+        self.motif_idx = motif_idx
+
+    def visualise(self):
+        pass
+
+    def __str__(self):
+        pass
+
+    def __repr__(self):
+        pass
+
+
+class BulkCrystal(AtomisticStructure):
+    """
+
+    Attributes
+    ----------
+    crystal_structure : CrystalStructure
+
+    """
+
+    def __init__(self, crystal_structure, box_lat):
+        """Constructor method for BulkCrystal object."""
+
+        supercell = np.dot(crystal_structure.bravais_lattice.vectors, box_lat)
+        cb = CrystalBox(crystal_structure, supercell)
+        atom_sites = cb.atom_sites_std
+        crystal_idx = np.zeros(atom_sites.shape[1])
+        css =
+
+        crystals = [{
+            'crystal': supercell,
+            'origin': np.zeros((3, 1)),
+            'cs_idx': 0
+        }]
+
+        super().__init__(atom_sites,
+                         supercell,
+                         lattice_sites=cb.lat_sites_std,
+                         crystals=crystals,
+                         crystal_structures=[crystal_structure],
+                         crystal_idx=crystal_idx,
+                         species_idx=cb.species_idx,
+                         motif_idx=cb.motif_idx)
+
+    def __str__(self):
+        pass
+
+    def __repr__(self):
+        pass
 
 
 class CrystalBox(object):
@@ -66,12 +214,12 @@ class CrystalBox(object):
         edge_conditions : list of str, optional
             Determines if atom and lattice sites on the edges of the `box_vecs`
             parallelopiped should be included. It is a list of three
-            two-character strings, each being a `1` or `0`. These refer to 
+            two-character strings, each being a `1` or `0`. These refer to
             whether atoms are included (`1`) or not (`0`) for the near and far
             boundary along the dimension given by the position in the list. The
             near boundary is the boundary of the crystal box which intercepts
             the crystal box origin. Default is None, in which case it will be
-            set to ['10', '10', '10']. For a given component, say x, the 
+            set to ['10', '10', '10']. For a given component, say x, the
             strings are decoded in the following way:
                 '00': 0 <  x <  1
                 '01': 0 <  x <= 1

@@ -20,6 +20,7 @@ from plotly.offline import init_notebook_mode, plot, iplot
 import simsio
 import geometry
 import vectors
+import mathsutils
 import utils
 import readwrite
 
@@ -542,8 +543,6 @@ class CSLBicrystal(AtomisticStructure):
         rot_ax_std = np.dot(lat_vecs, csl_vecs[0][:, 2:3])
         csl_vecs_std = [np.dot(lat_vecs, c) for c in csl_vecs]
 
-        print('box_csl: \n{}\n'.format(box_csl))
-
         # Non-boundary (column) index of `box_csl` and grain arrays:
         NBI = 2
         BI = [0, 1]
@@ -560,9 +559,6 @@ class CSLBicrystal(AtomisticStructure):
         grn_a_lat = np.dot(csl_vecs[0], box_csl)
         grn_b_lat = np.dot(csl_vecs[1], box_csl)
         grn_b_lat[:, NBI] *= -1
-
-        print('grn_a_lat: \n{}\n'.format(grn_a_lat))
-        print('grn_b_lat: \n{}\n'.format(grn_b_lat))
 
         # Get grain vectors in standard Cartesian basis
         grn_a_std = np.dot(lat_vecs, grn_a_lat)
@@ -699,6 +695,87 @@ class CSLBicrystal(AtomisticStructure):
         self.zero_shift = np.dot(R, self.zero_shift[:, 0])[:, np.newaxis]
 
         return R
+
+    def apply_boundary_vac(self, vac_thick, sharpness=1):
+        """
+        Apply boundary vaccuum to the supercell, atoms and grains according
+        to a sigmoid function.
+
+        TODO:
+        -   Perhaps use @property decorator for bicrystal thickness so it's
+            always recalculated when I get it. (Learn more about properties.)
+
+        """
+
+        # For convenience:
+        grn_a = self.crystals[0]
+        grn_b = self.crystals[1]
+        bt = self.bicrystal_thickness
+        grn_a_full = grn_a['crystal'] + grn_a['origin']
+        grn_b_full = grn_b['crystal'] + grn_b['origin']
+        nbi = self.non_boundary_idx
+
+        # Get perpendicular distances from the origin boundary plane:
+        grn_a_gb_dist = np.einsum('ij,ik->j', grn_a_full, self.n_unit)
+        grn_b_gb_dist = np.einsum('ij,ik->j', grn_b_full, self.n_unit)
+        zs_gb_dist = np.einsum('ij,ik->j', self.zero_shift, self.n_unit)
+
+        # Set which Sigmoid function to use:
+        if self.maintain_inv_sym:
+            sig_fnc = mathsutils.double_sigmoid
+        else:
+            sig_fnc = mathsutils.single_sigmoid
+
+        # Get displacements in the boundary normal directions according
+        # to a Sigmoid function:
+        as_dx = sig_fnc(self.atoms_gb_dist, vac_thick, sharpness, bt)
+        grn_a_dx = sig_fnc(grn_a_gb_dist, vac_thick, sharpness, bt)
+        grn_b_dx = sig_fnc(grn_b_gb_dist, vac_thick, sharpness, bt)
+        zs_dx = sig_fnc(zs_gb_dist, vac_thick, sharpness, bt)
+
+        # Snap atoms close to zero
+        as_dx = vectors.snap_arr_to_val(as_dx, 0, 1e-14)
+
+        # Find new positions with vacuum applied:
+        as_vac = self.atom_sites + (as_dx * self.n_unit)
+        zs_vac = self.zero_shift + (zs_dx * self.n_unit)
+        grn_a_vac = grn_a_full + (grn_a_dx * self.n_unit) - zs_vac
+        grn_b_vac = grn_b_full + (grn_b_dx * self.n_unit) - zs_vac
+
+        # Apply vacuum to the supercell
+        if self.maintain_inv_sym:
+            sup_gb_dist = np.einsum('ij,ik->j', self.supercell, self.n_unit)
+            sup_dx = sig_fnc(sup_gb_dist, vac_thick, sharpness, bt)
+            sup_vac = self.supercell + (sup_dx * self.n_unit)
+
+        else:
+            vac_add = (self.u_unit * vac_thick) / \
+                np.einsum('ij,ij->', self.n_unit, self.u_unit)
+            sup_vac = np.copy(self.supercell)
+            sup_vac[:, nbi:nbi + 1] += vac_add
+
+        # Calculate new bicrystal thickness:
+        bicrystal_thickness = np.einsum(
+            'ij,ij', sup_vac[:, nbi:nbi + 1], self.n_unit)
+
+        # Add new attributes:
+        self.atoms_gb_dist_old = self.atoms_gb_dist
+        self.atoms_gb_dist_δ = as_dx
+
+        # Update attributes:
+        self.atom_sites = as_vac
+        self.supercell = sup_vac
+        self.zero_shift = zs_vac
+        self.crystals[0].update({
+            'crystal': grn_a_vac,
+            'origin': zs_vac
+        })
+        self.crystals[1].update({
+            'crystal': grn_b_vac,
+            'origin': zs_vac
+        })
+        self.atoms_gb_dist += as_dx
+        self.bicrystal_thickness = bicrystal_thickness
 
 
 class CrystalBox(object):

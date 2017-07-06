@@ -297,6 +297,229 @@ class BulkCrystal(AtomisticStructure):
     #     pass
 
 
+class CSLBicrystal(AtomisticStructure):
+    """
+    Class to represent a bicrystal supercell constructed using CSL vectors.
+
+    Attributes
+    ----------
+    GB_TYPES : dict of str : ndarray of shape (3, 3)
+        Some
+
+    Parameters
+    ----------
+    crystal_structure : CrystalStructure
+    csl_vecs : list of length 2 of ndarray of shape (3, 3)
+        List of two arrays of three column vectors representing CSL vectors
+        in the lattice basis. The two CSL unit cells defined here rotate onto
+        each other by the CSL rotation angle. The rotation axis is taken as the
+        third vector, which must therefore be the same for both CSL unit cells.
+    box_csl : ndarray of shape (3, 3), optional
+        The linear combination of CSL unit vectors defined in `csl_vecs` used
+        to construct each half of the bicrystal. The first two columns
+        represent vectors defining the boundary plane. The third column
+        represents a vector in the out-of-boundary direction. Only one of
+        `box_csl` and `gb_type` may be specified.
+    gb_type : str, optional
+        Default is None. Must be one of 'tilt_A', 'tilt_B', 'twist' or
+        'mixed_A'. Only one of `box_csl` and `gb_type` may be specified.
+    gb_size : ndarray of shape (3,) of int, optional
+        If `gb_type` is specified, the unit grain vectors associated with that
+        `gb_type` are scaled by these integers. Default is None, in which case
+        it is set to np.array([1, 1, 1]).
+    edge_conditions : list of list of str
+        Edge conditions for each grain in the bicrystal. See CrystalBox for
+        details.
+    maintain_inv_sym : bool, optional
+        If True, methods acting on the CSLBicrystal object will maintain
+        inversion symmetry of the bicrystal.
+
+    Notes
+    -----
+    Algorithm proceeds as follows:
+    1.  Apply given linear combinations of given CSL unit vectors to form grain
+        vectors of the bicrystal.
+    2.  Multiply the out-of-boundary vector of the second grain by -1, such
+        that rotation of the second grain by the CSL rotation angle will form a
+        bicrystal of two grains.
+    3.  Check grain A is formed from a right-hand basis - since we want the
+        supercell vectors to be formed from a right-hand basis. If not, swap
+        the first and second grain A and B vectors to do this.
+    4.  Fill the two grains with atoms
+
+    TODO:
+    -   Clarify the docstring about `maintain_inv_sym`; inversion symmetry
+        will be maintained about what point?
+
+    """
+
+    GB_TYPES = {
+        'tilt_A': np.array([
+            [1, 0, 0],
+            [0, 0, 1],
+            [0, 1, 0]
+        ]),
+        'tilt_B': np.array([
+            [1, 0, 0],
+            [1, 0, 1],
+            [0, 1, 0]
+        ]),
+        'twist': np.array([
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1]
+        ]),
+        'mixed_A': np.array([
+            [1, 0, 0],
+            [0, 1, 0],
+            [1, 0, 1]
+        ])
+    }
+
+    def __init__(self, crystal_structure, csl_vecs, box_csl=None,
+                 gb_type=None, gb_size=None, edge_conditions=None,
+                 maintain_inv_sym=False):
+        """Constructor method for CSLBicrystal object."""
+
+        if np.all(csl_vecs[0][:, 2] != csl_vecs[1][:, 2]):
+            raise ValueError('Third vectors in `csl_vecs[0]` and csl_vecs[1] '
+                             'represent the CSL rotation axis and must '
+                             'therefore be equal.')
+
+        if box_csl is not None and gb_type is not None:
+            raise ValueError('Only one of `box_csl` and `gb_type` may be '
+                             'specified.')
+
+        if box_csl is None and gb_type is None:
+            raise ValueError('Exactly one of `box_csl` and `gb_type` must be '
+                             'specified.')
+
+        if gb_type is not None:
+
+            if gb_size is None:
+                gb_size = np.array([1, 1, 1])
+
+            if gb_type not in CSLBicrystal.GB_TYPES:
+                raise ValueError(
+                    'Invalid `gb_type`: {}. Must be one of {}'.format(
+                        gb_type, list(CSLBicrystal.GB_TYPES.keys())))
+
+            box_csl = CSLBicrystal.GB_TYPES.get(gb_type) * gb_size
+
+        lat_vecs = crystal_structure.bravais_lattice.vecs
+        rot_ax_std = np.dot(lat_vecs, csl_vecs[0][:, 2:3])
+        csl_vecs_std = [np.dot(lat_vecs, c) for c in csl_vecs]
+
+        # Non-boundary (column) index of `box_csl` and grain arrays:
+        NBI = 2
+        BI = [0, 1]
+
+        # Enforce a rule that out of boundary grain vector has to be
+        # (a multiple of) a single CSL unit vector. This reduces the
+        # potential "skewness" of the supercell.
+        if np.count_nonzero(box_csl[:, NBI]) > 1:
+            raise ValueError('The out of boundary vector, `box_csl[:, {}]`'
+                             ' must have exactly one non-zero '
+                             'element.'.format(NBI))
+
+        # Scale grains in lattice basis
+        grn_a_lat = np.dot(csl_vecs[0], box_csl)
+        grn_b_lat = np.dot(csl_vecs[1], box_csl)
+        grn_b_lat[:, NBI] *= -1
+
+        # Get grain vectors in standard Cartesian basis
+        grn_a_std = np.dot(lat_vecs, grn_a_lat)
+        grn_b_std = np.dot(lat_vecs, grn_b_lat)
+
+        # Get rotation matrix for rotating grain B onto grain A
+        if np.all(csl_vecs[0] == csl_vecs[1]):
+            rot_angle = 0
+            rot_mat = np.eye(3)
+
+        else:
+            rot_angle = vectors.col_wise_angles(
+                csl_vecs_std[0], csl_vecs_std[1])[0]
+            rot_mat = vectors.rotation_matrix(rot_ax_std, rot_angle)[0]
+
+        rot_angle_deg = np.rad2deg(rot_angle)
+
+        # Check if grain A forms a right-handed coordinate system:
+        grn_vol = np.dot(np.cross(grn_a_std[:, 0],
+                                  grn_a_std[:, 1]), grn_a_std[:, 2])
+
+        if grn_vol < 0:
+            # Swap boundary vectors to make a right-handed coordinate system:
+            grn_a_lat[:, [0, 1]] = grn_a_lat[:, [1, 0]]
+            grn_b_lat[:, [0, 1]] = grn_b_lat[:, [1, 0]]
+            grn_a_std[:, [0, 1]] = grn_a_std[:, [1, 0]]
+            grn_b_std[:, [0, 1]] = grn_b_std[:, [1, 0]]
+            box_csl[0][0, 1] = box_csl[0][1, 0]
+            box_csl[1][0, 1] = box_csl[1][1, 0]
+
+        # Specify bounding box edge conditions for including atoms:
+        if edge_conditions is None:
+            edge_conditions = [
+                ['10', '10', '10'],
+                ['10', '10', '10']
+            ]
+            edge_conditions[1][NBI] = '01'
+
+        # Make two crystal boxes:
+        crys_a = CrystalBox(crystal_structure, grn_a_std,
+                            edge_conditions=edge_conditions[0])
+        crys_b = CrystalBox(crystal_structure, grn_b_std,
+                            edge_conditions=edge_conditions[1])
+
+        # Get atom and lattice sites from crystal boxes:
+        as_a = crys_a.atom_sites_std
+        as_b = crys_b.atom_sites_std
+        ls_a = crys_a.lat_sites_std
+        ls_b = crys_b.lat_sites_std
+
+        # Rotate crystal B onto A:
+        as_b_rot = np.dot(rot_mat, as_b)
+        ls_b_rot = np.dot(rot_mat, ls_b)
+        grn_b_rot_std = np.dot(rot_mat, grn_b_std)
+
+        # Shift crystals to form a supercell at the origin
+        zs_std = - grn_b_rot_std[:, NBI:NBI + 1]
+        as_a_zs = as_a + zs_std
+        as_b_zs = as_b_rot + zs_std
+        ls_a_zs = ls_a + zs_std
+        ls_b_zs = ls_b_rot + zs_std
+
+        crystal_idx = np.array([0] * as_a_zs.shape[1] + [1] * as_b_zs.shape[1])
+        atom_sites = np.hstack([as_a_zs, as_b_zs])
+
+        # Define the supercell:
+        sup_std = np.copy(grn_a_std)
+        sup_std[:, NBI] *= 2
+
+        # Boundary normal vector:
+        n = np.cross(sup_std[:, BI[0]], sup_std[:, BI[1]])[:, np.newaxis]
+        n_unit = n / np.linalg.norm(n)
+
+        # Non-boundary supercell unit vector
+        u = sup_std[:, NBI:NBI + 1]
+        u_unit = u / np.linalg.norm(u)
+
+        # Get thickness of bicrystal normal to boundary
+        bicrystal_thickness = np.einsum('ij,ij', u, n_unit)
+
+        # Set instance attributes:
+        self.zero_shift = zs_std
+        self.maintain_inv_sym = maintain_inv_sym
+        self.n_unit = n_unit
+        self.u_unit = u_unit
+        self.bicrystal_thickness = bicrystal_thickness
+        self.non_boundary_idx = NBI
+        self.atoms_gb_dist = np.einsum('jk,jl->k', atom_sites, n_unit)
+
+        # TODO:
+        # 1. sort out crystals, motif_idx, species_idx, etc.
+        # 2. Call super().__init()
+
+
 class CrystalBox(object):
     """
     Class to represent a parallelopiped filled with a crystal structure.

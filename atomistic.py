@@ -17,6 +17,7 @@ import numpy as np
 import os
 from plotly import graph_objs
 from plotly.offline import init_notebook_mode, plot, iplot
+import simsio
 import geometry
 import vectors
 import utils
@@ -339,7 +340,38 @@ class AtomisticStructure(object):
         iplot(fig)
 
     def reorient_to_lammps(self):
-        pass
+        """
+        Reorient the supercell and its contents to a LAMMPS-compatible
+        orientation.
+
+        Returns
+        -------
+        ndarray of shape (3, 3)
+            Rotation matrix used to reorient the supercell and its contents
+
+        """
+
+        # Reorient supercell
+        sup_inv = np.linalg.inv(self.supercell)
+        sup_lmps = simsio.get_LAMMPS_compatible_box(self.supercell)
+        R = np.dot(sup_lmps, sup_inv)
+        self.supercell = sup_lmps
+
+        # Reorient atom sites
+        self.atom_sites = np.dot(R, self.atom_sites)
+
+        # Reorient lattice sites
+        self.lattice_sites = np.dot(R, self.lattice_sites)
+
+        # Reorient CrystalStructure lattice objects
+        for c_idx in range(len(self.crystals)):
+
+            c = self.crystals[c_idx]
+            c['crystal'] = np.dot(R, c['crystal'])
+            c['origin'] = np.dot(R, c['origin'])
+            c['cs_orientation'] = np.dot(R, c['cs_orientation'])
+
+        return R
 
     # def __str__(self):
     #     pass
@@ -656,6 +688,17 @@ class CSLBicrystal(AtomisticStructure):
                          lat_crystal_idx=lat_crystal_idx,
                          species_idx=species_idx,
                          motif_idx=motif_idx)
+
+    def reorient_to_lammps(self):
+
+        R = super().reorient_to_lammps()
+
+        # Reorient objects which are CSLBicrystal specific
+        self.n_unit = np.dot(R, self.n_unit[:, 0])[:, np.newaxis]
+        self.u_unit = np.dot(R, self.u_unit[:, 0])[:, np.newaxis]
+        self.zero_shift = np.dot(R, self.zero_shift[:, 0])[:, np.newaxis]
+
+        return R
 
 
 class CrystalBox(object):

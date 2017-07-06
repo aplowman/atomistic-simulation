@@ -47,6 +47,16 @@ class AtomisticStructure(object):
             'cs_idx': int
                 Index of `crystal_structures`, defining to which
                 CrystalStructure this crystal belongs.
+            `cs_orientation`: ndarray of shape (3, 3)
+                Rotation matrix which rotates the CrystalStructure lattice
+                unit cell from the initialised BravaisLattice object to some
+                other desired orientation.
+            'cs_origin': list of float or int
+                Origin of the CrystalStructure unit cell in multiples of the 
+                CrystalStructure unit cell vectors. For integer values, this
+                will not affect the atomic structure of the crystal. To 
+                produce a rigid translation of the atoms within the crystal,
+                non-integer values can be used.
 
     crystal_structures : list of CrystalStructure, optional
     crystal_idx : ndarray of shape (N,), optional
@@ -133,6 +143,7 @@ class AtomisticStructure(object):
         """
         TODO:
         -   Add 3D arrows/cones to supercell vectors using mesh3D.
+        -   Add lattice vectors/arrows to lattice unit cells
 
         """
 
@@ -220,14 +231,44 @@ class AtomisticStructure(object):
                 )
             )
 
-            # Add traces for lattice sites
+            # Get CrystalStructure associated with this crystal:
+            cs = self.crystal_structures[c['cs_idx']]
+
+            # Lattice unit cell, need to rotate by given orientation
+            unit_cell = np.dot(c['cs_orientation'], cs.bravais_lattice.vecs)
+
+            cs_origin = np.dot(unit_cell, c['cs_origin'])
+            uc_origin = c['origin'] + cs_origin[:, np.newaxis]
+
+            # print('unit_cell: \n{}\n'.format(unit_cell))
+            # print('cs_origin: \n{}\n'.format(cs_origin))
+            # print('uc_origin: \n{}\n'.format(uc_origin))
+
+            uc_xyz = geometry.get_box_xyz(unit_cell, origin=uc_origin)[0]
+
+            uc_trace_name = 'Unit cell (crystal #{})'.format(c_idx + 1)
+            uc_props = {
+                'mode': 'lines',
+                'line': {
+                    'color': 'gray'
+                },
+                'name': uc_trace_name,
+                'legendgroup': uc_trace_name,
+                'visible': 'legendonly'
+            }
+            data.append(
+                graph_objs.Scatter3d(
+                    x=uc_xyz[0],
+                    y=uc_xyz[1],
+                    z=uc_xyz[2],
+                    **uc_props
+                )
+            )
+
+            # Lattice sites
             ls_idx = np.where(self.lat_crystal_idx == c_idx)[0]
             ls = self.lattice_sites[:, ls_idx]
-
-            print('ls (Crystal: {}):\n{}\n'.format(c_idx, ls))
-
-            trace_name = 'Lattice sites (crystal #{})'.format(c_idx + 1)
-
+            ls_trace_name = 'Lattice sites (crystal #{})'.format(c_idx + 1)
             lat_site_props = {
                 'mode': 'markers',
                 'marker': {
@@ -235,8 +276,8 @@ class AtomisticStructure(object):
                     'size': 5,
                     'color': crystal_cols[c_idx]
                 },
-                'name': trace_name,
-                'legendgroup': trace_name,
+                'name': ls_trace_name,
+                'legendgroup': ls_trace_name,
                 'visible': 'legendonly',
             }
 
@@ -249,15 +290,13 @@ class AtomisticStructure(object):
                 )
             )
 
-            # Get CrystalStructure associated with this crystal:
-            cs = self.crystal_structures[self.crystals[c_idx]['cs_idx']]
-
             # Get motif associated with this crystal:
             sp_motif = cs.species_motif
 
             # Get indices of atoms in this crystal
             crys_atm_idx = np.where(self.crystal_idx == c_idx)[0]
 
+            # Atoms by species
             for sp_idx, sp_name in enumerate(sp_motif):
 
                 atom_idx = np.where(self.motif_idx[crys_atm_idx] == sp_idx)[0]
@@ -299,7 +338,7 @@ class AtomisticStructure(object):
         fig = graph_objs.Figure(data=data, layout=layout)
         iplot(fig)
 
-    def reorient_to_lammps():
+    def reorient_to_lammps(self):
         pass
 
     # def __str__(self):
@@ -316,6 +355,10 @@ class BulkCrystal(AtomisticStructure):
     ----------
     crystal_structure : CrystalStructure
 
+    TODO:
+    -   Add proper support for cs_orientation and cs_origin. Maybe allow one of
+        `box_lat` or `box_std` for the more general case.
+
     """
 
     def __init__(self, crystal_structure, box_lat):
@@ -330,7 +373,9 @@ class BulkCrystal(AtomisticStructure):
         crystals = [{
             'crystal': supercell,
             'origin': np.zeros((3, 1)),
-            'cs_idx': 0
+            'cs_idx': 0,
+            'cs_orientation': np.eye(3),
+            'cs_origin': [0, 0, 0]
         }]
 
         super().__init__(atom_sites,
@@ -586,12 +631,16 @@ class CSLBicrystal(AtomisticStructure):
             {
                 'crystal': grn_a_std,
                 'origin': zs_std,
-                'cs_idx': 0
+                'cs_idx': 0,
+                'cs_orientation': np.eye(3),
+                'cs_origin': [0, 0, 0]
             },
             {
                 'crystal': grn_b_rot_std,
                 'origin': zs_std,
-                'cs_idx': 0
+                'cs_idx': 0,
+                'cs_orientation': rot_mat,
+                'cs_origin': [0, -1, 0]
             }
         ]
 
@@ -681,6 +730,7 @@ class CrystalBox(object):
 
         TODO:
         -   Check that plotting atom indices is correct, think it's not.
+        -   Add proper support for cs_orientation and cs_origin.
 
         """
 

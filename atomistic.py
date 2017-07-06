@@ -130,6 +130,11 @@ class AtomisticStructure(object):
         self.motif_idx = motif_idx
 
     def visualise(self):
+        """
+        TODO:
+        -   Add 3D arrows/cones to supercell vectors using mesh3D.
+
+        """
 
         crystal_cols = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
                         '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
@@ -157,6 +162,42 @@ class AtomisticStructure(object):
                 **sup_props
             )
         )
+
+        # Supercell edge vectors
+        sup_edge_props = {
+            'mode': 'lines',
+            'line': {
+                'color': '#000000',
+                'width': 3
+            }
+        }
+        sup_vec_labs = ['a', 'b', 'c']
+        for i in range(3):
+            data.append(
+                graph_objs.Scatter3d(
+                    x=[0, self.supercell[0, i]],
+                    y=[0, self.supercell[1, i]],
+                    z=[0, self.supercell[2, i]],
+                    name='Supercell vectors',
+                    legendgroup='Supercell vectors',
+                    showlegend=True if i == 0 else False,
+                    **sup_edge_props
+                )
+            )
+            data.append(
+                graph_objs.Scatter3d(
+                    mode='text',
+                    x=[self.supercell[0, i]],
+                    y=[self.supercell[1, i]],
+                    z=[self.supercell[2, i]],
+                    text=[sup_vec_labs[i]],
+                    legendgroup='Supercell vectors',
+                    showlegend=False,
+                    textfont={
+                        'size': 20
+                    }
+                )
+            )
 
         # Crystal boxes and atoms
         for c_idx, c in enumerate(self.crystals):
@@ -196,6 +237,7 @@ class AtomisticStructure(object):
                 },
                 'name': trace_name,
                 'legendgroup': trace_name,
+                'visible': 'legendonly',
             }
 
             data.append(
@@ -247,7 +289,8 @@ class AtomisticStructure(object):
             # TODO: Add traces for atom numbers
 
         layout = graph_objs.Layout(
-            width=650,
+            width=1000,
+            height=800,
             scene={
                 'aspectmode': 'data'
             }
@@ -255,6 +298,9 @@ class AtomisticStructure(object):
 
         fig = graph_objs.Figure(data=data, layout=layout)
         iplot(fig)
+
+    def reorient_to_lammps():
+        pass
 
     # def __str__(self):
     #     pass

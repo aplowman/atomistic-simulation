@@ -647,12 +647,12 @@ class CSLBicrystal(AtomisticStructure):
         bicrystal_thickness = np.einsum('ij,ij', u, n_unit)
 
         # Set instance CSLBicrystal-specific attributes:
-        self.zero_shift = zs_std
         self.maintain_inv_sym = maintain_inv_sym
         self.n_unit = n_unit
         self.u_unit = u_unit
         self.bicrystal_thickness = bicrystal_thickness
         self.non_boundary_idx = NBI
+        self.boundary_idx = BI
         self.atoms_gb_dist = np.einsum('jk,jl->k', atom_sites, n_unit)
 
         crystals = [
@@ -692,7 +692,6 @@ class CSLBicrystal(AtomisticStructure):
         # Reorient objects which are CSLBicrystal specific
         self.n_unit = np.dot(R, self.n_unit[:, 0])[:, np.newaxis]
         self.u_unit = np.dot(R, self.u_unit[:, 0])[:, np.newaxis]
-        self.zero_shift = np.dot(R, self.zero_shift[:, 0])[:, np.newaxis]
 
         return R
 
@@ -704,21 +703,28 @@ class CSLBicrystal(AtomisticStructure):
         TODO:
         -   Perhaps use @property decorator for bicrystal thickness so it's
             always recalculated when I get it. (Learn more about properties.)
+        -   Understand/fix behaviour for negative vac_thick
 
         """
+
+        if vac_thick < 0:
+            raise NotImplementedError('`vac_thick` must be a positive number.')
 
         # For convenience:
         grn_a = self.crystals[0]
         grn_b = self.crystals[1]
         bt = self.bicrystal_thickness
-        grn_a_full = grn_a['crystal'] + grn_a['origin']
-        grn_b_full = grn_b['crystal'] + grn_b['origin']
+        grn_a_org = grn_a['origin']
+        grn_b_org = grn_b['origin']
+        grn_a_full = grn_a['crystal'] + grn_a_org
+        grn_b_full = grn_b['crystal'] + grn_b_org
         nbi = self.non_boundary_idx
 
         # Get perpendicular distances from the origin boundary plane:
         grn_a_gb_dist = np.einsum('ij,ik->j', grn_a_full, self.n_unit)
         grn_b_gb_dist = np.einsum('ij,ik->j', grn_b_full, self.n_unit)
-        zs_gb_dist = np.einsum('ij,ik->j', self.zero_shift, self.n_unit)
+        grn_a_org_gb_dist = np.einsum('ij,ik->j', grn_a_org, self.n_unit)
+        grn_b_org_gb_dist = np.einsum('ij,ik->j', grn_b_org, self.n_unit)
 
         # Set which Sigmoid function to use:
         if self.maintain_inv_sym:
@@ -731,16 +737,18 @@ class CSLBicrystal(AtomisticStructure):
         as_dx = sig_fnc(self.atoms_gb_dist, vac_thick, sharpness, bt)
         grn_a_dx = sig_fnc(grn_a_gb_dist, vac_thick, sharpness, bt)
         grn_b_dx = sig_fnc(grn_b_gb_dist, vac_thick, sharpness, bt)
-        zs_dx = sig_fnc(zs_gb_dist, vac_thick, sharpness, bt)
+        grn_a_org_dx = sig_fnc(grn_a_org_gb_dist, vac_thick, sharpness, bt)
+        grn_b_org_dx = sig_fnc(grn_b_org_gb_dist, vac_thick, sharpness, bt)
 
         # Snap atoms close to zero
         as_dx = vectors.snap_arr_to_val(as_dx, 0, 1e-14)
 
         # Find new positions with vacuum applied:
         as_vac = self.atom_sites + (as_dx * self.n_unit)
-        zs_vac = self.zero_shift + (zs_dx * self.n_unit)
-        grn_a_vac = grn_a_full + (grn_a_dx * self.n_unit) - zs_vac
-        grn_b_vac = grn_b_full + (grn_b_dx * self.n_unit) - zs_vac
+        grn_a_org_vac = grn_a_org + (grn_a_org_dx * self.n_unit)
+        grn_b_org_vac = grn_b_org + (grn_b_org_dx * self.n_unit)
+        grn_a_vac = grn_a_full + (grn_a_dx * self.n_unit) - grn_a_org_vac
+        grn_b_vac = grn_b_full + (grn_b_dx * self.n_unit) - grn_b_org_vac
 
         # Apply vacuum to the supercell
         if self.maintain_inv_sym:
@@ -765,17 +773,60 @@ class CSLBicrystal(AtomisticStructure):
         # Update attributes:
         self.atom_sites = as_vac
         self.supercell = sup_vac
-        self.zero_shift = zs_vac
         self.crystals[0].update({
             'crystal': grn_a_vac,
-            'origin': zs_vac
+            'origin': grn_a_org_vac
         })
         self.crystals[1].update({
             'crystal': grn_b_vac,
-            'origin': zs_vac
+            'origin': grn_b_org_vac
         })
         self.atoms_gb_dist += as_dx
         self.bicrystal_thickness = bicrystal_thickness
+
+    def apply_relative_shift(self, shift):
+        """ 
+        Apply in-boundary-plane shifts to grain_a to explore the microscopic
+        degrees of freedom.
+
+        `shift` is a 2 element array whose elements are the
+        relative shift in fractional coords of the boundary area.
+
+        """
+
+        shift = np.array(shift)
+        if any(shift <= -1) or any(shift >= 1):
+            raise ValueError('Elements of `shift` should be between -1 and 1.')
+
+        # Convenience:
+        grn_a = self.crystals[0]
+        nbi = self.non_boundary_idx
+        bi = self.boundary_idx
+
+        shift_gb = np.zeros((3, 1))
+        shift_gb[bi] = shift[:, np.newaxis]
+        shift_std = np.dot(grn_a['crystal'], shift_gb)
+
+        # Translate grain A atoms:
+        as_shift = np.copy(self.atom_sites)
+        as_shift[:, np.where(self.crystal_idx == 0)[0]] += shift_std
+
+        # Translate grain A origin:
+        grn_a_org_shift = grn_a['origin'] + shift_std
+
+        # Update attributes:
+        self.atom_sites = as_shift
+        self.crystals[0].update({
+            'origin': grn_a_org_shift
+        })
+
+        if self.maintain_inv_sym:
+            # Modify out-of-boundary supercell vector
+            sup_shift = np.copy(self.supercell)
+            sup_shift[:, nbi:nbi + 1] += (2 * shift_std)
+
+            # Update attribute:
+            self.supercell = sup_shift
 
 
 class CrystalBox(object):

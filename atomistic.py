@@ -374,6 +374,55 @@ class AtomisticStructure(object):
 
         return R
 
+    def wrap_atoms_to_supercell(self, dirs=None, wrap_lattice_sites=False):
+        """
+        Wrap atoms to within the supercell.
+
+        Parameters
+        ----------
+        dirs : list of int, optional
+            Supercell direction indices to apply wrapping. Default is None, in 
+            which case atoms are wrapped in all directions.
+        wrap_lattice_sites : bool, optional
+            If True, lattice sites are also wrapped. Default is False.
+
+        TODO:
+        -   Implement `wrap_lattice_sites`.
+
+        """
+
+        # Validation
+        if dirs is not None:
+            if len(set(dirs)) != len(dirs):
+                raise ValueError('Indices in `dirs` must not be repeated.')
+
+            if len(dirs) not in [1, 2, 3]:
+                raise ValueError('`dirs` must be a list of length 1, 2 or 3.')
+
+            for d in dirs:
+                if d not in [0, 1, 2]:
+                    raise ValueError('`dirs` must be a list whose elements are'
+                                     '0, 1 or 2.')
+
+        # Get atom sites in supercell basis:
+        sup_inv = np.linalg.inv(self.supercell)
+        as_sup = np.dot(sup_inv, self.atom_sites)
+
+        # Wrap atoms:
+        as_sup_wrp = np.copy(as_sup)
+        as_sup_wrp[dirs] -= np.floor(as_sup_wrp[dirs])
+
+        # Snap to 0 and 1:
+        as_sup_wrp = vectors.snap_arr_to_val(as_sup_wrp, 0, 1e-12)
+        as_sup_wrp = vectors.snap_arr_to_val(as_sup_wrp, 1, 1e-12)
+        as_sup_wrp[as_sup_wrp == 1] = 0
+
+        # Convert back to Cartesian basis
+        as_std_wrp = np.dot(self.supercell, as_sup_wrp)
+
+        # Update attributes:
+        self.atom_sites = as_std_wrp
+
     # def __str__(self):
     #     pass
 
@@ -704,6 +753,7 @@ class CSLBicrystal(AtomisticStructure):
         -   Perhaps use @property decorator for bicrystal thickness so it's
             always recalculated when I get it. (Learn more about properties.)
         -   Understand/fix behaviour for negative vac_thick
+        -   Also apply to lattice sites
 
         """
 
@@ -792,6 +842,9 @@ class CSLBicrystal(AtomisticStructure):
         `shift` is a 2 element array whose elements are the
         relative shift in fractional coords of the boundary area.
 
+        TODO:
+        -   Also apply to lattice sites
+
         """
 
         shift = np.array(shift)
@@ -827,6 +880,14 @@ class CSLBicrystal(AtomisticStructure):
 
             # Update attribute:
             self.supercell = sup_shift
+
+    def wrap_atoms_to_supercell(self):
+        """
+        Wrap atoms to within the boundary plane as defined by the supercell.
+
+        """
+
+        super().wrap_atoms_to_supercell(dirs=self.boundary_idx)
 
 
 class CrystalBox(object):

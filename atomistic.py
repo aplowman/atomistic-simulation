@@ -423,6 +423,25 @@ class AtomisticStructure(object):
         # Update attributes:
         self.atom_sites = as_std_wrp
 
+    @property
+    def num_atoms_per_crystal(self):
+        """Computes number of atoms in each crystal, returns a list."""
+        na = []
+        for c_idx in range(len(self.crystals)):
+            na.append(np.where(self.crystal_idx == c_idx)[0].shape[0])
+
+        return na
+
+    @property
+    def num_atoms(self):
+        """Computes total number of atoms."""
+        return self.atom_sites.shape[1]
+
+    @property
+    def num_crystals(self):
+        """Returns number of crystals."""
+        return len(self.crystals)
+
     # def __str__(self):
     #     pass
 
@@ -532,6 +551,7 @@ class CSLBicrystal(AtomisticStructure):
     TODO:
     -   Clarify the docstring about `maintain_inv_sym`; inversion symmetry
         will be maintained about what point?
+    -   Sort out lattice sites in apply_boundary_vac() & apply_relative_shift()
 
     """
 
@@ -622,10 +642,6 @@ class CSLBicrystal(AtomisticStructure):
             rot_angle = vectors.col_wise_angles(
                 csl_vecs_std[0], csl_vecs_std[1])[0]
 
-            # print('rot_ax_std: \n{}\n'.format(rot_ax_std))
-            # print('rot_angle: {}'.format(rot_angle))
-            # print('rot_angle_deg: {}'.format(np.rad2deg(rot_angle)))
-
             rot_mat = vectors.rotation_matrix(rot_ax_std[:, 0], rot_angle)[0]
 
         rot_angle_deg = np.rad2deg(rot_angle)
@@ -692,17 +708,12 @@ class CSLBicrystal(AtomisticStructure):
         u = sup_std[:, NBI:NBI + 1]
         u_unit = u / np.linalg.norm(u)
 
-        # Get thickness of bicrystal normal to boundary
-        bicrystal_thickness = np.einsum('ij,ij', u, n_unit)
-
         # Set instance CSLBicrystal-specific attributes:
         self.maintain_inv_sym = maintain_inv_sym
         self.n_unit = n_unit
         self.u_unit = u_unit
-        self.bicrystal_thickness = bicrystal_thickness
         self.non_boundary_idx = NBI
         self.boundary_idx = BI
-        self.atoms_gb_dist = np.einsum('jk,jl->k', atom_sites, n_unit)
 
         crystals = [
             {
@@ -733,6 +744,23 @@ class CSLBicrystal(AtomisticStructure):
                          lat_crystal_idx=lat_crystal_idx,
                          species_idx=species_idx,
                          motif_idx=motif_idx)
+
+    @property
+    def bicrystal_thickness(self):
+        """Computes bicrystal thickness in grain boundary normal direction."""
+
+        nbi = self.non_boundary_idx
+        sup_nb = self.supercell[:, nbi:nbi + 1]
+        return np.einsum('ij,ij', sup_nb, self.n_unit)
+
+    @property
+    def atoms_gb_dist(self):
+        """
+        Computes the distance from each atom to the origin grain boundary
+        plane.
+
+        """
+        return np.einsum('jk,jl->k', self.atom_sites, self.n_unit)
 
     def reorient_to_lammps(self):
 
@@ -812,10 +840,6 @@ class CSLBicrystal(AtomisticStructure):
             sup_vac = np.copy(self.supercell)
             sup_vac[:, nbi:nbi + 1] += vac_add
 
-        # Calculate new bicrystal thickness:
-        bicrystal_thickness = np.einsum(
-            'ij,ij', sup_vac[:, nbi:nbi + 1], self.n_unit)
-
         # Add new attributes:
         self.atoms_gb_dist_old = self.atoms_gb_dist
         self.atoms_gb_dist_δ = as_dx
@@ -831,11 +855,9 @@ class CSLBicrystal(AtomisticStructure):
             'crystal': grn_b_vac,
             'origin': grn_b_org_vac
         })
-        self.atoms_gb_dist += as_dx
-        self.bicrystal_thickness = bicrystal_thickness
 
     def apply_relative_shift(self, shift):
-        """ 
+        """
         Apply in-boundary-plane shifts to grain_a to explore the microscopic
         degrees of freedom.
 

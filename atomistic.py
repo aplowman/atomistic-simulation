@@ -54,9 +54,9 @@ class AtomisticStructure(object):
                 unit cell from the initialised BravaisLattice object to some
                 other desired orientation.
             'cs_origin': list of float or int
-                Origin of the CrystalStructure unit cell in multiples of the 
+                Origin of the CrystalStructure unit cell in multiples of the
                 CrystalStructure unit cell vectors. For integer values, this
-                will not affect the atomic structure of the crystal. To 
+                will not affect the atomic structure of the crystal. To
                 produce a rigid translation of the atoms within the crystal,
                 non-integer values can be used.
 
@@ -241,11 +241,6 @@ class AtomisticStructure(object):
 
             cs_origin = np.dot(unit_cell, c['cs_origin'])
             uc_origin = c['origin'] + cs_origin[:, np.newaxis]
-
-            # print('unit_cell: \n{}\n'.format(unit_cell))
-            # print('cs_origin: \n{}\n'.format(cs_origin))
-            # print('uc_origin: \n{}\n'.format(uc_origin))
-
             uc_xyz = geometry.get_box_xyz(unit_cell, origin=uc_origin)[0]
 
             uc_trace_name = 'Unit cell (crystal #{})'.format(c_idx + 1)
@@ -381,7 +376,7 @@ class AtomisticStructure(object):
         Parameters
         ----------
         dirs : list of int, optional
-            Supercell direction indices to apply wrapping. Default is None, in 
+            Supercell direction indices to apply wrapping. Default is None, in
             which case atoms are wrapped in all directions.
         wrap_lattice_sites : bool, optional
             If True, lattice sites are also wrapped. Default is False.
@@ -504,7 +499,7 @@ class CSLBicrystal(AtomisticStructure):
     ----------
     GB_TYPES : dict of str : ndarray of shape (3, 3)
         Some
-    atoms_gb_distance : ndarray of shape (N,)
+    atoms_gb_dist : ndarray of shape (N,)
         Perpendicular distances of each atom from the origin boundary plane
 
     Parameters
@@ -778,8 +773,6 @@ class CSLBicrystal(AtomisticStructure):
         to a sigmoid function.
 
         TODO:
-        -   Perhaps use @property decorator for bicrystal thickness so it's
-            always recalculated when I get it. (Learn more about properties.)
         -   Understand/fix behaviour for negative vac_thick
         -   Also apply to lattice sites
 
@@ -910,6 +903,72 @@ class CSLBicrystal(AtomisticStructure):
         """
 
         super().wrap_atoms_to_supercell(dirs=self.boundary_idx)
+
+
+class CSLBulkCrystal(CSLBicrystal):
+    """
+    Class to represent a bulk crystal constructed in a similar way to a
+    CSLBicrystal object.
+
+    This is a convenience class to generate complimentary bulk supercells for a
+    given CSLBicrystal supercell.
+
+    """
+
+    def __init__(self, crystal_structure, csl_vecs, box_csl=None,
+                 gb_type=None, gb_size=None, edge_conditions=None):
+        """Constructor method for CSLBulkCrystal object."""
+
+        super().__init__(crystal_structure, [csl_vecs, csl_vecs],
+                         box_csl=box_csl, gb_type=gb_type, gb_size=gb_size,
+                         edge_conditions=edge_conditions)
+
+    def apply_boundary_vac(self, *args, **kwargs):
+
+        raise NotImplementedError(
+            'Cannot apply boundary vacuum to a CSLBulkCrystal.')
+
+    def apply_relative_shift(self, *args, **kwargs):
+
+        raise NotImplementedError(
+            'Cannot apply relative shift to a CSLBulkCrystal.')
+
+    def wrap_atoms_to_supercell(self, *args, **kwargs):
+
+        raise NotImplementedError(
+            'Cannot wrap atoms within supercell in a CSLBulkCrystal.')
+
+
+class CSLSurfaceCrystal(CSLBicrystal):
+    """
+    Class to represent a surface crystal constructed in a similar way to a
+    CSLBicrystal object.
+
+    This is a convenience class to generate complimentary surface supercells
+    for a given CSLBicrystal supercell.
+
+    """
+
+    def __init__(self, crystal_structure, csl_vecs, box_csl=None,
+                 gb_type=None, gb_size=None, edge_conditions=None,
+                 surface_idx=0):
+        """Constructor method for CSLSurfaceCrystal object."""
+
+        super().__init__(crystal_structure, [csl_vecs, csl_vecs],
+                         box_csl=box_csl, gb_type=gb_type, gb_size=gb_size,
+                         edge_conditions=edge_conditions)
+
+        # Remove atoms from removed crystal
+        atoms_keep = np.where(self.crystal_idx == surface_idx)[0]
+        self.atom_sites = self.atom_sites[:, atoms_keep]
+        self.species_idx = self.species_idx[atoms_keep]
+        self.motif_idx = self.motif_idx[atoms_keep]
+        self.crystal_idx = self.crystal_idx[atoms_keep]
+
+        # Remove lattice sites from removed crystal
+        lat_keep = np.where(self.lat_crystal_idx == surface_idx)[0]
+        self.lattice_sites = self.lattice_sites[:, lat_keep]
+        self.lat_crystal_idx = self.lat_crystal_idx[lat_keep]
 
 
 class CrystalBox(object):

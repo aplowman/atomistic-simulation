@@ -529,6 +529,18 @@ class CSLBicrystal(AtomisticStructure):
     maintain_inv_sym : bool, optional
         If True, methods acting on the `CSLBicrystal` object will maintain
         inversion symmetry of the bicrystal.
+    reorient : bool, optional
+        If True, after construction of the boundary, reorient_to_lammps() is
+        invoked. Default is True.
+    boundary_vac_args : dict, optional 
+        If not None, after construction of the boundary, apply_boundary_vac()
+        is invoked with this dict as keyword arguments. Default is None.
+    relative_shift_args : dict, optional
+        If not None, after construction of the boundary, apply_relative_shift()
+        is invoked with this dict as keyword arguments. Default is None.
+    wrap : bool, optional
+        If True, after construction of the boundary, wrap_atoms_to_supercell()
+        is invoked. Default is True.
 
     Notes
     -----
@@ -547,6 +559,8 @@ class CSLBicrystal(AtomisticStructure):
     -   Clarify the docstring about `maintain_inv_sym`; inversion symmetry
         will be maintained about what point?
     -   Sort out lattice sites in apply_boundary_vac() & apply_relative_shift()
+    -   Rename wrap_atoms_to_supercell to wrap_to_supercell and apply wrapping
+        to lattice sites, and crystal boxes as well.
 
     """
 
@@ -575,7 +589,9 @@ class CSLBicrystal(AtomisticStructure):
 
     def __init__(self, crystal_structure, csl_vecs, box_csl=None,
                  gb_type=None, gb_size=None, edge_conditions=None,
-                 maintain_inv_sym=False):
+                 maintain_inv_sym=False, reorient=True,
+                 boundary_vac_args=None, relative_shift_args=None,
+                 wrap=True):
         """Constructor method for CSLBicrystal object."""
 
         if np.all(csl_vecs[0][:, 2] != csl_vecs[1][:, 2]):
@@ -740,6 +756,19 @@ class CSLBicrystal(AtomisticStructure):
                          species_idx=species_idx,
                          motif_idx=motif_idx)
 
+        # Invoke additional methods:
+        if reorient:
+            self.reorient_to_lammps()
+
+        if boundary_vac_args is not None:
+            self.apply_boundary_vac(**boundary_vac_args)
+
+        if relative_shift_args is not None:
+            self.apply_relative_shift(**relative_shift_args)
+
+        if wrap:
+            self.wrap_atoms_to_supercell()
+
     @property
     def bicrystal_thickness(self):
         """Computes bicrystal thickness in grain boundary normal direction."""
@@ -767,9 +796,9 @@ class CSLBicrystal(AtomisticStructure):
 
         return R
 
-    def apply_boundary_vac(self, vac_thick, sharpness=1):
+    def apply_boundary_vac(self, vac_thickness, sharpness=1):
         """
-        Apply boundary vaccuum to the supercell, atoms and grains according
+        Apply boundary vacuum to the supercell, atoms and grains according
         to a sigmoid function.
 
         TODO:
@@ -778,8 +807,9 @@ class CSLBicrystal(AtomisticStructure):
 
         """
 
-        if vac_thick < 0:
-            raise NotImplementedError('`vac_thick` must be a positive number.')
+        vt = vac_thickness
+        if vt < 0:
+            raise NotImplementedError('`vt` must be a positive number.')
 
         # For convenience:
         grn_a = self.crystals[0]
@@ -805,11 +835,11 @@ class CSLBicrystal(AtomisticStructure):
 
         # Get displacements in the boundary normal directions according
         # to a Sigmoid function:
-        as_dx = sig_fnc(self.atoms_gb_dist, vac_thick, sharpness, bt)
-        grn_a_dx = sig_fnc(grn_a_gb_dist, vac_thick, sharpness, bt)
-        grn_b_dx = sig_fnc(grn_b_gb_dist, vac_thick, sharpness, bt)
-        grn_a_org_dx = sig_fnc(grn_a_org_gb_dist, vac_thick, sharpness, bt)
-        grn_b_org_dx = sig_fnc(grn_b_org_gb_dist, vac_thick, sharpness, bt)
+        as_dx = sig_fnc(self.atoms_gb_dist, vt, sharpness, bt)
+        grn_a_dx = sig_fnc(grn_a_gb_dist, vt, sharpness, bt)
+        grn_b_dx = sig_fnc(grn_b_gb_dist, vt, sharpness, bt)
+        grn_a_org_dx = sig_fnc(grn_a_org_gb_dist, vt, sharpness, bt)
+        grn_b_org_dx = sig_fnc(grn_b_org_gb_dist, vt, sharpness, bt)
 
         # Snap atoms close to zero
         as_dx = vectors.snap_arr_to_val(as_dx, 0, 1e-14)
@@ -824,11 +854,11 @@ class CSLBicrystal(AtomisticStructure):
         # Apply vacuum to the supercell
         if self.maintain_inv_sym:
             sup_gb_dist = np.einsum('ij,ik->j', self.supercell, self.n_unit)
-            sup_dx = sig_fnc(sup_gb_dist, vac_thick, sharpness, bt)
+            sup_dx = sig_fnc(sup_gb_dist, vt, sharpness, bt)
             sup_vac = self.supercell + (sup_dx * self.n_unit)
 
         else:
-            vac_add = (self.u_unit * vac_thick) / \
+            vac_add = (self.u_unit * vt) / \
                 np.einsum('ij,ij->', self.n_unit, self.u_unit)
             sup_vac = np.copy(self.supercell)
             sup_vac[:, nbi:nbi + 1] += vac_add
@@ -916,12 +946,14 @@ class CSLBulkCrystal(CSLBicrystal):
     """
 
     def __init__(self, crystal_structure, csl_vecs, box_csl=None,
-                 gb_type=None, gb_size=None, edge_conditions=None):
+                 gb_type=None, gb_size=None, edge_conditions=None,
+                 reorient=True):
         """Constructor method for CSLBulkCrystal object."""
 
         super().__init__(crystal_structure, [csl_vecs, csl_vecs],
                          box_csl=box_csl, gb_type=gb_type, gb_size=gb_size,
-                         edge_conditions=edge_conditions)
+                         edge_conditions=edge_conditions, reorient=reorient,
+                         wrap=False)
 
     def apply_boundary_vac(self, *args, **kwargs):
 
@@ -951,12 +983,18 @@ class CSLSurfaceCrystal(CSLBicrystal):
 
     def __init__(self, crystal_structure, csl_vecs, box_csl=None,
                  gb_type=None, gb_size=None, edge_conditions=None,
-                 surface_idx=0):
+                 maintain_inv_sym=False, reorient=True, boundary_vac_args=None,
+                 relative_shift_args=None, wrap=True, surface_idx=0):
         """Constructor method for CSLSurfaceCrystal object."""
 
         super().__init__(crystal_structure, [csl_vecs, csl_vecs],
                          box_csl=box_csl, gb_type=gb_type, gb_size=gb_size,
-                         edge_conditions=edge_conditions)
+                         edge_conditions=edge_conditions,
+                         maintain_inv_sym=maintain_inv_sym,
+                         reorient=reorient,
+                         boundary_vac_args=boundary_vac_args,
+                         relative_shift_args=relative_shift_args,
+                         wrap=wrap)
 
         # Remove atoms from removed crystal
         atoms_keep = np.where(self.crystal_idx == surface_idx)[0]

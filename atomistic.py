@@ -458,9 +458,9 @@ class AtomisticStructure(object):
         cross_3 = np.cross(v[:, 0], v[:, 1])
 
         B = np.zeros((3, 3))
-        B[:, 0] = 2 * np.pi * cross_1 / (np.dot(vecs[:, 0], cross_1))
-        B[:, 1] = 2 * np.pi * cross_2 / (np.dot(vecs[:, 1], cross_2))
-        B[:, 2] = 2 * np.pi * cross_3 / (np.dot(vecs[:, 2], cross_3))
+        B[:, 0] = 2 * np.pi * cross_1 / (np.dot(v[:, 0], cross_1))
+        B[:, 1] = 2 * np.pi * cross_2 / (np.dot(v[:, 1], cross_2))
+        B[:, 2] = 2 * np.pi * cross_3 / (np.dot(v[:, 2], cross_3))
 
         return B
 

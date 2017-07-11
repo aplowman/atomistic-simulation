@@ -141,13 +141,17 @@ class AtomisticStructure(object):
         self.species_idx = species_idx
         self.motif_idx = motif_idx
 
-    def visualise(self):
+    def visualise(self, show_iplot=True, save=False, save_args=None):
         """
         TODO:
         -   Add 3D arrows/cones to supercell vectors using mesh3D.
         -   Add lattice vectors/arrows to lattice unit cells
 
         """
+
+        # Validation:
+        if not show_iplot and not save:
+            raise ValueError('Visualisation will not be displayed or saved!')
 
         crystal_cols = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
                         '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
@@ -333,7 +337,14 @@ class AtomisticStructure(object):
         )
 
         fig = graph_objs.Figure(data=data, layout=layout)
-        iplot(fig)
+
+        if show_iplot:
+            iplot(fig)
+
+        if save:
+            if save_args is None:
+                save_args = {}
+            plot(fig, **save_args)
 
     def reorient_to_lammps(self):
         """

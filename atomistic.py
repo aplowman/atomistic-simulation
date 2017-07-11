@@ -464,6 +464,55 @@ class AtomisticStructure(object):
 
         return B
 
+    def get_kpoint_grid(self, separation):
+        """
+        Get the MP kpoint grid size for a given kpoint separation.
+
+        Parameters
+        ----------
+        separation : float or int or ndarray of shape (3, )
+            Maximum separation between kpoints, in units of inverse Angstroms.
+            If an array, this is the separations in each reciprocal supercell
+            direction.
+
+        Returns
+        -------
+        ndarray of int of shape (3, )
+            MP kpoint grid dimensions along each reciprocal supercell
+            direction.
+
+        """
+
+        recip = self.reciprocal_supercell
+        grid = np.ceil(np.round(
+            np.linalg.norm(recip, axis=0) / (separation * 2 * np.pi),
+            decimals=8)
+        ).astype(int)
+
+        return grid
+
+    def get_kpoint_spacing(self, grid):
+        """
+        Get the kpoint spacing given an MP kpoint grid size.
+
+        Parameters
+        ----------
+        grid : list of length 3
+            Grid size in each of the reciprocal supercell directions.
+
+        Returns
+        -------
+        ndarray of shape (3, )
+            Separation between kpoints in each of the reciprocal supercell
+            directions.
+
+        """
+
+        recip = self.reciprocal_supercell
+        seps = np.linalg.norm(recip, axis=0) / (np.array(grid) * 2 * np.pi)
+
+        return seps
+
     # def __str__(self):
     #     pass
 

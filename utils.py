@@ -1,8 +1,12 @@
 import random
 import time
+import numpy as np
+import copy
+import collections
+
 """
 TODO:
-    Add/tidy up docs for these utility functions. May not need them all for the
+-   Add/tidy up docs for these utility functions. May not need them all for the
     cases where the function body is a single line.
 """
 
@@ -240,3 +244,86 @@ def get_date_time_stamp(split=False, num_only=False):
         return date_time, num
     else:
         return date_time + '_' + num if num_only == False else num
+
+
+def nest_lists(my_list):
+    """
+        `a` is a list of `N` sublists.
+
+        E.g. 
+        my_list = [
+            [1,2],
+            [3,4,5],
+            [6,7]
+        ]
+
+        returns a list of lists of length `N` such that all combinations of elements from sublists in
+        `a` are found
+        E.g
+        out = [
+            [1, 3, 6],
+            [1, 3, 7],
+            [1, 4, 6],
+            [1, 4, 7],
+            [1, 5, 6],
+            [1, 5, 7],
+            [2, 3, 6],
+            [2, 3, 7],
+            [2, 4, 6],
+            [2, 4, 7],
+            [2, 5, 6],
+            [2, 5, 7]
+        ]
+
+    """
+
+    N = len(my_list)
+    sub_len = [len(i) for i in my_list]
+
+    products = np.array([1] * (N + 1))
+    for i in range(len(my_list) - 1, -1, -1):
+        products[:i + 1] *= len(my_list[i])
+
+    out = [[None for x in range(N)] for y in range(products[0])]
+
+    for row_idx, row in enumerate(out):
+
+        for col_idx, col in enumerate(row):
+
+            num_repeats = products[col_idx + 1]
+            sub_list_idx = int(row_idx / num_repeats) % len(my_list[col_idx])
+            out[row_idx][col_idx] = my_list[col_idx][sub_list_idx]
+
+    return out
+
+
+def combine_list_of_dicts(a):
+
+    print('combine: a:\n{}\n'.format(a))
+
+    a = copy.deepcopy(a)
+
+    for i in range(1, len(a)):
+        update_dict(a[0], a[i])
+
+    return a[0]
+
+
+def update_dict(d, u):
+    """ Update an arbitrarily-nested dict."""
+
+    for k, v in u.items():
+        if isinstance(d, collections.Mapping):
+            if isinstance(v, collections.Mapping):
+                r = update_dict(d.get(k, {}), v)
+                d[k] = r
+            else:
+                d[k] = u[k]
+        else:
+            d = {k: u[k]}
+
+    return d
+
+
+def transpose_list(a):
+    return [list(x) for x in zip(*a)]

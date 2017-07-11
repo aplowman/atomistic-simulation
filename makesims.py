@@ -11,6 +11,189 @@ REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
 SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
 
 
+def prepare_series_update(series_spec, atomistic_structure):
+    """
+    Return a list of dicts representing each element in a simulation series.
+
+    Parameters
+    ----------
+    series_spec : dict
+        Specification of the series.
+    atomistic_structure : AtomisticStructure
+
+    """
+
+    # Convenience
+    ss = series_spec
+    sn = ss['name']
+    start = ss.get('start')
+    step = ss.get('step')
+    stop = ss.get('stop')
+    vals = ss.get('vals')
+
+    # Validation
+
+    allowed_sn = [
+        'kpoint',
+        'cut_off_energy',
+        'smearing_width'
+    ]
+
+    if sn not in allowed_sn:
+        raise NotImplementedError('Series name: {} not understood.'.format(sn))
+
+    params_none = [i is None for i in [start, step, stop]]
+    if any(params_none) and not all(params_none):
+        raise ValueError('Must specify all of `start`, `step` and `stop` '
+                         'if one is specified, for series name: {}'.format(sn))
+
+    if vals is not None and start is not None:
+        raise ValueError('Either specify (`start`, `step` and `stop`) or '
+                         '`vals`, but not both, for series name: {}'.format(
+                             sn))
+
+    # If start, step and stop are provided, generate a set of vals from these:
+    if vals is None:
+        diff = start - stop if start > stop else stop - start
+        num = (diff + step) / step
+        vals = np.linspace(start, stop, num=num)
+    else:
+        # TODO: parse data types in option file
+        vals = [float(v) for v in vals]
+
+    # Additional processing of series values
+    if sn == 'kpoint':
+
+        # Get the MP grid from the supercell and modify vals to remove those
+        # which generate duplicate MP grids.
+        unique_grids = {}
+        for v in vals:
+
+            v = float(v)
+            kpt_gd = tuple(atomistic_structure.get_kpoint_grid(v))
+
+            if unique_grids.get(kpt_gd) is None:
+                unique_grids.update({kpt_gd: [v]})
+            else:
+                unique_grids[kpt_gd].append(v)
+
+        unique_vals = []
+        for k, v in unique_grids.items():
+            unique_vals.append(sorted(v)[0])
+
+        vals = sorted(unique_vals)
+
+    out = []
+
+    # Maybe refactor this logic later:
+
+    if sn == 'kpoint':
+
+        for v in vals:
+
+            v = float(v)  # TODO: parse data types in option file
+            out.append(
+                {'castep':
+                    {'cell':
+                        {'kpoint_mp_spacing': '{:.3f}'.format(v)}}})
+
+    elif sn == 'cut_off_energy':
+
+        for v in vals:
+
+            v = float(v)  # TODO: parse data types in option file
+            out.append(
+                {'castep':
+                    {'param':
+                        {'cut_off_energy': '{:.0f}'.format(v)}}})
+
+    elif sn == 'smearing_width':
+
+        for v in vals:
+
+            v = float(v)  # TODO: parse data types in option file
+            out.append(
+                {'castep':
+                    {'param':
+                        {'smearing_width': '{:.2f}'.format(v)}}})
+
+    return out
+
+
+def prepare_all_series_updates(all_series_spec, atomistic_structure):
+    """
+    Return a list of dicts representing each element in a simulation series.
+
+    Parameters
+    ----------
+    all_series_spec : dict
+    atomistic_structure : AtomisticStructure
+        This is the base AtomisticStructure object used to form the simulation
+        series. This is only needed in some cases, where some additional
+        processing occurs on the series values which depends on the base 
+        structure. For example, in generating a kpoint series from a specified 
+        list of kpoint spacings, it is useful to remove kpoint spacing values
+        which produce duplicate kpoint MP grids. 
+
+    """
+
+    srs_update = []
+    for i in all_series_spec:
+
+        if isinstance(i, dict):
+            srs_update.append(prepare_series_update(i, atomistic_structure))
+
+        elif isinstance(i, list):
+            sub_up = []
+            for j in i:
+                sub_up.append(prepare_series_update(j, atomistic_structure))
+
+            srs_update.append(sub_up)
+
+    # print('srs_update: \n{}\n'.format(
+    #     dict_parser.formatting.format_list(srs_update)))
+
+    """
+        Given update data for nested series passed in this form: [data_1, [data_2, data_3]], where
+        data_i are lists of dicts, each element in the list represents a series to be
+        nested and each element in a sublist represents a set of parallel series which
+        must have the same length, combine the series to form and return a list of
+        the necessary combinations of the update data, such that each element in the return list
+        corresponds to a single simulation.
+    
+    """
+
+    # Now combine update data for each series into a flat list of dicts, where
+    # each dict represents the update data for a single simulation series
+    # element.
+    su_flat = []
+    for i in srs_update:
+
+        if isinstance(i[0], dict):
+            su_flat.append(i)
+
+        elif isinstance(i[0], list):
+
+            if len(set([len(j) for j in i])) > 1:
+                raise ValueError('Parallel series must have the same length.')
+
+            si_sub = []
+            for j in utils.transpose_list(i):
+                si_sub.extend([utils.combine_list_of_dicts(j)])
+
+            su_flat.append(si_sub)
+
+    # print('su_flat: \n{}\n'.format(su_flat))
+
+    all_updates_lst = utils.nest_lists(su_flat)
+
+    # print('all_updates_lst: \n{}\n'.format(all_updates_lst))
+
+    all_updates = [utils.combine_list_of_dicts(i) for i in all_updates_lst]
+
+    return all_updates
+
+
 def main():
     """
     Read the options file and generate a simulation (series).
@@ -163,6 +346,14 @@ def main():
     opt_p_str_path = os.path.join(stage_path, 'opt_processed.txt')
     with open(opt_p_str_path, mode='w', encoding='utf-8') as f:
         f.write(dict_parser.formatting.format_dict(opt))
+
+    # Get series definitions:
+    srs_df = opt['series']
+    # print(dict_parser.formatting.format_list(srs_df))
+
+    # Prepare series update data:
+    all_upd = prepare_all_series_updates(srs_df, base_as)
+    print('all_upd: \n{}\n'.format(dict_parser.formatting.format_list(all_upd)))
 
 
 if __name__ == '__main__':

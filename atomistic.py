@@ -448,6 +448,22 @@ class AtomisticStructure(object):
         """Returns number of crystals."""
         return len(self.crystals)
 
+    @property
+    def reciprocal_supercell(self):
+        """Returns the reciprocal supercell as array of column vectors."""
+
+        v = self.supercell
+        cross_1 = np.cross(v[:, 1], v[:, 2])
+        cross_2 = np.cross(v[:, 0], v[:, 2])
+        cross_3 = np.cross(v[:, 0], v[:, 1])
+
+        B = np.zeros((3, 3))
+        B[:, 0] = 2 * np.pi * cross_1 / (np.dot(vecs[:, 0], cross_1))
+        B[:, 1] = 2 * np.pi * cross_2 / (np.dot(vecs[:, 1], cross_2))
+        B[:, 2] = 2 * np.pi * cross_3 / (np.dot(vecs[:, 2], cross_3))
+
+        return B
+
     # def __str__(self):
     #     pass
 

@@ -4,6 +4,7 @@ import shutil
 import dict_parser
 import utils
 import atomistic
+import copy
 
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -92,30 +93,36 @@ def prepare_series_update(series_spec, atomistic_structure):
         for v in vals:
 
             v = float(v)  # TODO: parse data types in option file
-            out.append(
-                {'castep':
-                    {'cell':
-                        {'kpoint_mp_spacing': '{:.3f}'.format(v)}}})
+            out.append({
+                'castep': {
+                    'cell': {'kpoint_mp_spacing': '{:.3f}'.format(v)}},
+                'series_id': {
+                    'kpoint': {'val': v, 'path': '{:.3f}'.format(v)}}
+            })
 
     elif sn == 'cut_off_energy':
 
         for v in vals:
 
             v = float(v)  # TODO: parse data types in option file
-            out.append(
-                {'castep':
-                    {'param':
-                        {'cut_off_energy': '{:.0f}'.format(v)}}})
+            out.append({
+                'castep': {
+                    'param': {'cut_off_energy': '{:.0f}'.format(v)}},
+                'series_id': {
+                    'cut_off_energy': {'val': v, 'path': '{:.0f}'.format(v)}}
+            })
 
     elif sn == 'smearing_width':
 
         for v in vals:
 
             v = float(v)  # TODO: parse data types in option file
-            out.append(
-                {'castep':
-                    {'param':
-                        {'smearing_width': '{:.2f}'.format(v)}}})
+            out.append({
+                'castep': {
+                    'param': {'smearing_width': '{:.2f}'.format(v)}},
+                'series_id': {
+                    'smearing_width': {'val': v, 'path': '{:.2f}'.format(v)}}
+            })
 
     return out
 
@@ -354,6 +361,47 @@ def main():
     # Prepare series update data:
     all_upd = prepare_all_series_updates(srs_df, base_as)
     print('all_upd: \n{}\n'.format(dict_parser.formatting.format_list(all_upd)))
+
+    # Generate simulation series:
+    for upd_idx, upd in enumerate(all_upd):
+
+        print('upd: \n{}\n'.format(upd))
+
+        # Update options:
+        opt_upd = copy.deepcopy(opt)
+        utils.update_dict(opt_upd, upd)
+
+        # Generate AtomisticStructure:
+        log.append('Generating series AtomisticStructure object.')
+        srs_struct_opt = {}
+        srs_as_opt = opt_upd['base_structure']
+        for k, v in srs_as_opt.items():
+            if k == 'type':
+                continue
+            elif k == 'cs_idx':
+                srs_struct_opt.update({'crystal_structure': cs[v[0][0]]})
+            elif k == 'sigma':
+                srs_struct_opt.update({'csl_vecs': csl_lookup[v]})
+            else:
+                srs_struct_opt.update({k: v})
+
+        srs_as = struct_lookup[srs_as_opt['type']](**srs_struct_opt)
+        print('srs_as: \n{}\n'.format(srs_as))
+
+        # Form the directory path for this sim:
+        srs_path = []
+        for i in srs_df:
+
+            if isinstance(i, dict):
+                srs_path.append(upd['series_id'][i['name']]['path'])
+
+            elif isinstance(i, list):
+                srs_path.append(
+                    '_'.join([upd['series_id'][j['name']]['path'] for j in i]))
+
+        print('path: {}'.format(srs_path))
+
+        # Generate AtomisticSim:
 
 
 if __name__ == '__main__':

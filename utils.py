@@ -1,3 +1,5 @@
+import random
+import time
 """
 TODO:
     Add/tidy up docs for these utility functions. May not need them all for the
@@ -224,3 +226,17 @@ def validate_numeric_params(params, equal_to={}, not_equal_to={}, equal_groups=[
         validated_params[params_idx] = new_val
 
     return validated_params
+
+
+def get_date_time_stamp(split=False, num_only=False):
+    """
+    Get a string representing the datetime plus a five digit random number.
+
+    """
+    num = '{:05d}'.format(random.randint(1, 1E5))
+    date_time = time.strftime('%Y-%m-%d-%H%M')
+
+    if split:
+        return date_time, num
+    else:
+        return date_time + '_' + num if num_only == False else num

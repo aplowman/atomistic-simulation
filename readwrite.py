@@ -52,7 +52,7 @@ def read_pickle(file_path):
 
 def format_args_check(**kwargs):
     """
-    Check types of parameters used in `format_arr`, 'format_list' and 
+    Check types of parameters used in `format_arr`, 'format_list' and
     'format_dict' functions.
 
     """
@@ -72,8 +72,9 @@ def format_args_check(**kwargs):
     if 'dim_delim' in kwargs and not isinstance(kwargs['dim_delim'], str):
         raise ValueError('`dim_delim` must be a string.')
 
-    if 'format_spec' in kwargs and not isinstance(kwargs['format_spec'], str):
-        raise ValueError('`format_spec` must be a string.')
+    if 'format_spec' in kwargs and not isinstance(kwargs['format_spec'],
+                                                  (str, list)):
+        raise ValueError('`format_spec` must be a string or list of strings.')
 
     if 'assign' in kwargs:
 
@@ -88,8 +89,10 @@ def format_arr(arr, depth=0, indent='\t', col_delim='\t', row_delim='\n',
 
     Parameters
     ----------
-    arr : ndarray
-        Array of any shape to format as a string.
+    arr : ndarray or list of ndarray
+        Array of any shape to format as a string, or list of arrays whose
+        shapes match except for the final dimension, in which case the arrays
+        will be formatted horizontally next to each other.
     depth : int, optional
         The indent depth at which to begin the formatting.
     indent : str, optional
@@ -103,8 +106,9 @@ def format_arr(arr, depth=0, indent='\t', col_delim='\t', row_delim='\n',
         Defautl is newline character, \n.
     dim_delim : str, optional
         String to delimit outer dimensions. Default is newline character, \n.
-    format_spec : str, optional
-        Format specifier for the array.
+    format_spec : str or list of str, optional
+        Format specifier for the array or a list of format specifiers, one for 
+        each array listed in `arr`.
 
     Returns
     -------
@@ -112,29 +116,67 @@ def format_arr(arr, depth=0, indent='\t', col_delim='\t', row_delim='\n',
 
     """
 
+    # Validation:
     format_args_check(depth=depth, indent=indent, col_delim=col_delim,
                       row_delim=row_delim, dim_delim=dim_delim,
                       format_spec=format_spec)
 
-    if not isinstance(arr, np.ndarray):
-        raise ValueError('Cannot format as array, object is '
-                         'not an array: type is {}'.format(type(arr)))
+    if isinstance(arr, np.ndarray):
+        arr = [arr]
 
+    out_shape = list(set([i.shape[:-1] for i in arr]))
+
+    if len(out_shape) > 1:
+        raise ValueError('Array shapes must be identical apart from the '
+                         'innermost dimension.')
+
+    if not isinstance(arr, (list, np.ndarray)):
+        raise ValueError('Cannot format as array, object is '
+                         'not an array or list of arrays: type is {}'.format(
+                             type(arr)))
+
+    if isinstance(format_spec, str):
+        format_spec = [format_spec] * len(arr)
+
+    elif isinstance(format_spec, list):
+
+        fs_err_msg = ('`format_spec` must be a string or list of N strings '
+                      'where N is the number of arrays specified in `arr`.')
+
+        if not all([isinstance(i, str)
+                    for i in format_spec]) or len(format_spec) != len(arr):
+            raise ValueError(fs_err_msg)
+
+    arr_list = arr
     out = ''
     dim_seps = ''
-    d = arr.ndim
+    d = arr_list[0].ndim
+
     if d == 1:
         out += (indent * depth)
-        for col in arr:
-            out += format_spec.format(col) + col_delim
+
+        for sa_idx, sub_arr in enumerate(arr_list):
+            for col in sub_arr:
+                out += format_spec[sa_idx].format(col) + col_delim
+
         out += row_delim
 
     else:
+
         if d > 2:
             dim_seps = dim_delim * (d - 2)
-        out = dim_seps.join(
-            [format_arr(i, depth, indent, col_delim,
-                        row_delim, dim_delim, format_spec) for i in arr])
+
+        sub_arr = []
+        for i in range(out_shape[0][0]):
+
+            sub_arr_lst = []
+            for j in arr_list:
+                sub_arr_lst.append(j[i])
+
+            sub_arr.append(format_arr(sub_arr_lst, depth, indent, col_delim,
+                                      row_delim, dim_delim, format_spec))
+
+        out = dim_seps.join(sub_arr)
 
     return out
 

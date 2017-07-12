@@ -146,8 +146,6 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                 Some combination of 'a', 'b' and 'c'. Represents which
                 supercell angles are to remain fixed.
 
-
-
     TODO:
     -   Add ionic constraints:
         -   species
@@ -172,12 +170,6 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
         cell_constraints = {**cell_cnst_def, **cell_constraints}
 
     os.makedirs(path, exist_ok=True)
-
-    # spin_polarized = False
-    # for mag_spec in ['Fe', 'Co', 'Mn', 'Ni']:
-    #     if mag_spec in atom_types:
-    #         spin_polarized = True
-    #         break
 
     # Write CELL file:
     cell_path = os.path.join(path, seedname + '.cell')

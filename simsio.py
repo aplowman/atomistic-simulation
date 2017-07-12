@@ -183,7 +183,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
     if atom_constraints is None:
         atom_constraints = atom_cnst_def
     else:
-        atom_constraints = {**atom_cnst_def, atom_constraints}
+        atom_constraints = {**atom_cnst_def, **atom_constraints}
 
     for k, v in atom_constraints.items():
 
@@ -235,7 +235,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
         # Atom constraints:
 
-        if f_xyz != 'none' or f_xy != 'none:
+        if f_xyz != 'none' or f_xy != 'none':
 
             # For each atom, get the index within like-species atoms:
             # 1-based indexing instead of 0-based!

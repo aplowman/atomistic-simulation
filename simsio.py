@@ -2,10 +2,231 @@ import os
 import numpy as np
 
 import readwrite
+from readwrite import format_arr as form_arr
 import vectors
 
-def read_castep_output(dir_path, seedname=None, ignore_missing_output=False):
 
+def get_castep_cell_constraints(lengths_equal, angles_equal, fix_lengths,
+                                fix_angles):
+    """
+    Get CASTEP cell constraints encoded from a set of more user-friendly
+    parameters.
+
+    Parameters
+    ----------
+    lengths_equal : str
+        Some combination of 'a', 'b' and 'c'. Represents which
+        supercell vectors are to remain equal to one another.
+    angles_equal : str
+        Some combination of 'a', 'b' and 'c'. Represents which
+        supercell angles are to remain equal to one another.
+    fix_lengths : str
+        Some combination of 'a', 'b' and 'c'. Represents which
+        supercell vectors are to remain fixed.
+    fix_angles : str
+        Some combination of 'a', 'b' and 'c'. Represents which
+        supercell angles are to remain fixed.    
+
+    Returns
+    -------
+    list of list of int
+
+    """
+
+    eqs_params = [lengths_equal, angles_equal]
+    fxd_params = [fix_lengths, fix_angles]
+    encoded = [[1, 2, 3], [1, 2, 3]]
+
+    ambig_cell_msg = 'Ambiguous cell constraints specified.'
+
+    for idx, (fp, ep) in enumerate(zip(fxd_params, eqs_params)):
+
+        if len(fp) == 3 and all([x in fp for x in ['a', 'b', 'c']]):
+            encoded[idx] = [0, 0, 0]
+
+        elif len(fp) == 2 and all([x in fp for x in ['a', 'b']]):
+            encoded[idx] = [0, 0, 3]
+
+        elif len(fp) == 2 and all([x in fp for x in ['a', 'c']]):
+            encoded[idx] = [0, 2, 0]
+
+        elif len(fp) == 2 and all([x in fp for x in ['b', 'c']]):
+            encoded[idx] = [1, 0, 0]
+
+        elif fp == 'a':
+
+            if ep == '':
+                encoded[idx] = [0, 2, 3]
+
+            elif ep == 'bc':
+                encoded[idx] = [0, 2, 2]
+
+            else:
+                raise ValueError(ambig_cell_msg)
+
+        elif fp == 'b':
+
+            if ep == '':
+                encoded[idx] = [1, 0, 3]
+
+            elif ep == 'ac':
+                encoded[idx] = [1, 0, 1]
+
+            else:
+                raise ValueError(ambig_cell_msg)
+
+        elif fp == 'c':
+
+            if ep == '':
+                encoded[idx] = [1, 2, 0]
+
+            elif ep == 'ab':
+                encoded[idx] = [1, 1, 0]
+
+            else:
+                raise ValueError(ambig_cell_msg)
+
+        else:
+
+            if len(ep) == 3 and all([x in ep for x in ['a', 'b', 'c']]):
+                encoded[idx] = [1, 1, 1]
+
+            elif any([x in ep for x in ['ab', 'ba']]):
+                encoded[idx] = [1, 1, 3]
+
+            elif any([x in ep for x in ['ac', 'ca']]):
+                encoded[idx] = [1, 2, 1]
+
+            elif any([x in ep for x in ['bc', 'cb']]):
+                encoded[idx] = [1, 2, 2]
+
+    for idx in range(len(encoded[1])):
+        if encoded[1][idx] > 0:
+            encoded[1][idx] += 3
+
+    return encoded
+
+
+def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
+                        seedname='sim', cell=None, param=None,
+                        cell_constraints=None):
+    """ 
+    Generate CASTEP input files.
+
+    Parameters
+    ----------
+    supercell : ndarray of shape (3, 3)
+        Array of column vectors representing the edge vectors of the supercell.
+    atom_sites : ndarray of shape (3, N)
+        Array of column vectors representing the positions of each atom.
+    species : ndarray of str of shape (M, )
+        The distinct species of the atoms.
+    species_idx : ndarray of shape (N, )
+        Maps each atom site to a given species in `species`.
+    path : str
+        Directory in which to generate input files.
+    seedname : str
+        The seedname of the CASTEP calculation.
+    cell : dict
+        Key value pairs to add to the cell file.
+    param : dict
+        Key value pairs to add to the param file.
+    cell_constraints : dict
+        A dict with the following keys:
+            lengths_equal : str
+                Some combination of 'a', 'b' and 'c'. Represents which
+                supercell vectors are to remain equal to one another.
+            angles_equal : str
+                Some combination of 'a', 'b' and 'c'. Represents which
+                supercell angles are to remain equal to one another.
+            fix_lengths : str
+                Some combination of 'a', 'b' and 'c'. Represents which
+                supercell vectors are to remain fixed.
+            fix_angles : str
+                Some combination of 'a', 'b' and 'c'. Represents which
+                supercell angles are to remain fixed.
+
+
+
+    TODO:
+    -   Add ionic constraints:
+        -   species
+        -   constraint direction (not important at the moment to do properly,
+            but for now, improve the specification of the constraints, so that
+            it will work later in general.
+
+    """
+
+    # Validation:
+
+    cell_cnst_def = {
+        'lengths_equal': '',
+        'angles_equal': '',
+        'fix_lengths': '',
+        'fix_angles': ''
+    }
+
+    if cell_constraints is None:
+        cell_constraints = cell_cnst_def
+    else:
+        cell_constraints = {**cell_cnst_def, **cell_constraints}
+
+    os.makedirs(path, exist_ok=True)
+
+    # spin_polarized = False
+    # for mag_spec in ['Fe', 'Co', 'Mn', 'Ni']:
+    #     if mag_spec in atom_types:
+    #         spin_polarized = True
+    #         break
+
+    # Write CELL file:
+    cell_path = os.path.join(path, seedname + '.cell')
+    with open(cell_path, 'w') as cf:   # to do: test if i need universal newline mode here
+
+        # Supercell (need to tranpose to array of row vectors):
+        cf.write('%block lattice_cart\n')
+        cf.write(form_arr(supercell.T, format_spec='{:15.10f}') + '\n')
+        cf.write('%endblock lattice_cart\n')
+
+        # Atoms (need to tranpose to array of row vectors):
+        atom_species = species[species_idx][:, np.newaxis]
+        cf.write('%block positions_abs\n')
+        cf.write(form_arr([atom_species, atom_sites.T],
+                          format_spec=['{:15.10f}', '{}'],
+                          col_delim=' ') + '\n')
+        cf.write('%endblock positions_abs\n')
+
+        # Atom constraints:
+
+        # Cell constraints:
+        encoded_params = get_castep_cell_constraints(**cell_constraints)
+
+        if not (encoded_params[0] == [1, 2, 3] and
+                encoded_params[1] == [4, 5, 6]):
+
+            if (encoded_params[0] == [0, 0, 0] and
+                    encoded_params[1] == [0, 0, 0]):
+                cf.write('\nfix_all_cell = True\n')
+
+            else:
+                cf.write('\n%block cell_constraints\n')
+                cf.write('{}\t{}\t{}\n'.format(*encoded_params[0]))
+                cf.write('{}\t{}\t{}\n'.format(*encoded_params[1]))
+                cf.write('%endblock cell_constraints\n')
+
+        # Other cell file items:
+        cf.write('\n')
+        for k, v in sorted(cell.items()):
+            cf.write('{:25s}= {}\n'.format(k, v))
+
+    # Write PARAM file:
+    param_path = os.path.join(path, seedname + '.param')
+    with open(param_path, 'w') as pf:
+        for k, v in sorted(param.items()):
+            pf.write('{:25s}= {}\n'.format(k, v))
+
+
+def read_castep_output(dir_path, seedname=None, ignore_missing_output=False):
     """
         Function to parse the output files from CASTEP. The main output file is
         `seedname`.castep.
@@ -29,16 +250,19 @@ def read_castep_output(dir_path, seedname=None, ignore_missing_output=False):
     """
 
     # Find the files ending in .castep in `dir_path`:
-    all_cst_files = readwrite.find_files_in_dir(dir_path, r'.castep$', recursive=False)
+    all_cst_files = readwrite.find_files_in_dir(
+        dir_path, r'.castep$', recursive=False)
 
     # If no .castep files in `dir_path, raise IOError.
     if len(all_cst_files) == 0:
-        raise IOError('No .castep files found in directory {}'.format(dir_path))
+        raise IOError(
+            'No .castep files found in directory {}'.format(dir_path))
 
     if seedname is None:
 
         if len(all_cst_files) > 1:
-            raise IOError('Seedname not specified, but multiple .castep files found.')
+            raise IOError(
+                'Seedname not specified, but multiple .castep files found.')
 
         else:
             seedname = all_cst_files[0].split('.castep')[0]
@@ -47,7 +271,8 @@ def read_castep_output(dir_path, seedname=None, ignore_missing_output=False):
     cst_path = os.path.join(dir_path, cst_fn)
 
     if not os.path.isfile(cst_path):
-        raise IOError('File not found: {} in directory {}'.format(cst_fn, dir_path))
+        raise IOError(
+            'File not found: {} in directory {}'.format(cst_fn, dir_path))
 
     # Parse the .castep file:
     out = read_castep_file(cst_path)
@@ -60,14 +285,15 @@ def read_castep_output(dir_path, seedname=None, ignore_missing_output=False):
         geom_path = os.path.join(dir_path, geom_fn)
 
         if not ignore_missing_output and not os.path.isfile(geom_path):
-            raise IOError('File not found: {} in directory {}'.format(geom_fn, dir_path))
+            raise IOError(
+                'File not found: {} in directory {}'.format(geom_fn, dir_path))
 
         out['geom'] = read_castep_geom_file(geom_path)
 
     return out
 
-def read_castep_file(cst_path):
 
+def read_castep_file(cst_path):
     """
         Function to parse a .castep file. Returns a dict.
 
@@ -138,7 +364,8 @@ def read_castep_file(cst_path):
     CON_SYM_FORCES_GO_END = CON_FORCES_GO_END
     CON_SYM_FORCES_SP_START = '************** Constrained Symmetrised Forces **************'
     CON_SYM_FORCES_SP_END = UNCON_FORCES_END
-    BFGS_CYCLE_TYPE_STR = np.array(['Initial', 'Trial guess', 'Line minimization', 'Quad minimization'])
+    BFGS_CYCLE_TYPE_STR = np.array(
+        ['Initial', 'Trial guess', 'Line minimization', 'Quad minimization'])
     CELL_CONTS_START_END = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
     CELL_CONTS_INI_START_END = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
     CELL_START = 'Unit Cell'
@@ -177,7 +404,8 @@ def read_castep_file(cst_path):
     # Each BFGS iteration is associated with one or more SCF cycles:
     # Here, scf_cycle refers to a whole SCF convergence process to find the groundstate wavefunction
     scf_cycle_idx = 0
-    scf_cycle_type_idx = [] # Index list where indices correspond to 0: 'initial, 1: 'trial guess', 2: 'line', 3: 'quad'
+    # Index list where indices correspond to 0: 'initial, 1: 'trial guess', 2: 'line', 3: 'quad'
+    scf_cycle_type_idx = []
     bfgs_lambda = []
     cell_contents = []
     current_cell_conts = []
@@ -218,7 +446,8 @@ def read_castep_file(cst_path):
 
     SCF_HEADER_LNS = 3              # 3 lines between scf header and start of block
     FORCES_HEADER_LNS = 5           # 5 lines between forces header and start of block
-    CELL_CONTENTS_HEADER_LNS = 3    # 3 lines between cell contents header and start of block
+    # 3 lines between cell contents header and start of block
+    CELL_CONTENTS_HEADER_LNS = 3
     CELL_LAT_IDX_START = 2
     CELL_LAT_IDX_END = 4
     CELL_PARAMS_IDX_START = 7
@@ -278,10 +507,12 @@ def read_castep_file(cst_path):
                     # Parse real and reciprocal lattice blocks. Theses are row
                     # vectors in the file, but we will return as column vectors.
 
-                    rl_lat_ijk = [float(ln_s[i]) for i in [0,1,2]]
-                    rc_lat_ijk = [float(ln_s[i]) for i in [3,4,5]]
-                    current_real_lat.append(np.array(rl_lat_ijk)[:, np.newaxis])
-                    current_recip_lat.append(np.array(rc_lat_ijk)[:, np.newaxis])
+                    rl_lat_ijk = [float(ln_s[i]) for i in [0, 1, 2]]
+                    rc_lat_ijk = [float(ln_s[i]) for i in [3, 4, 5]]
+                    current_real_lat.append(
+                        np.array(rl_lat_ijk)[:, np.newaxis])
+                    current_recip_lat.append(
+                        np.array(rc_lat_ijk)[:, np.newaxis])
 
                     if cell_idx == CELL_LAT_IDX_END:
 
@@ -348,7 +579,7 @@ def read_castep_file(cst_path):
 
                         species_idx.append(species.index(sp))
 
-                    ion_uvw = [float(ln_s[i]) for i in [3,4,5]]
+                    ion_uvw = [float(ln_s[i]) for i in [3, 4, 5]]
                     current_cell_conts.append(np.array(ion_uvw)[:, np.newaxis])
 
                     cell_conts_idx += 1
@@ -377,7 +608,8 @@ def read_castep_file(cst_path):
 
                         if metallic:
 
-                            scf_iter_data[0:2] = [float(ln_s[i]) for i in [1,2]]
+                            scf_iter_data[0:2] = [
+                                float(ln_s[i]) for i in [1, 2]]
                             scf_iter_data[3] = float(ln_s[3])
 
                         else:
@@ -387,7 +619,8 @@ def read_castep_file(cst_path):
 
                     else:
 
-                        scf_iter_data = [float(ln_s[i]) for i in range(1, scf_num_cols+1)]
+                        scf_iter_data = [float(ln_s[i])
+                                         for i in range(1, scf_num_cols + 1)]
 
                     scf_cycle_data.append(scf_iter_data)
                     scf_iter_idx += 1
@@ -411,7 +644,8 @@ def read_castep_file(cst_path):
                         all_unconstrained_forces.append(current_bfgs_forces)
 
                     elif mode == 'parse_con_sym_forces':
-                        all_constrained_symmetrised_forces.append(current_bfgs_forces)
+                        all_constrained_symmetrised_forces.append(
+                            current_bfgs_forces)
 
                     current_bfgs_forces = []
                     mode = 'scan'
@@ -419,7 +653,8 @@ def read_castep_file(cst_path):
                 elif force_ion_idx >= 0:
 
                     force_xyz = [float(ln_s[i]) for i in [3, 4, 5]]
-                    current_bfgs_forces.append(np.array(force_xyz)[:, np.newaxis])
+                    current_bfgs_forces.append(
+                        np.array(force_xyz)[:, np.newaxis])
 
                     force_ion_idx += 1
 
@@ -428,14 +663,15 @@ def read_castep_file(cst_path):
                 if VERS in ln:
                     version = ln_s[7].split('|')[0]
                     if version not in TESTED_VERS:
-                        raise NotImplementedError('Parser not tested on this version of CASTEP: {}'.format(version))
+                        raise NotImplementedError(
+                            'Parser not tested on this version of CASTEP: {}'.format(version))
 
                 elif PARAM_ECUT in ln:
                     ecut = float(ln_s[-2])
 
                 elif PARAM_FINE_GRID in ln:
                     fine_grid = float(ln_s[-2])
-                
+
                 elif PARAM_NUM_ELEC in ln:
                     num_elec = float(ln_s[-1])
 
@@ -493,7 +729,7 @@ def read_castep_file(cst_path):
                     cell_constraints_num = int(ln.split('=')[1].strip())
 
                 elif CELL_CON in ln:
-                    cell_constraints = [int(ln_s[i]) for i in range(3,9)]
+                    cell_constraints = [int(ln_s[i]) for i in range(3, 9)]
 
                 elif SPACE_GRP in ln:
                     space_group = ln.split('=')[1].strip()
@@ -574,7 +810,8 @@ def read_castep_file(cst_path):
         s_max = np.array(s_max)
         all_constrained_forces = np.array(all_constrained_forces)
         all_unconstrained_forces = np.array(all_unconstrained_forces)
-        all_constrained_symmetrised_forces = np.array(all_constrained_symmetrised_forces)
+        all_constrained_symmetrised_forces = np.array(
+            all_constrained_symmetrised_forces)
         real_lattice = np.array(real_lattice)
         recip_lattice = np.array(recip_lattice)
         lattice_params = np.array(lattice_params)
@@ -649,8 +886,8 @@ def read_castep_file(cst_path):
 
         return out
 
-def read_castep_geom_file(geom_path):
 
+def read_castep_geom_file(geom_path):
     """
         Function to parse a .geom geomtery trajectory file from a CASTEP geometry
         optimisation run. The .geom file includes the main results at the
@@ -734,11 +971,11 @@ def read_castep_geom_file(geom_path):
 
     cell_ln_idx = 0
     all_cells = []
-    current_cell = np.zeros((3,3))
+    current_cell = np.zeros((3, 3))
 
     stress_ln_idx = 0
     all_stresses = []
-    current_stress = np.zeros((3,3))
+    current_stress = np.zeros((3, 3))
 
     all_ions = []
     all_forces = []
@@ -795,24 +1032,25 @@ def read_castep_geom_file(geom_path):
 
             elif CELL in ln:
 
-                current_cell[cell_ln_idx] = [float(ln_s[i]) for i in [0,1,2]]
+                current_cell[cell_ln_idx] = [float(ln_s[i]) for i in [0, 1, 2]]
 
                 if cell_ln_idx == 2:
                     cell_ln_idx = 0
                     all_cells.append(current_cell.T)
-                    current_cell = np.zeros((3,3))
+                    current_cell = np.zeros((3, 3))
 
                 else:
                     cell_ln_idx += 1
 
             elif STRESS in ln:
 
-                current_stress[stress_ln_idx] = [float(ln_s[i]) for i in [0,1,2]]
+                current_stress[stress_ln_idx] = [
+                    float(ln_s[i]) for i in [0, 1, 2]]
 
                 if stress_ln_idx == 2:
                     stress_ln_idx = 0
                     all_stresses.append(current_stress)
-                    current_stress = np.zeros((3,3))
+                    current_stress = np.zeros((3, 3))
 
                 else:
                     stress_ln_idx += 1
@@ -824,16 +1062,17 @@ def read_castep_geom_file(geom_path):
 
                 if not species_set:
 
-                    if sp not in species: species.append(sp)
+                    if sp not in species:
+                        species.append(sp)
 
                     species_idx.append(species.index(sp))
 
-                ion_xyz = [float(ln_s[i]) for i in [2,3,4]]
+                ion_xyz = [float(ln_s[i]) for i in [2, 3, 4]]
                 current_bfgs_ions.append(np.array(ion_xyz)[:, np.newaxis])
 
             elif FORCE in ln:
 
-                force_xyz = [float(ln_s[i]) for i in [2,3,4]]
+                force_xyz = [float(ln_s[i]) for i in [2, 3, 4]]
                 current_bfgs_forces.append(np.array(force_xyz)[:, np.newaxis])
 
         # Save the ion positions and forces for the final BFGS step:
@@ -871,8 +1110,8 @@ def read_castep_geom_file(geom_path):
 
     return out
 
-def get_LAMMPS_compatible_box(box_cart):
 
+def get_LAMMPS_compatible_box(box_cart):
     """
         `box_cart` is an array of column vectors
         Returns array of column vectors.
@@ -895,11 +1134,12 @@ def get_LAMMPS_compatible_box(box_cart):
             -   New vectors are a,b,c.
     """
 
-    A = box_cart[:,0:1]
-    B = box_cart[:,1:2]
-    C = box_cart[:,2:3]
+    A = box_cart[:, 0:1]
+    B = box_cart[:, 1:2]
+    C = box_cart[:, 2:3]
 
-    A_mag, B_mag, C_mag = np.linalg.norm(A), np.linalg.norm(B), np.linalg.norm(C)
+    A_mag, B_mag, C_mag = np.linalg.norm(
+        A), np.linalg.norm(B), np.linalg.norm(C)
 
     cos_γ = vectors.col_wise_cos(A, B)[0]
     sin_γ = vectors.col_wise_sin(A, B)[0]
@@ -914,8 +1154,8 @@ def get_LAMMPS_compatible_box(box_cart):
     b_z = 0
 
     c_x = C_mag * cos_β
-    c_y = ( vectors.col_wise_dot(B, C)[0] - (b_x * c_x) ) / b_y
-    c_z = np.sqrt( C_mag**2 - c_x**2 - c_y**2 )
+    c_y = (vectors.col_wise_dot(B, C)[0] - (b_x * c_x)) / b_y
+    c_z = np.sqrt(C_mag**2 - c_x**2 - c_y**2)
 
     return np.array([
         [a_x, a_y, a_z],

@@ -70,24 +70,45 @@ class AtomisticStructure(object):
         crystal_structure. For atom index `i`, this indexes
         `crystal_structures[
             crystals[crystal_idx[i]]['cs_idx']]['species_set']`
+        Either specify (`all_species` and `all_species_idx`) or (`species_idx`
+        and `motif_idx`), but not both.
     motif_idx : ndarray of shape (N,), optional
         Defines to which motif atom each atom belongs, indexed within the
         atom's crystal_structure. For atom index `i`, this indexes
         `crystal_structures[
             crystals[crystal_idx[i]]['cs_idx']]['species_motif']`
+        Either specify (`all_species` and `all_species_idx`) or (`species_idx`
+        and `motif_idx`), but not both.
+    all_species : ndarray of str, optional
+        1D array of strings representing the distinct species. Either specify
+        (`all_species` and `all_species_idx`) or (`species_idx` and
+        `motif_idx`), but not both.
+    all_species_idx : ndarray of shape (N, ), optional
+        Defines to which species each atom belongs, indexed over the whole
+        AtomisticStructure. This indexes `all_species`. Either specify
+        (`all_species` and `all_species_idx`) or (`species_idx` and
+        `motif_idx`), but not both.
+
+    num_atoms_per_crystal
+    num_atoms
+    num_crystals
+    reciprocal_supercell
 
     Methods
     -------
-    get_atom_species():
-        Return a str ndarray representing the species of each atom.
-    visualise():
-        Use a plotting library to visualise the atomistic structure.
+    todo
+
+    TODO:
+    -   Think about how some of the methods would work if __init__() takes the
+        bare minimum: supercell and atom_sites, or with some additional params
+        like lattice_sites.
 
     """
 
     def __init__(self, atom_sites, supercell, lattice_sites=None,
                  crystals=None, crystal_structures=None, crystal_idx=None,
-                 lat_crystal_idx=None, species_idx=None, motif_idx=None):
+                 lat_crystal_idx=None, species_idx=None, motif_idx=None,
+                 all_species=None, all_species_idx=None):
         """Constructor method for AtomisticStructure object."""
 
         # Input validation
@@ -115,6 +136,19 @@ class AtomisticStructure(object):
                                  'number of lattice sites specified as column '
                                  'vectors in `lattice_sites`.')
 
+        if [i is None for i in [all_species, all_species_idx]].count(True) == 1:
+            raise ValueError('Must specify both `all_species` and '
+                             '`all_species_idx`.')
+
+        if [i is None for i in [species_idx, motif_idx]].count(True) == 1:
+            raise ValueError('Must specify both `species_idx` and '
+                             '`motif_idx`.')
+
+        if [i is None for i in [species_idx, all_species_idx]].count(True) != 1:
+            raise ValueError('Either specify (`all_species` and '
+                             '`all_species_idx`) or (`species_idx` and '
+                             '`motif_idx`), but not both.')
+
         if species_idx is not None:
             if len(species_idx) != atom_sites.shape[1]:
                 raise ValueError('Length of `species_idx` must match number '
@@ -125,11 +159,16 @@ class AtomisticStructure(object):
             if len(motif_idx) != atom_sites.shape[1]:
                 raise ValueError('Length of `motif_idx` must match number '
                                  'of atoms specified as column vectors in '
-                                 '`atom_sites`.all')
+                                 '`atom_sites`.')
+
+        if all_species_idx is not None:
+            if len(all_species_idx) != atom_sites.shape[1]:
+                raise ValueError('Length of `all_species_idx` must match '
+                                 'number of atoms specified as column vectors '
+                                 'in `atom_sites`.')
 
         # Set attributes
         # --------------
-
         self.atom_sites = atom_sites
         self.supercell = supercell
 
@@ -140,6 +179,8 @@ class AtomisticStructure(object):
         self.lat_crystal_idx = lat_crystal_idx
         self.species_idx = species_idx
         self.motif_idx = motif_idx
+        self._all_species = all_species
+        self._all_species_idx = all_species_idx
 
     def visualise(self, show_iplot=True, save=False, save_args=None):
         """
@@ -216,95 +257,16 @@ class AtomisticStructure(object):
                 )
             )
 
-        # Crystal boxes and atoms
-        for c_idx, c in enumerate(self.crystals):
+        if self.crystals is None:
+            # Plot all atoms by species:
 
-            # Crystal box
-            c_xyz = geometry.get_box_xyz(c['crystal'], origin=c['origin'])[0]
-            c_props = {
-                'mode': 'lines',
-                'line': {
-                    'color': crystal_cols[c_idx]
-                }
-            }
-            data.append(
-                graph_objs.Scatter3d(
-                    x=c_xyz[0],
-                    y=c_xyz[1],
-                    z=c_xyz[2],
-                    name='Crystal #{}'.format(c_idx + 1),
-                    **c_props
-                )
-            )
+            for sp_idx, sp in enumerate(self.all_species):
 
-            # Get CrystalStructure associated with this crystal:
-            cs = self.crystal_structures[c['cs_idx']]
+                atom_idx = np.where(self.all_species_idx == sp_idx)[0]
+                atom_sites_sp = self.atom_sites[:, atom_idx]
+                sp_col = str(atom_cols[sp])
 
-            # Lattice unit cell, need to rotate by given orientation
-            unit_cell = np.dot(c['cs_orientation'], cs.bravais_lattice.vecs)
-
-            cs_origin = np.dot(unit_cell, c['cs_origin'])
-            uc_origin = c['origin'] + cs_origin[:, np.newaxis]
-            uc_xyz = geometry.get_box_xyz(unit_cell, origin=uc_origin)[0]
-
-            uc_trace_name = 'Unit cell (crystal #{})'.format(c_idx + 1)
-            uc_props = {
-                'mode': 'lines',
-                'line': {
-                    'color': 'gray'
-                },
-                'name': uc_trace_name,
-                'legendgroup': uc_trace_name,
-                'visible': 'legendonly'
-            }
-            data.append(
-                graph_objs.Scatter3d(
-                    x=uc_xyz[0],
-                    y=uc_xyz[1],
-                    z=uc_xyz[2],
-                    **uc_props
-                )
-            )
-
-            # Lattice sites
-            ls_idx = np.where(self.lat_crystal_idx == c_idx)[0]
-            ls = self.lattice_sites[:, ls_idx]
-            ls_trace_name = 'Lattice sites (crystal #{})'.format(c_idx + 1)
-            lat_site_props = {
-                'mode': 'markers',
-                'marker': {
-                    'symbol': 'x',
-                    'size': 5,
-                    'color': crystal_cols[c_idx]
-                },
-                'name': ls_trace_name,
-                'legendgroup': ls_trace_name,
-                'visible': 'legendonly',
-            }
-
-            data.append(
-                graph_objs.Scatter3d(
-                    x=ls[0],
-                    y=ls[1],
-                    z=ls[2],
-                    **lat_site_props
-                )
-            )
-
-            # Get motif associated with this crystal:
-            sp_motif = cs.species_motif
-
-            # Get indices of atoms in this crystal
-            crys_atm_idx = np.where(self.crystal_idx == c_idx)[0]
-
-            # Atoms by species
-            for sp_idx, sp_name in enumerate(sp_motif):
-
-                atom_idx = np.where(self.motif_idx[crys_atm_idx] == sp_idx)[0]
-                atom_sites_sp = self.atom_sites[:, crys_atm_idx[atom_idx]]
-                sp_col = str(atom_cols[cs.motif['species'][sp_idx]])
-
-                trace_name = sp_name + ' (crystal #{})'.format(c_idx + 1)
+                trace_name = sp
 
                 atom_site_props = {
                     'mode': 'markers',
@@ -326,7 +288,121 @@ class AtomisticStructure(object):
                     )
                 )
 
-            # TODO: Add traces for atom numbers
+        else:
+            # Plot atoms by crystal and motif
+            # Crystal boxes and atoms
+            for c_idx, c in enumerate(self.crystals):
+
+                # Crystal box
+                c_xyz = geometry.get_box_xyz(
+                    c['crystal'], origin=c['origin'])[0]
+                c_props = {
+                    'mode': 'lines',
+                    'line': {
+                        'color': crystal_cols[c_idx]
+                    }
+                }
+                data.append(
+                    graph_objs.Scatter3d(
+                        x=c_xyz[0],
+                        y=c_xyz[1],
+                        z=c_xyz[2],
+                        name='Crystal #{}'.format(c_idx + 1),
+                        **c_props
+                    )
+                )
+
+                # Get CrystalStructure associated with this crystal:
+                cs = self.crystal_structures[c['cs_idx']]
+
+                # Lattice unit cell, need to rotate by given orientation
+                unit_cell = np.dot(c['cs_orientation'],
+                                   cs.bravais_lattice.vecs)
+
+                cs_origin = np.dot(unit_cell, c['cs_origin'])
+                uc_origin = c['origin'] + cs_origin[:, np.newaxis]
+                uc_xyz = geometry.get_box_xyz(unit_cell, origin=uc_origin)[0]
+
+                uc_trace_name = 'Unit cell (crystal #{})'.format(c_idx + 1)
+                uc_props = {
+                    'mode': 'lines',
+                    'line': {
+                        'color': 'gray'
+                    },
+                    'name': uc_trace_name,
+                    'legendgroup': uc_trace_name,
+                    'visible': 'legendonly'
+                }
+                data.append(
+                    graph_objs.Scatter3d(
+                        x=uc_xyz[0],
+                        y=uc_xyz[1],
+                        z=uc_xyz[2],
+                        **uc_props
+                    )
+                )
+
+                # Lattice sites
+                ls_idx = np.where(self.lat_crystal_idx == c_idx)[0]
+                ls = self.lattice_sites[:, ls_idx]
+                ls_trace_name = 'Lattice sites (crystal #{})'.format(c_idx + 1)
+                lat_site_props = {
+                    'mode': 'markers',
+                    'marker': {
+                        'symbol': 'x',
+                        'size': 5,
+                        'color': crystal_cols[c_idx]
+                    },
+                    'name': ls_trace_name,
+                    'legendgroup': ls_trace_name,
+                    'visible': 'legendonly',
+                }
+
+                data.append(
+                    graph_objs.Scatter3d(
+                        x=ls[0],
+                        y=ls[1],
+                        z=ls[2],
+                        **lat_site_props
+                    )
+                )
+
+                # Get motif associated with this crystal:
+                sp_motif = cs.species_motif
+
+                # Get indices of atoms in this crystal
+                crys_atm_idx = np.where(self.crystal_idx == c_idx)[0]
+
+                # Atoms by species
+                # TODO: Add traces for atom numbers
+                for sp_idx, sp_name in enumerate(sp_motif):
+
+                    atom_idx = np.where(
+                        self.motif_idx[crys_atm_idx] == sp_idx)[0]
+                    atom_sites_sp = self.atom_sites[:, crys_atm_idx[atom_idx]]
+                    sp_col = str(atom_cols[cs.motif['species'][sp_idx]])
+
+                    trace_name = sp_name + ' (crystal #{})'.format(c_idx + 1)
+
+                    atom_site_props = {
+                        'mode': 'markers',
+                        'marker': {
+                            'symbol': 'o',
+                            'size': 7,
+                            'color': 'rgb' + sp_col
+                        },
+                        'name': trace_name,
+                        'legendgroup': trace_name,
+                    }
+
+                    data.append(
+                        graph_objs.Scatter3d(
+                            x=atom_sites_sp[0],
+                            y=atom_sites_sp[1],
+                            z=atom_sites_sp[2],
+                            **atom_site_props
+                        )
+                    )
 
         layout = graph_objs.Layout(
             width=1000,
@@ -512,6 +588,66 @@ class AtomisticStructure(object):
         seps = np.linalg.norm(recip, axis=0) / (np.array(grid) * 2 * np.pi)
 
         return seps
+
+    def get_all_species(self):
+
+        all_sp = []
+        all_sp_idx = []
+        all_sp_count = 0
+
+        for c_idx in range(len(self.crystals)):
+
+            cs = self.crystal_structures[self.crystals[c_idx]['cs_idx']]
+
+            # Local species for this crystal:
+            cs_sp = cs.motif['species']
+
+            # Local species index for this crystal:
+            c_sp_idx = np.copy(
+                self.species_idx[np.where(self.crystal_idx == c_idx)[0]])
+
+            # Need to map the indices from local CrystalStructure to global
+            # AtomisticStructure
+            for sp_idx, sp in enumerate(cs_sp):
+
+                if sp not in all_sp:
+                    new_sp_idx = all_sp_count
+                    all_sp.append(sp)
+                    all_sp_count += 1
+
+                else:
+                    new_sp_idx = all_sp.index(sp)
+
+                c_sp_idx[np.where(c_sp_idx == sp_idx)[0]] = new_sp_idx
+
+            all_sp_idx.extend(c_sp_idx)
+
+        all_sp = np.array(all_sp)
+        all_sp_idx = np.array(all_sp_idx)
+
+        return all_sp, all_sp_idx
+
+    @property
+    def all_species(self):
+        """"""
+
+        if self.species_idx is None:
+            return self._all_species
+
+        else:
+            all_sp, _ = self.get_all_species()
+            return all_sp
+
+    @property
+    def all_species_idx(self):
+        """"""
+
+        if self.species_idx is None:
+            return self._all_species_idx
+
+        else:
+            _, all_sp_idx = self.get_all_species()
+            return all_sp_idx
 
     # def __str__(self):
     #     pass

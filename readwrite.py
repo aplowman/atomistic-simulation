@@ -303,3 +303,59 @@ def format_dict(d, depth=0, indent='\t', assign='=', arr_kw=None):
                 assign + ' {!r}\n'.format(v)
 
     return out
+
+
+def write_list_file(path, my_list):
+    """Write a list to file with one element per line."""
+
+    with open(path, 'w', newline='') as f:
+
+        for idx, l in enumerate(my_list):
+
+            if idx != 0:
+                f.write('\n')
+
+            f.write(l)
+
+        f.write('\n')
+
+
+def delete_line(file_path, search_str):
+    """
+    Delete from file a line which contains a search string.
+
+    TODO:
+    -   Match string with regex.
+
+    """
+
+    new_file_path = file_path + '_new'
+
+    with open(file_path, 'r', encoding='utf-8') as orig_file:
+
+        with open(new_file_path, 'w', encoding='utf-8') as new_file:
+
+            for ln in orig_file:
+
+                if search_str not in ln:
+                    new_file.write(ln)
+
+    os.remove(file_path)
+    os.rename(new_file_path, file_path)
+
+
+def replace_in_file(file_path, search_str, replace_str):
+    """
+    Replace a search string in a file with a new string.
+
+    TODO:
+    -   Match string with regex.
+    """
+
+    with open(file_path, 'r', encoding='utf-8') as orig_file:
+        file_data = orig_file.read()
+
+    file_data = file_data.replace(search_str, replace_str)
+
+    with open(file_path, 'w', encoding='utf-8') as new_file:
+        new_file.write(file_data)

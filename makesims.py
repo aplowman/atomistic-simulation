@@ -3,11 +3,14 @@ import numpy as np
 import shutil
 import dict_parser
 import utils
+import readwrite
+from readwrite import replace_in_file, delete_line
 import atomistic
+import simsio
 from bravais import BravaisLattice
 from crystal import CrystalStructure
 import copy
-
+import shutil
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
@@ -383,6 +386,7 @@ def main():
     all_upd = prepare_all_series_updates(srs_df, base_as)
 
     all_scratch_paths = []
+    all_sims = []
 
     # Generate simulation series:
     for upd_idx, upd in enumerate(all_upd):
@@ -436,6 +440,49 @@ def main():
         # Generate AtomisticSim:
         asim = atomistic.AtomisticSimulation(srs_as, srs_opt)
         asim.write_input_files()
+        all_sims.append(asim)
+
+    print('all_scratch_paths: \n{}\n'.format(all_scratch_paths))
+
+    # Save all sims as pickle file:
+    pick_path = os.path.join(stage_path, 'sims.pickle')
+    pick = {
+        'all_sims': all_sims
+    }
+    readwrite.write_pickle(pick, pick_path)
+
+    # Write jobscript
+    js_params = {
+        'path': stage_path,
+        'calc_paths': all_scratch_paths,
+        'method': opt['method'],
+        'num_cores': opt['set_up']['num_cores'],
+        'sge': opt['set_up']['sge'],
+        'job_array': opt['set_up']['job_array'],
+        'templates_path': os.path.join(SU_PATH, 'jobscript_templates'),
+        'scratch_os': scratch_os,
+        'scratch_path': scratch_path
+    }
+
+    selective_submission = opt['set_up'].get('selective_submission')
+    if selective_submission:
+        js_params.update({'selective_submission': selective_submission})
+
+    job_name = opt['set_up'].get('job_name')
+    if job_name:
+        js_params.update({'job_name': job_name})
+
+    if opt['method'] == 'castep':
+        seedname = opt['castep'].get('seedname')
+        if seedname:
+            js_params.update({'seedname': seedname})
+
+    simsio.write_jobscript(**js_params)
+
+    # Now prompt the user to check the calculation has been set up correctly
+    # in the staging area:
+
+    print('Simulation series generated here: {}'.format(stage_path))
 
 
 if __name__ == '__main__':

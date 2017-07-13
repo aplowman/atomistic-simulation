@@ -299,8 +299,6 @@ def nest_lists(my_list):
 
 def combine_list_of_dicts(a):
 
-    print('combine: a:\n{}\n'.format(a))
-
     a = copy.deepcopy(a)
 
     for i in range(1, len(a)):

@@ -1,10 +1,173 @@
 import os
 import numpy as np
-
 import readwrite
 from readwrite import format_arr as fmt_arr
+from readwrite import replace_in_file, delete_line
 import vectors
 import utils
+import shutil
+
+
+def write_jobscript(path, calc_paths, method, num_cores, sge, job_array,
+                    templates_path, scratch_os=None, scratch_path=None,
+                    selective_submission=False, job_name=None, seedname=None):
+    """
+    Write a jobscript file whose execution runs calculation input files.
+
+    Parameters
+    ----------
+    path : str
+        Directory in which to save the generated jobscript file.
+    calc_paths : list of str
+        Directories in which calculations are to be run.
+    method : str
+        Either 'castep' or 'lammps'
+    num_cores : int
+        Number of processor cores to use for the calculations.
+    sge : bool
+        If True, jobscript is generated for the SGE batch scheduler. If False,
+        jobscript is generated to immediately run the calculations.
+    job_array : bool
+        Only applicable if `sge` is True. If True, calculations are submitted
+        as an SGE job array. If False, calculations are submitted in one go. If
+        the number of calculations is one (i.e. len(`calc_paths`) == 1), this
+        will be set to False. Setting this to False can be handy for many small
+        calculations which won't take a long time to complete. If submitted as 
+        a job array, a significant fraction of the total completion time may be
+        queuing.
+    templates_path : str
+        The directory in which to find jobscript template files.        
+    scratch_os : str, optional
+        Either 'nt' (Windows) or 'posix' (Unix-like, MacOS). The operating
+        system on which the jobscript file will be executed. Default is to
+        query to system on which this script is invoked i.e. `os.name`.
+    scratch_path : str, optional
+        Directory in which the jobscript is to be executed. Specify this path
+        if the jobscript will be executed in a location different to the
+        directory `path`, in which it is generated. By default, this is set to
+        the same string as `path`.        
+    selective_submission : bool, optional
+        Only applicable if `sge` is True. If True, the SGE task id flag `-t`
+        [1] will be excluded from the jobscript file and instead this flag will
+        be expected as a command line argument when executing the jobscript:
+        e.g. "qsub jobscript.sh -t 1-10:2". Default is False.
+    job_name : str, optional
+        Only applicable if `sge` is True. Default is None.
+    seedname : str, optional
+        Must be set if `method` is 'castep'.
+
+    Returns
+    -------
+    None
+
+    References
+    ----------
+    [1] http://gridscheduler.sourceforge.net/htmlman/htmlman1/qsub.html
+
+    TODO:
+    -   Add option for specifying parallel environment type for sge jobscripts
+
+    """
+
+    # General validation:
+
+    if method == 'castep' and seedname is None:
+        raise ValueError('`seedname` must be specified for CASTEP jobscripts.')
+
+    num_calcs = len(calc_paths)
+
+    if num_cores <= 0:
+        raise ValueError('Num cores not valid.')
+    elif num_cores == 1:
+        multi_type = 'serial'
+    else:
+        multi_type = 'parallel'
+
+    if sge:
+        sge_str = 'sge'
+    else:
+        sge_str = 'no_sge'
+
+    if num_calcs == 1:
+        job_array = False
+
+    if job_array:
+        job_arr_str = 'job_array'
+    else:
+        job_arr_str = 'single_job'
+
+    if scratch_path is None:
+        scratch_path = path
+
+    if scratch_os is None:
+        scratch_os = os.name
+
+    if scratch_os == 'nt':
+        scratch_path_sep = '\\'
+    elif scratch_os == 'posix':
+        scratch_path_sep = '/'
+
+    # Get the template file name:
+    tmp_fn = method + '_' + sge_str + '_' + \
+        multi_type + '_' + scratch_os + '_' + job_arr_str + '.txt'
+
+    # Get the template file path:
+    tmp_path = os.path.join(templates_path, tmp_fn)
+
+    # Write text file with all calc paths
+    dirlist_fn = 'dir_list.txt'
+    dir_list_path_stage = os.path.join(path, dirlist_fn)
+    dir_list_path_scratch = scratch_path_sep.join([scratch_path, dirlist_fn])
+    readwrite.write_list_file(dir_list_path_stage, calc_paths)
+
+    if scratch_os == 'posix':
+        js_ext = 'sh'
+    elif scratch_os == 'nt':
+        js_ext = 'bat'
+
+    js_name = 'jobscript.' + js_ext
+
+    # Copy template file to path
+    js_path = os.path.join(path, js_name)
+    shutil.copy(tmp_path, js_path)
+
+    # Make replacements in template file:
+    replace_in_file(js_path, '<replace_with_dir_list>', dir_list_path_scratch)
+
+    if multi_type == 'parallel':
+        replace_in_file(js_path, '<replace_with_num_cores>', str(num_cores))
+
+    if sge:
+        if job_name is not None:
+            replace_in_file(js_path, '<replace_with_job_name>', job_name)
+        else:
+            delete_line(js_path, '<replace_with_job_name>')
+
+        if selective_submission:
+            delete_line(js_path, '#$ -t')
+        else:
+            replace_in_file(js_path, '<replace_with_job_index_range>',
+                            '1-' + str(num_calcs))
+
+    if method == 'castep':
+        replace_in_file(js_path, '<replace_with_seed_name>', seedname)
+
+    # For `method` == 'lammps', `sge` == True, `job_array` == False, we need
+    # a helper jobscript, called by the SGE jobscript:
+    if method == 'lammps' and sge and not job_array:
+
+        if multi_type != 'serial' or scratch_os != 'posix':
+            raise NotImplementedError('Jobscript parameters not supported.')
+
+        help_tmp_path = os.path.join(
+            templates_path, 'lammps_no_sge_serial_posix_single_job.txt')
+
+        help_js_path = os.path.join(path, 'lammps_single_job.sh')
+        shutil.copy(help_tmp_path, help_js_path)
+        replace_in_file(help_js_path, '<replace_with_dir_list>', dir_list_path)
+
+    # Make a directory for job-related output. E.g. .o and .e files from CSF.
+    os.makedirs(os.path.join(path, 'output'))
 
 
 def get_castep_cell_constraints(lengths_equal, angles_equal, fix_lengths,

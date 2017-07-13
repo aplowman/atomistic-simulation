@@ -4,6 +4,8 @@ import shutil
 import dict_parser
 import utils
 import atomistic
+from bravais import BravaisLattice
+from crystal import CrystalStructure
 import copy
 
 
@@ -156,10 +158,6 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
                 sub_up.append(prepare_series_update(j, atomistic_structure))
 
             srs_update.append(sub_up)
-
-    # print('srs_update: \n{}\n'.format(
-    #     dict_parser.formatting.format_list(srs_update)))
-
     """
         Given update data for nested series passed in this form: [data_1, [data_2, data_3]], where
         data_i are lists of dicts, each element in the list represents a series to be
@@ -190,15 +188,45 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
 
             su_flat.append(si_sub)
 
-    # print('su_flat: \n{}\n'.format(su_flat))
-
     all_updates_lst = utils.nest_lists(su_flat)
-
-    # print('all_updates_lst: \n{}\n'.format(all_updates_lst))
-
     all_updates = [utils.combine_list_of_dicts(i) for i in all_updates_lst]
-
     return all_updates
+
+
+def process_castep_opt(opt):
+    """
+
+    """
+
+    if opt.get('checkpoint') is True:
+        if opt.get('backup_interval') is not None:
+            opt['param'].update(
+                {'backup_interval': opt['backup_interval']})
+
+    else:
+        opt['param'].update({'write_checkpoint': 'none'})
+
+    opt.pop('backup_interval', None)
+    opt.pop('checkpoint', None)
+
+    task = opt['param']['task']
+
+    if task == 'SinglePoint':
+        opt['cell_constraints'].pop('cell_angles_equal', None)
+        opt['cell_constraints'].pop('cell_lengths_equal', None)
+        opt['cell_constraints'].pop('fix_cell_angles', None)
+        opt['cell_constraints'].pop('fix_cell_lengths', None)
+        opt['atom_constraints'].pop('fix_xy_idx', None)
+        opt['atom_constraints'].pop('fix_xyz_idx', None)
+
+    elif task == 'GeometryOptimisation':
+
+        # atom constraints are parsed as 2D arrays (pending todo of
+        # dict-parser) (want 1D arrays)
+
+        for k, v in opt['atom_constraints'].items():
+            if isinstance(v, np.ndarray):
+                opt['atom_constraints'][k] = v[:, 0]
 
 
 def main():
@@ -283,7 +311,6 @@ def main():
     log.append('Reading log file.')
     opt_path = os.path.join(SU_PATH, 'opt.txt')
     opt = dict_parser.parse_dict_file(opt_path)
-    print(opt)
 
     # Modify options dictionary to include additional info
 
@@ -293,20 +320,18 @@ def main():
     opt['set_up']['job_name'] = "j_" + s_num
 
     scratch_os = opt['set_up']['scratch_os']
-    local_os = os.name
+    stage_os = os.name
 
     if scratch_os == 'nt':
         scratch_path_sep = '\\'
     elif scratch_os == 'posix':
         scratch_path_sep = '/'
 
-    if local_os == 'nt':
-        local_path_sep = '\\'
-    elif local_os == 'posix':
-        local_path_sep = '/'
-
     stage_path = os.path.join(opt['set_up']['stage_path'], s_id)
     print('stage_path: {}'.format(stage_path))
+
+    scratch_path = scratch_path_sep.join([opt['set_up']['scratch_path'], s_id])
+    print('scratch_path: {}'.format(scratch_path))
 
     log.append('Making stage directory at: {}.'.format(stage_path))
     os.makedirs(stage_path, exist_ok=False)
@@ -315,10 +340,8 @@ def main():
     log.append('Generating CrystalStructure objects.')
     cs = []
     for cs_opt in opt['crystal_structures']:
-        brav_lat = atomistic.BravaisLattice(**cs_opt['lattice'])
-        cs.append(atomistic.CrystalStructure(brav_lat, cs_opt['motif']))
-
-    # print('cs: \n{}\n'.format(cs))
+        brav_lat = BravaisLattice(**cs_opt['lattice'])
+        cs.append(CrystalStructure(brav_lat, cs_opt['motif']))
 
     # Generate base structure
     log.append('Generating base AtomisticStructure object.')
@@ -335,7 +358,6 @@ def main():
             struct_opt.update({k: v})
 
     base_as = struct_lookup[base_as_opt['type']](**struct_opt)
-    print('base_as: \n{}\n'.format(base_as))
 
     # Visualise base AtomisticStructure:
     save_args = {
@@ -356,25 +378,23 @@ def main():
 
     # Get series definitions:
     srs_df = opt['series']
-    # print(dict_parser.formatting.format_list(srs_df))
 
     # Prepare series update data:
     all_upd = prepare_all_series_updates(srs_df, base_as)
-    print('all_upd: \n{}\n'.format(dict_parser.formatting.format_list(all_upd)))
+
+    all_scratch_paths = []
 
     # Generate simulation series:
     for upd_idx, upd in enumerate(all_upd):
 
-        print('upd: \n{}\n'.format(upd))
-
         # Update options:
-        opt_upd = copy.deepcopy(opt)
-        utils.update_dict(opt_upd, upd)
+        srs_opt = copy.deepcopy(opt)
+        utils.update_dict(srs_opt, upd)
 
         # Generate AtomisticStructure:
         log.append('Generating series AtomisticStructure object.')
         srs_struct_opt = {}
-        srs_as_opt = opt_upd['base_structure']
+        srs_as_opt = srs_opt['base_structure']
         for k, v in srs_as_opt.items():
             if k == 'type':
                 continue
@@ -386,7 +406,6 @@ def main():
                 srs_struct_opt.update({k: v})
 
         srs_as = struct_lookup[srs_as_opt['type']](**srs_struct_opt)
-        print('srs_as: \n{}\n'.format(srs_as))
 
         # Form the directory path for this sim:
         srs_path = []
@@ -399,9 +418,24 @@ def main():
                 srs_path.append(
                     '_'.join([upd['series_id'][j['name']]['path'] for j in i]))
 
-        print('path: {}'.format(srs_path))
+        stage_srs_path = os.path.join(stage_path, 'calcs', *srs_path)
+        scratch_srs_path = scratch_path_sep.join(
+            [scratch_path, 'calcs', *srs_path])
+
+        all_scratch_paths.append(scratch_srs_path)
+        srs_opt['set_up']['stage_series_path'] = stage_srs_path
+        srs_opt['set_up']['scratch_srs_path'] = scratch_srs_path
+
+        # print('stage_srs_path: {}'.format(stage_srs_path))
+        # print('scratch_srs_path: {}'.format(scratch_srs_path))
+
+        # Process CASTEP options
+        if srs_opt['method'] == 'castep':
+            process_castep_opt(srs_opt['castep'])
 
         # Generate AtomisticSim:
+        asim = atomistic.AtomisticSimulation(srs_as, srs_opt)
+        asim.write_input_files()
 
 
 if __name__ == '__main__':

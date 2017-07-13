@@ -27,6 +27,36 @@ import readwrite
 REF_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ref')
 
 
+class AtomisticSimulation(object):
+
+    def __init__(self, atomistic_structure, options):
+
+        self.structure = atomistic_structure
+        self.options = options
+
+    def write_input_files(self):
+
+        if self.options['method'] == 'castep':
+
+            cst_opt = self.options['castep']
+            set_opt = self.options['set_up']
+
+            cst_in_params = {
+                'supercell': self.structure.supercell,
+                'atom_sites': self.structure.atom_sites,
+                'species': self.structure.all_species,
+                'species_idx': self.structure.all_species_idx,
+                'path': set_opt['stage_series_path'],
+                'seedname': cst_opt['seedname'],
+                'cell': cst_opt['cell'],
+                'param': cst_opt['param'],
+                'cell_constraints': cst_opt['cell_constraints'],
+                'atom_constraints': cst_opt['atom_constraints'],
+            }
+
+            simsio.write_castep_inputs(**cst_in_params)
+
+
 class AtomisticStructure(object):
     """
     Class to represent crystals of atoms

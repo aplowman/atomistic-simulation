@@ -61,12 +61,6 @@ def snap_arr_to_val(arr, val, tol):
     return out
 
 
-def is_arr_int(arr):
-    """ Finds if all the elements in an array are integers. Returns bool."""
-
-    return np.all(np.equal(np.mod(arr, 1), 0))
-
-
 def project_vec_to_plane(vec, plane_normal):
     """
         Returns the vector that is the projection of `vec` onto the plane given by

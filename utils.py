@@ -327,3 +327,23 @@ def update_dict(d, u):
 
 def transpose_list(a):
     return [list(x) for x in zip(*a)]
+
+
+def parse_as_int_arr(arr):
+    """Take a list or array and return an int array"""
+
+    if isinstance(arr, list):
+        arr = np.array(arr)
+
+    if isinstance(arr, np.ndarray):
+
+        if np.allclose(np.mod(arr, 1), 0):
+            arr = arr.astype(int)
+
+        else:
+            raise ValueError('`arr` cannot be parsed as an int array.')
+
+    else:
+        raise ValueError('`arr` is not a list or array.')
+
+    return arr

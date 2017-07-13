@@ -1,0 +1,8 @@
+@echo off
+setlocal ENABLEDELAYEDEXPANSION
+for /f "tokens=*" %%G in ('type "<replace_with_dir_list>"') do (
+	cd %%G
+	echo current dir is !cd!
+	lmp_serial < in.lammps > NUL
+)
+pause

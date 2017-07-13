@@ -1,0 +1,13 @@
+#!/bin/bash
+
+#$ -S /bin/bash
+#$ -N <replace_with_job_name>
+#$ -cwd
+#$ -V
+#$ -o output/
+#$ -e output/
+#$ -t <replace_with_job_index_range>
+
+SUBDIR=`sed -n "${SGE_TASK_ID}p" <replace_with_dir_list>`
+cd $SUBDIR
+lmp_linux < in.lammps

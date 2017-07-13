@@ -1,0 +1,14 @@
+#!/bin/bash
+
+#$ -S /bin/bash
+#$ -N <replace_with_job_name>
+#$ -cwd
+#$ -V
+#$ -o output/
+#$ -e output/
+#$ -pe smp.pe <replace_with_num_cores>
+#$ -t <replace_with_job_index_range>
+
+SUBDIR=`sed -n "${SGE_TASK_ID}p" <replace_with_dir_list>`
+cd $SUBDIR
+mpirun -n $NSLOTS lmp_linux < in.lammps

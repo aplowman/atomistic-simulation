@@ -11,6 +11,7 @@ from bravais import BravaisLattice
 from crystal import CrystalStructure
 import copy
 import shutil
+import subprocess
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
@@ -142,10 +143,10 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
     atomistic_structure : AtomisticStructure
         This is the base AtomisticStructure object used to form the simulation
         series. This is only needed in some cases, where some additional
-        processing occurs on the series values which depends on the base 
-        structure. For example, in generating a kpoint series from a specified 
+        processing occurs on the series values which depends on the base
+        structure. For example, in generating a kpoint series from a specified
         list of kpoint spacings, it is useful to remove kpoint spacing values
-        which produce duplicate kpoint MP grids. 
+        which produce duplicate kpoint MP grids.
 
     """
 
@@ -168,7 +169,7 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
         must have the same length, combine the series to form and return a list of
         the necessary combinations of the update data, such that each element in the return list
         corresponds to a single simulation.
-    
+
     """
 
     # Now combine update data for each series into a flat list of dicts, where
@@ -246,8 +247,8 @@ def main():
         a given sigma value.)
     -   Also allow dict_parser to have variables so crystal structure can be
         reference as a variable instead of an index: instead of in opt.txt:
-        base_structure --> cs_idx = [0] we could have base_structure 
-        --> crystal_structure = <crystal_structures>[0] where 
+        base_structure --> cs_idx = [0] we could have base_structure
+        --> crystal_structure = <crystal_structures>[0] where
         crystal_structures is also defined in the opt.txt
 
     """
@@ -330,11 +331,14 @@ def main():
     elif scratch_os == 'posix':
         scratch_path_sep = '/'
 
-    stage_path = os.path.join(opt['set_up']['stage_path'], s_id)
-    print('stage_path: {}'.format(stage_path))
+    # Remove trailing path separators:
+    stage_base_path = opt['set_up']['stage_path'].rstrip(os.sep)
+    scratch_base_path = opt['set_up']['scratch_path'].rstrip(scratch_path_sep)
+    opt['set_up']['stage_path'] = stage_base_path
+    opt['set_up']['scratch_path'] = scratch_base_path
 
-    scratch_path = scratch_path_sep.join([opt['set_up']['scratch_path'], s_id])
-    print('scratch_path: {}'.format(scratch_path))
+    stage_path = os.path.join(stage_base_path, s_id)
+    scratch_path = scratch_path_sep.join([scratch_base_path, s_id])
 
     log.append('Making stage directory at: {}.'.format(stage_path))
     os.makedirs(stage_path, exist_ok=False)
@@ -430,9 +434,6 @@ def main():
         srs_opt['set_up']['stage_series_path'] = stage_srs_path
         srs_opt['set_up']['scratch_srs_path'] = scratch_srs_path
 
-        # print('stage_srs_path: {}'.format(stage_srs_path))
-        # print('scratch_srs_path: {}'.format(scratch_srs_path))
-
         # Process CASTEP options
         if srs_opt['method'] == 'castep':
             process_castep_opt(srs_opt['castep'])
@@ -441,8 +442,6 @@ def main():
         asim = atomistic.AtomisticSimulation(srs_as, srs_opt)
         asim.write_input_files()
         all_sims.append(asim)
-
-    print('all_scratch_paths: \n{}\n'.format(all_scratch_paths))
 
     # Save all sims as pickle file:
     pick_path = os.path.join(stage_path, 'sims.pickle')
@@ -483,6 +482,49 @@ def main():
     # in the staging area:
 
     print('Simulation series generated here: {}'.format(stage_path))
+
+    # Convert stage_path to one that Bash on Windows can use (if we need it):
+    drv, pst_drv = os.path.splitdrive(stage_path)
+    stage_path_bash = '/'.join(['/mnt', drv[0].lower()] +
+                               pst_drv.strip('\\').split('\\')) + '/'
+    scratch_host = opt['set_up']['scratch_host']
+    bash_arg = './set_up/copy_sims_remote.sh {} {} {}'.format(
+        scratch_host, stage_path_bash, scratch_path)
+
+    scratch_type = opt['set_up']['scratch_type']
+    if scratch_type == 'remote':
+
+        if stage_os == 'nt':
+
+            if scratch_os == 'posix':
+
+                print('Remotely copying simulations to scratch...')
+                subprocess.run(['bash', '-c', bash_arg])
+
+            elif scratch_os == 'nt':
+                raise NotImplementedError('Unsupported remote transfer.')
+
+        elif stage_os == 'posix':
+
+            if scratch_os == 'posix':
+                raise NotImplementedError('Unsupported remote transfer.')
+
+            elif scratch_os == 'nt':
+                raise NotImplementedError('Unsupported remote transfer.')
+
+    elif scratch_type == 'local':
+
+        if stage_os == 'nt' and scratch_os == 'nt':
+            print('Locally copying simulations to scratch...')
+            raise NotImplementedError('Unsupported local transfer.')
+
+        if stage_os == 'posix' and scratch_os == 'posix':
+            print('Locally copying simulations to scratch...')
+            raise NotImplementedError('Unsupported local transfer.')
+
+    series_msg = ' series.' if len(all_scratch_paths) > 0 else '.'
+    print('Finished setting up simulation{}'
+          ' session_id: {}'.format(series_msg, s_id))
 
 
 if __name__ == '__main__':

@@ -4,6 +4,7 @@ import numpy as np
 import readwrite
 from readwrite import format_arr as fmt_arr
 import vectors
+import utils
 
 
 def get_castep_cell_constraints(lengths_equal, angles_equal, fix_lengths,
@@ -15,23 +16,40 @@ def get_castep_cell_constraints(lengths_equal, angles_equal, fix_lengths,
     Parameters
     ----------
     lengths_equal : str
-        Some combination of 'a', 'b' and 'c'. Represents which
+        Some combination of 'a', 'b' and 'c', or 'none'. Represents which
         supercell vectors are to remain equal to one another.
     angles_equal : str
-        Some combination of 'a', 'b' and 'c'. Represents which
+        Some combination of 'a', 'b' and 'c', or 'none'. Represents which
         supercell angles are to remain equal to one another.
     fix_lengths : str
-        Some combination of 'a', 'b' and 'c'. Represents which
+        Some combination of 'a', 'b' and 'c', or 'none'. Represents which
         supercell vectors are to remain fixed.
     fix_angles : str
-        Some combination of 'a', 'b' and 'c'. Represents which
+        Some combination of 'a', 'b' and 'c', or 'none'. Represents which
         supercell angles are to remain fixed.    
 
     Returns
     -------
     list of list of int
 
+    TODO: 
+    -   Improve robustness; should return exception for some cases where it
+        currently is not: E.g. angles_equal = bc; fix_angles = ab should not
+        be allowed. See OneNote notebook on rules.
+
     """
+
+    if lengths_equal == 'none':
+        lengths_equal == ''
+
+    if angles_equal == 'none':
+        angles_equal == ''
+
+    if fix_lengths == 'none':
+        fix_lengths == ''
+
+    if fix_angles == 'none':
+        fix_angles == ''
 
     eqs_params = [lengths_equal, angles_equal]
     fxd_params = [fix_lengths, fix_angles]
@@ -39,6 +57,7 @@ def get_castep_cell_constraints(lengths_equal, angles_equal, fix_lengths,
 
     ambig_cell_msg = 'Ambiguous cell constraints specified.'
 
+    # Loop through lengths, then angles:
     for idx, (fp, ep) in enumerate(zip(fxd_params, eqs_params)):
 
         if len(fp) == 3 and all([x in fp for x in ['a', 'b', 'c']]):
@@ -121,7 +140,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
         Array of column vectors representing the positions of each atom.
     species : ndarray of str of shape (M, )
         The distinct species of the atoms.
-    species_idx : ndarray of shape (N, )
+    species_idx : list or ndarray of shape (N, )
         Maps each atom site to a given species in `species`.
     path : str
         Directory in which to generate input files.
@@ -147,11 +166,11 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                 supercell angles are to remain fixed.
     atom_constraints : dict, optional
         A dict with the following keys:
-            fix_xy_idx : ndarray of dimension 1 or str 
+            fix_xy_idx : list or ndarray of dimension 1 or str 
                 If array, the atom indices whose `x` and `y` coordinates are to
                 be fixed. If str, must be 'all' or 'none'. Set to 'none'
                 if `atom_constraints` is not specified.
-            fix_xyz_idx : ndarray of dimension 1 or str
+            fix_xyz_idx : list or ndarray of dimension 1 or str
                 If array, the atom indices whose `x`, `y` and `z` coordinates
                 are to be fixed. If str, must be 'all' or 'none'. Set to 'none'
                 if `atom_constraints` is not specified.
@@ -162,6 +181,10 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
     """
 
     # Validation:
+
+    species_idx = utils.parse_as_int_arr(species_idx)
+    if species_idx.min() < 0 or species_idx.max() > (atom_sites.shape[1] - 1):
+        raise IndexError('`species_idx` must index `atom_sites`'.format(k))
 
     cell_cnst_def = {
         'lengths_equal': '',
@@ -187,14 +210,18 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
     for k, v in atom_constraints.items():
 
-        if not isinstance(v, (np.ndarray, str)):
-            raise ValueError('`atom_constraints[{}]` must be a 1D array '
-                             'or str.'.format(k))
+        if not isinstance(v, (list, np.ndarray, str)):
+            raise ValueError('`atom_constraints[{}]` must be a 1D list, 1D '
+                             'array or str.'.format(k))
+
+        if not isinstance(v, str):
+            atom_constraints[k] = utils.parse_as_int_arr(v)
+            v = atom_constraints[k]
 
         if isinstance(v, np.ndarray):
             if v.ndim != 1:
-                raise ValueError('`atom_constraints[{}]` must be a 1D array '
-                                 'or str.'.format(k))
+                raise ValueError('`atom_constraints[{}]` must be a 1D list, '
+                                 '1D array or str.'.format(k))
 
             if v.min() < 0 or v.max() > (atom_sites.shape[1] - 1):
                 raise IndexError('`atom_constraints[{}]` must index '
@@ -203,13 +230,21 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
     f_xy = atom_constraints.get('fix_xy_idx')
     f_xyz = atom_constraints.get('fix_xyz_idx')
 
-    if f_xy == 'all':
-        f_xy = np.arange(atom_sites.shape[1])
+    if isinstance(f_xy, str):
+        if f_xy == 'all':
+            f_xy = np.arange(atom_sites.shape[1])
 
-    if f_xyz == 'all':
-        f_xyz = np.arange(atom_sites.shape[1])
+        elif f_xy == 'none':
+            f_xy = np.array([])
 
-    if f_xyz not in ['none', 'all'] and f_xy not in ['none', 'all']:
+    if isinstance(f_xyz, str):
+        if f_xyz == 'all':
+            f_xyz = np.arange(atom_sites.shape[1])
+
+        elif f_xyz == 'none':
+            f_xyz = np.array([])
+
+    if len(f_xyz) > 0 and len(f_xy) > 0:
         if len(np.intersect1d(f_xyz, f_xy)) > 0:
             raise ValueError('`fix_xyz_idx` and `fix_xy_idx` cannot '
                              'contain the same indices.')
@@ -222,62 +257,17 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
         # Supercell (need to tranpose to array of row vectors):
         cf.write('%block lattice_cart\n')
-        cf.write(fmt_arr(supercell.T, format_spec='{:15.10f}') + '\n')
-        cf.write('%endblock lattice_cart\n')
+        cf.write(fmt_arr(supercell.T, format_spec='{:24.15f}', col_delim=' '))
+        cf.write('%endblock lattice_cart\n\n')
 
         # Atoms (need to tranpose to array of row vectors):
         atom_species = species[species_idx][:, np.newaxis]
+
         cf.write('%block positions_abs\n')
         cf.write(fmt_arr([atom_species, atom_sites.T],
-                         format_spec=['{:15}', '{:15.10f}'],
-                         col_delim=' ') + '\n')
+                         format_spec=['{:5}', '{:24.15f}'],
+                         col_delim=' '))
         cf.write('%endblock positions_abs\n')
-
-        # Atom constraints:
-
-        if f_xyz != 'none' or f_xy != 'none':
-
-            # For each atom, get the index within like-species atoms:
-            # 1-based indexing instead of 0-based!
-            sub_idx = np.zeros((atom_sites.shape[1]), dtype=int) - 1
-            for sp_idx in range(len(species)):
-                w = np.where(species_idx == sp_idx)[0]
-                sub_idx[w] = np.arange(w.shape[0]) + 1
-
-            cnst_fs = ['{:d}', '{:15}', '{:d}', '{:15.10f}']
-            cf.write('\n%block ionic_constraints\n')
-
-            if f_xyz != 'none':
-
-                num_cnst = f_xyz.shape[0]
-                f_xyz_sp = np.tile(atom_species[f_xyz], 3)[:, np.newaxis]
-                f_xyz_sub_idx = np.tile(sub_idx[f_xyz], 3)[:, np.newaxis]
-                f_xyz_cnst_idx = (np.arange(num_cnst * 3) + 1)[:, np.newaxis]
-                f_xyz_cnst_coef = np.tile(np.eye(3), (num_cnst, 1))
-
-                cnst_arrs_xyz = [f_xyz_cnst_idx, f_xyz_sp, f_xyz_sub_idx,
-                                 f_xyz_cnst_coef]
-
-                cf.write(fmt_arr(cnst_arrs_xyz,
-                                 format_spec=cnst_fs,
-                                 col_delim=' '))
-
-            if f_xy != 'none':
-
-                num_cnst = f_xy.shape[0]
-                f_xy_sp = np.tile(atom_species[f_xy], 2)[:, np.newaxis]
-                f_xy_sub_idx = np.tile(sub_idx[f_xy], 2)[:, np.newaxis]
-                f_xy_cnst_idx = (np.arange(num_cnst * 2) + 1)[:, np.newaxis]
-                f_xy_cnst_coef = np.tile(np.eye(3)[:2], (num_cnst, 1))
-
-                cnst_arrs_xy = [f_xy_cnst_idx, f_xy_sp, f_xy_sub_idx,
-                                f_xy_cnst_coef]
-
-                cf.write(fmt_arr(cnst_arrs_xy,
-                                 format_spec=cnst_fs,
-                                 col_delim=' '))
-
-            cf.write('%endblock ionic_constraints\n')
 
         # Cell constraints:
         encoded_params = get_castep_cell_constraints(**cell_constraints)
@@ -295,16 +285,65 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                 cf.write('{}\t{}\t{}\n'.format(*encoded_params[1]))
                 cf.write('%endblock cell_constraints\n')
 
+        # Atom constraints:
+        if len(f_xyz) > 0 or len(f_xy) > 0:
+
+            # For each atom, get the index within like-species atoms:
+            # 1-based indexing instead of 0-based!
+            sub_idx = np.zeros((atom_sites.shape[1]), dtype=int) - 1
+            for sp_idx in range(len(species)):
+                w = np.where(species_idx == sp_idx)[0]
+                sub_idx[w] = np.arange(w.shape[0]) + 1
+
+            cnst_fs = ['{:<5d}', '{:<5}', '{:<5d}', '{:24.15f}']
+            cf.write('\n%block ionic_constraints\n')
+
+            nc_xyz = f_xyz.shape[0]
+            nc_xy = f_xy.shape[0]
+
+            if nc_xyz > 0:
+
+                f_xyz_sp = np.tile(atom_species[f_xyz], (3, 1))
+                f_xyz_sub_idx = np.repeat(sub_idx[f_xyz], 3)[:, np.newaxis]
+                f_xyz_cnst_idx = (np.arange(nc_xyz * 3) + 1)[:, np.newaxis]
+                f_xyz_cnst_coef = np.tile(np.eye(3), (nc_xyz, 1))
+
+                cnst_arrs_xyz = [f_xyz_cnst_idx, f_xyz_sp, f_xyz_sub_idx,
+                                 f_xyz_cnst_coef]
+
+                cf.write(fmt_arr(cnst_arrs_xyz,
+                                 format_spec=cnst_fs,
+                                 col_delim=' '))
+
+            if nc_xy > 0:
+
+                f_xy_sp = np.tile(atom_species[f_xy], (2, 1))
+                f_xy_sub_idx = np.repeat(sub_idx[f_xy], 2)[:, np.newaxis]
+                f_xy_cnst_idx = (np.arange(nc_xy * 2) + 1 +
+                                 (nc_xyz * 3))[:, np.newaxis]
+                f_xy_cnst_coef = np.tile(np.eye(3)[:2], (nc_xy, 1))
+
+                cnst_arrs_xy = [f_xy_cnst_idx, f_xy_sp, f_xy_sub_idx,
+                                f_xy_cnst_coef]
+
+                cf.write(fmt_arr(cnst_arrs_xy,
+                                 format_spec=cnst_fs,
+                                 col_delim=' '))
+
+            cf.write('%endblock ionic_constraints\n')
+
         # Other cell file items:
-        cf.write('\n')
-        for k, v in sorted(cell.items()):
-            cf.write('{:25s}= {}\n'.format(k, v))
+        if cell is not None:
+            cf.write('\n')
+            for k, v in sorted(cell.items()):
+                cf.write('{:25s}= {}\n'.format(k, v))
 
     # Write PARAM file:
-    param_path = os.path.join(path, seedname + '.param')
-    with open(param_path, 'w') as pf:
-        for k, v in sorted(param.items()):
-            pf.write('{:25s}= {}\n'.format(k, v))
+    if param is not None:
+        param_path = os.path.join(path, seedname + '.param')
+        with open(param_path, 'w') as pf:
+            for k, v in sorted(param.items()):
+                pf.write('{:25s}= {}\n'.format(k, v))
 
 
 def read_castep_output(dir_path, seedname=None, ignore_missing_output=False):

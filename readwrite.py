@@ -1,6 +1,7 @@
 import os
 import re
 import pickle
+import numpy as np
 
 
 def find_files_in_dir(dir_path, match_regex, recursive=False):

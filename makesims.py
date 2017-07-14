@@ -12,10 +12,154 @@ from crystal import CrystalStructure
 import copy
 import shutil
 import subprocess
+import posixpath
+import ntpath
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
 SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
+
+
+class Stage(object):
+    """
+    Class to represent the area on the local machine in which simulations
+    input files are generated.
+
+    Attributes
+    ----------
+    path : str
+        Directory of the staging area, including session_id.
+    os_name : str
+        Either 'nt` (Windows) or `posix` (Unix-like, MacOS)
+
+    """
+
+    def __init__(self, path, session_id):
+        """Constructor method to generate a Stage object."""
+        path = path.rstrip(os.sep)
+        self.path = os.path.join(path, session_id)
+        self.os_name = os.name
+
+    def get_path(self, *add_path):
+        """Get the path of a directory inside the stage area."""
+
+        return os.path.join(self.path, *add_path)
+
+    def get_bash_path(self, end_path_sep=False):
+        """Get the path in a posix style, e.g. for using with bash commands in
+        Windows Subsystem for Linux.
+
+        This replaces drives letters specified like "C:\foo" with
+        "/mnt/c/foo".
+
+        Parameters
+        ----------
+        end_path_sep : bool, optional
+            Specifies whether the returned path should end in path separator.
+            Default is False.
+
+        """
+
+        if self.os_name == 'posix':
+            return self.path
+
+        elif self.os_name == 'nt':
+            drv, pst_drv = os.path.splitdrive(self.path)
+            stage_path_bash = posixpath.sep.join(
+                [posixpath.sep + 'mnt', drv[0].lower()] +
+                pst_drv.strip(ntpath.sep).split(ntpath.sep))
+
+            if end_path_sep:
+                stage_path_bash += posixpath.sep
+
+            return stage_path_bash
+
+    def copy_to_scratch(self, scratch):
+        """
+        Copy simulation directory to Scratch
+
+        Parameters
+        ----------
+        scratch : Scratch
+
+        """
+
+        if scratch.remote:
+
+            if self.os_name == 'nt' and scratch.os_name == 'posix':
+
+                if utils.dir_exists_remote(scratch.host, scratch.path):
+                    raise ValueError('Directory already exists on scratch.'
+                                     ' Aborting.')
+
+                print('Remotely copying simulations to scratch.')
+                bash_path = self.get_bash_path(end_path_sep=True)
+                utils.rsync_remote(bash_path, scratch.host, scratch.path)
+
+            else:
+                raise NotImplementedError('Unsupported remote transfer.')
+
+        else:
+
+            if self.os_name == 'nt' and scratch.os_name == 'nt':
+                # Use shutil
+                raise NotImplementedError('Unsupported local transfer.')
+
+            elif self.os_name == 'posix' and scratch.os_name == 'posix':
+                # Use rsync/scp
+                raise NotImplementedError('Unsupported local transfer.')
+
+
+class Scratch(object):
+    """
+    Class to represent the area on a machine in which simulations are to be
+    run.
+
+    Attributes
+    ----------
+    path : str
+        Directory of the scratch area, including session_id.
+    remote : bool
+        If True, the scratch area is on a remote machine. If False, it is on
+        the current machine.
+    os_name : str
+        Either 'nt` (Windows) or `posix` (Unix-like, MacOS)
+    offline_files : dict, optional
+        Stores information regarding how to deal with particular files which
+        shouldn't be moved over a network after simulations have completed. A
+        location on the scratch machine can be specifed, to which a subset of
+        calculation output files will be moved after simulations. These files
+        will not be moved over the network to some other location. It is a dict
+        with the following keys:
+            path : str
+                The location on the scratch machine in which to copy files
+                which match the list elements in `file_types`.
+            file_types : list of str
+                File types to match, which will be moved to `path`.
+    host : str, optional
+        Only applicable if `remote` is True. Default is None.
+
+    """
+
+    def __init__(self, path, remote, os_name, session_id, offline_files=None,
+                 host=None):
+        """Constructor method to generate a Scratch object."""
+        self.os_name = os_name
+        if self.os_name == 'nt':
+            path_mod = ntpath
+        elif self.os_name == 'posix':
+            path_mod = posixpath
+        self.path_sep = path_mod.sep
+        path = path.rstrip(self.path_sep)
+        self.path = self.path_sep.join([path, session_id])
+        self.remote = remote
+        self.host = host
+        self.offline_files = offline_files
+
+    def get_path(self, *add_path):
+        """Get the path of a directory inside the scratch area."""
+
+        return self.path_sep.join([self.path] + list(add_path))
 
 
 def prepare_series_update(series_spec, atomistic_structure):
@@ -316,32 +460,21 @@ def main():
     opt_path = os.path.join(SU_PATH, 'opt.txt')
     opt = dict_parser.parse_dict_file(opt_path)
 
+    # Convenience
+    su = opt['set_up']
+
     # Modify options dictionary to include additional info
 
     s_date, s_num = utils.get_date_time_stamp(split=True)
     s_id = s_date + '_' + s_num
-    opt['set_up']['session_id'] = s_id
-    opt['set_up']['job_name'] = "j_" + s_num
+    su['session_id'] = s_id
+    su['job_name'] = "j_" + s_num
 
-    scratch_os = opt['set_up']['scratch_os']
-    stage_os = os.name
+    stage = Stage(session_id=s_id, path=su['stage_path'])
+    scratch = Scratch(session_id=s_id, **su['scratch'])
 
-    if scratch_os == 'nt':
-        scratch_path_sep = '\\'
-    elif scratch_os == 'posix':
-        scratch_path_sep = '/'
-
-    # Remove trailing path separators:
-    stage_base_path = opt['set_up']['stage_path'].rstrip(os.sep)
-    scratch_base_path = opt['set_up']['scratch_path'].rstrip(scratch_path_sep)
-    opt['set_up']['stage_path'] = stage_base_path
-    opt['set_up']['scratch_path'] = scratch_base_path
-
-    stage_path = os.path.join(stage_base_path, s_id)
-    scratch_path = scratch_path_sep.join([scratch_base_path, s_id])
-
-    log.append('Making stage directory at: {}.'.format(stage_path))
-    os.makedirs(stage_path, exist_ok=False)
+    # log.append('Making stage directory at: {}.'.format(stage_path))
+    os.makedirs(stage.path, exist_ok=False)
 
     # Generate CrystalStructure objects:
     log.append('Generating CrystalStructure objects.')
@@ -368,29 +501,32 @@ def main():
 
     # Visualise base AtomisticStructure:
     save_args = {
-        'filename': os.path.join(stage_path, 'base_structure.html'),
+        'filename': stage.get_path('base_structure.html'),
         'auto_open': False
     }
     base_as.visualise(show_iplot=False, save=True, save_args=save_args)
 
     # Save original options file
     opt_src_path = os.path.join(SU_PATH, 'opt.txt')
-    opt_dst_path = os.path.join(stage_path, 'opt_in.txt')
+    opt_dst_path = stage.get_path('opt_in.txt')
     shutil.copy(opt_src_path, opt_dst_path)
 
     # Save current options dict
-    opt_p_str_path = os.path.join(stage_path, 'opt_processed.txt')
+    opt_p_str_path = stage.get_path('opt_processed.txt')
     with open(opt_p_str_path, mode='w', encoding='utf-8') as f:
         f.write(dict_parser.formatting.format_dict(opt))
 
     # Get series definitions:
-    srs_df = opt['series']
+    srs_df = opt.get('series')
+    is_srs = srs_df is not None and len(srs_df) > 0
 
     # Prepare series update data:
-    all_upd = prepare_all_series_updates(srs_df, base_as)
-
+    all_upd = [{}]
     all_scratch_paths = []
     all_sims = []
+
+    if is_srs:
+        all_upd = prepare_all_series_updates(srs_df, base_as)
 
     # Generate simulation series:
     for upd_idx, upd in enumerate(all_upd):
@@ -417,18 +553,20 @@ def main():
 
         # Form the directory path for this sim:
         srs_path = []
-        for i in srs_df:
+        if is_srs:
+            for i in srs_df:
+                if isinstance(i, dict):
+                    srs_path.append(upd['series_id'][i['name']]['path'])
 
-            if isinstance(i, dict):
-                srs_path.append(upd['series_id'][i['name']]['path'])
+                elif isinstance(i, list):
+                    srs_path.append(
+                        '_'.join([upd['series_id'][j['name']]['path']
+                                  for j in i]))
+        else:
+            srs_path = ['']
 
-            elif isinstance(i, list):
-                srs_path.append(
-                    '_'.join([upd['series_id'][j['name']]['path'] for j in i]))
-
-        stage_srs_path = os.path.join(stage_path, 'calcs', *srs_path)
-        scratch_srs_path = scratch_path_sep.join(
-            [scratch_path, 'calcs', *srs_path])
+        stage_srs_path = stage.get_path('calcs', *srs_path)
+        scratch_srs_path = scratch.get_path('calcs', *srs_path)
 
         all_scratch_paths.append(scratch_srs_path)
         srs_opt['set_up']['stage_series_path'] = stage_srs_path
@@ -444,7 +582,7 @@ def main():
         all_sims.append(asim)
 
     # Save all sims as pickle file:
-    pick_path = os.path.join(stage_path, 'sims.pickle')
+    pick_path = stage.get_path('sims.pickle')
     pick = {
         'all_sims': all_sims
     }
@@ -452,22 +590,21 @@ def main():
 
     # Write jobscript
     js_params = {
-        'path': stage_path,
+        'path': stage.path,
         'calc_paths': all_scratch_paths,
         'method': opt['method'],
-        'num_cores': opt['set_up']['num_cores'],
-        'sge': opt['set_up']['sge'],
-        'job_array': opt['set_up']['job_array'],
-        'templates_path': os.path.join(SU_PATH, 'jobscript_templates'),
-        'scratch_os': scratch_os,
-        'scratch_path': scratch_path
+        'num_cores': su['num_cores'],
+        'sge': su['sge'],
+        'job_array': su['job_array'],
+        'scratch_os': scratch.os_name,
+        'scratch_path': scratch.path
     }
 
-    selective_submission = opt['set_up'].get('selective_submission')
+    selective_submission = su.get('selective_submission')
     if selective_submission:
         js_params.update({'selective_submission': selective_submission})
 
-    job_name = opt['set_up'].get('job_name')
+    job_name = su.get('job_name')
     if job_name:
         js_params.update({'job_name': job_name})
 
@@ -480,48 +617,12 @@ def main():
 
     # Now prompt the user to check the calculation has been set up correctly
     # in the staging area:
-    print('Simulation series generated here: {}'.format(stage_path))
-    if not utils.confirm('Copy to scratch?'):
+    print('Simulation series generated here: {}'.format(stage.path))
+    if utils.confirm('Copy to scratch?'):
+        stage.copy_to_scratch(scratch)
+    else:
+        print('Exiting.')
         return
-
-    # Convert stage_path to one that Bash on Windows can use (if we need it):
-    drv, pst_drv = os.path.splitdrive(stage_path)
-    stage_path_bash = '/'.join(['/mnt', drv[0].lower()] +
-                               pst_drv.strip('\\').split('\\')) + '/'
-    scratch_host = opt['set_up']['scratch_host']
-    bash_arg = './set_up/copy_sims_remote.sh {} {} {}'.format(
-        scratch_host, stage_path_bash, scratch_path)
-
-    scratch_type = opt['set_up']['scratch_type']
-    if scratch_type == 'remote':
-
-        if stage_os == 'nt':
-
-            if scratch_os == 'posix':
-
-                print('Remotely copying simulations to scratch...')
-                subprocess.run(['bash', '-c', bash_arg])
-
-            elif scratch_os == 'nt':
-                raise NotImplementedError('Unsupported remote transfer.')
-
-        elif stage_os == 'posix':
-
-            if scratch_os == 'posix':
-                raise NotImplementedError('Unsupported remote transfer.')
-
-            elif scratch_os == 'nt':
-                raise NotImplementedError('Unsupported remote transfer.')
-
-    elif scratch_type == 'local':
-
-        if stage_os == 'nt' and scratch_os == 'nt':
-            print('Locally copying simulations to scratch...')
-            raise NotImplementedError('Unsupported local transfer.')
-
-        if stage_os == 'posix' and scratch_os == 'posix':
-            print('Locally copying simulations to scratch...')
-            raise NotImplementedError('Unsupported local transfer.')
 
     series_msg = ' series.' if len(all_scratch_paths) > 0 else '.'
     print('Finished setting up simulation{}'

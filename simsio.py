@@ -7,9 +7,12 @@ import vectors
 import utils
 import shutil
 
+SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
+JS_TEMPLATE_DIR = os.path.join(SCRIPTS_PATH, 'set_up', 'jobscript_templates')
+
 
 def write_jobscript(path, calc_paths, method, num_cores, sge, job_array,
-                    templates_path, scratch_os=None, scratch_path=None,
+                    scratch_os=None, scratch_path=None,
                     selective_submission=False, job_name=None, seedname=None):
     """
     Write a jobscript file whose execution runs calculation input files.
@@ -35,8 +38,6 @@ def write_jobscript(path, calc_paths, method, num_cores, sge, job_array,
         calculations which won't take a long time to complete. If submitted as 
         a job array, a significant fraction of the total completion time may be
         queuing.
-    templates_path : str
-        The directory in which to find jobscript template files.        
     scratch_os : str, optional
         Either 'nt' (Windows) or 'posix' (Unix-like, MacOS). The operating
         system on which the jobscript file will be executed. Default is to
@@ -112,7 +113,7 @@ def write_jobscript(path, calc_paths, method, num_cores, sge, job_array,
         multi_type + '_' + scratch_os + '_' + job_arr_str + '.txt'
 
     # Get the template file path:
-    tmp_path = os.path.join(templates_path, tmp_fn)
+    tmp_path = os.path.join(JS_TEMPLATE_DIR, tmp_fn)
 
     # Write text file with all calc paths
     dirlist_fn = 'dir_list.txt'
@@ -160,7 +161,7 @@ def write_jobscript(path, calc_paths, method, num_cores, sge, job_array,
             raise NotImplementedError('Jobscript parameters not supported.')
 
         help_tmp_path = os.path.join(
-            templates_path, 'lammps_no_sge_serial_posix_single_job.txt')
+            JS_TEMPLATE_DIR, 'lammps_no_sge_serial_posix_single_job.txt')
 
         help_js_path = os.path.join(path, 'lammps_single_job.sh')
         shutil.copy(help_tmp_path, help_js_path)

@@ -480,8 +480,9 @@ def main():
 
     # Now prompt the user to check the calculation has been set up correctly
     # in the staging area:
-
     print('Simulation series generated here: {}'.format(stage_path))
+    if not utils.confirm('Copy to scratch?'):
+        return
 
     # Convert stage_path to one that Bash on Windows can use (if we need it):
     drv, pst_drv = os.path.splitdrive(stage_path)

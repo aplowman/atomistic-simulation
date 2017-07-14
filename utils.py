@@ -345,3 +345,49 @@ def parse_as_int_arr(arr):
         raise ValueError('`arr` is not a list or array.')
 
     return arr
+
+
+def confirm(prompt=None, resp=False):
+    """    
+    Prompts for yes or no response from the user, returning True for yes and
+    False for no.
+
+    Parameters
+    ----------
+    prompt : str
+        The prompt to show the user. Default is 'Confirm'
+    resp : bool
+        The default response if the user types `Enter`.
+
+    Returns
+    -------
+    bool
+
+    """
+
+    pos = ['y', 'Y']
+    neg = ['n', 'N']
+
+    if prompt is None:
+        prompt = 'Confirm'
+
+    if resp:
+        prompt = '{} [{}]|{}: '.format(prompt, 'y', 'n')
+    else:
+        prompt = '{} [{}]|{}: '.format(prompt, 'n', 'y')
+
+    while True:
+
+        ans = input(prompt)
+
+        if not ans:
+            return resp
+
+        if ans not in (pos + neg):
+            print('Please enter y or n.')
+            continue
+
+        if ans in pos:
+            return True
+        elif ans in neg:
+            return False

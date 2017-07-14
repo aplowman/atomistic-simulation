@@ -1,5 +1,6 @@
 import numpy as np
 from numpy import linalg as la
+from itertools import combinations
 
 
 def row_wise_dot(a, b):
@@ -370,3 +371,26 @@ def find_unique_int_vecs(s):
     a = a[np.lexsort((a[:, 1], a[:, 0]))]
 
     return a
+
+
+def get_vec_distances(vecs):
+    """
+    Find the Euclidean distances between all unique column vector
+    pairs.
+
+    Parameters
+    ----------
+    vecs : ndarray of shape (3, N)
+
+    Returns
+    -------
+    ndarray of shape (N, )
+
+    """
+
+    # Get indices of unique pairs:
+    idx = np.array(list(combinations(range(vecs.shape[1]), 2))).T
+    b = vecs.T[idx]
+    dist = np.sqrt(np.sum((b[0] - b[1])**2, axis=1))
+
+    return dist

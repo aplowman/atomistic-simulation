@@ -331,9 +331,9 @@ def delete_line(file_path, search_str):
 
     new_file_path = file_path + '_new'
 
-    with open(file_path, 'r', encoding='utf-8') as orig_file:
+    with open(file_path, 'r', encoding='utf-8', newline='') as orig_file:
 
-        with open(new_file_path, 'w', encoding='utf-8') as new_file:
+        with open(new_file_path, 'w', encoding='utf-8', newline='') as new_file:
 
             for ln in orig_file:
 
@@ -352,10 +352,10 @@ def replace_in_file(file_path, search_str, replace_str):
     -   Match string with regex.
     """
 
-    with open(file_path, 'r', encoding='utf-8') as orig_file:
+    with open(file_path, 'r', encoding='utf-8', newline='') as orig_file:
         file_data = orig_file.read()
 
     file_data = file_data.replace(search_str, replace_str)
 
-    with open(file_path, 'w', encoding='utf-8') as new_file:
+    with open(file_path, 'w', encoding='utf-8', newline='') as new_file:
         new_file.write(file_data)

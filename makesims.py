@@ -187,7 +187,8 @@ def prepare_series_update(series_spec, atomistic_structure):
     allowed_sn = [
         'kpoint',
         'cut_off_energy',
-        'smearing_width'
+        'smearing_width',
+        'gb_size'
     ]
 
     if sn not in allowed_sn:
@@ -208,9 +209,6 @@ def prepare_series_update(series_spec, atomistic_structure):
         diff = start - stop if start > stop else stop - start
         num = (diff + step) / step
         vals = np.linspace(start, stop, num=num)
-    else:
-        # TODO: parse data types in option file
-        vals = [float(v) for v in vals]
 
     # Additional processing of series values
     if sn == 'kpoint':
@@ -272,6 +270,16 @@ def prepare_series_update(series_spec, atomistic_structure):
                     'param': {'smearing_width': '{:.2f}'.format(v)}},
                 'series_id': {
                     'smearing_width': {'val': v, 'path': '{:.2f}'.format(v)}}
+            })
+
+    elif sn == 'gb_size':
+
+        for v in vals:
+
+            out.append({
+                'base_structure': {'gb_size': v},
+                'series_id': {
+                    'gb_size': {'val': v, 'path': '{}_{}_{}'.format(*v[0])}}
             })
 
     return out
@@ -491,7 +499,7 @@ def main():
         if k == 'type':
             continue
         elif k == 'cs_idx':
-            struct_opt.update({'crystal_structure': cs[v[0][0]]})
+            struct_opt.update({'crystal_structure': cs[v]})
         elif k == 'sigma':
             struct_opt.update({'csl_vecs': csl_lookup[v]})
         else:
@@ -543,7 +551,7 @@ def main():
             if k == 'type':
                 continue
             elif k == 'cs_idx':
-                srs_struct_opt.update({'crystal_structure': cs[v[0][0]]})
+                srs_struct_opt.update({'crystal_structure': cs[v]})
             elif k == 'sigma':
                 srs_struct_opt.update({'csl_vecs': csl_lookup[v]})
             else:
@@ -599,7 +607,6 @@ def main():
         'scratch_os': scratch.os_name,
         'scratch_path': scratch.path
     }
-
     selective_submission = su.get('selective_submission')
     if selective_submission:
         js_params.update({'selective_submission': selective_submission})

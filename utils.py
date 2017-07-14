@@ -3,6 +3,7 @@ import time
 import numpy as np
 import copy
 import collections
+import subprocess
 
 """
 TODO:
@@ -391,3 +392,19 @@ def confirm(prompt=None, resp=False):
             return True
         elif ans in neg:
             return False
+
+
+def dir_exists_remote(host, dir_path):
+    comp_proc = subprocess.run(
+        ['bash', '-c', 'ssh {} "[ -d {} ]"'.format(host, dir_path)])
+
+    if comp_proc.returncode == 0:
+        return True
+    elif comp_proc.returncode == 1:
+        return False
+
+
+def rsync_remote(src, host, dst):
+    rsync_cmd = ('rsync -az --chmod=Du=rwx,Dgo=rx,Fu=rw,Fog=r'
+                 ' {} {}:{}').format(src, host, dst)
+    subprocess.run(['bash', '-c', rsync_cmd])

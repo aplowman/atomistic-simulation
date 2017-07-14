@@ -411,6 +411,12 @@ def main():
         'CSLBulkCrystal': atomistic.CSLBulkCrystal,
         'CSLSurfaceCrystal': atomistic.CSLSurfaceCrystal
     }
+    srs_is_struct = {
+        'kpoint': False,
+        'cut_off_energy': False,
+        'smearing_width': False,
+        'gb_size': True
+    }
     csl_lookup = {
         7: [
             np.array([
@@ -559,19 +565,29 @@ def main():
 
         srs_as = struct_lookup[srs_as_opt['type']](**srs_struct_opt)
 
-        # Form the directory path for this sim:
+        # Form the directory path for this sim
+        # and find out which series affect the structure (for plotting purposes):
         srs_path = []
+        is_struct = []
         if is_srs:
             for i in srs_df:
                 if isinstance(i, dict):
                     srs_path.append(upd['series_id'][i['name']]['path'])
+                    is_struct.append(srs_is_struct.get(i.get('name')))
 
                 elif isinstance(i, list):
                     srs_path.append(
                         '_'.join([upd['series_id'][j['name']]['path']
                                   for j in i]))
+                    is_struct.append(any([
+                        srs_is_struct.get(j.get('name')) for j in i]))
         else:
-            srs_path = ['']
+            srs_path.append('')
+
+        # Get the last series depth index which affects the structure:
+        lst_struct_idx = -1
+        if True in is_struct:
+            lst_struct_idx = [idx for idx, i in enumerate(is_struct) if i][-1]
 
         stage_srs_path = stage.get_path('calcs', *srs_path)
         scratch_srs_path = scratch.get_path('calcs', *srs_path)
@@ -579,6 +595,20 @@ def main():
         all_scratch_paths.append(scratch_srs_path)
         srs_opt['set_up']['stage_series_path'] = stage_srs_path
         srs_opt['set_up']['scratch_srs_path'] = scratch_srs_path
+
+        plt_path_lst = [stage.path, 'calcs'] + \
+            srs_path[:lst_struct_idx + 1] + ['plots']
+        plt_path = os.path.join(*plt_path_lst)
+
+        if not os.path.isdir(plt_path):
+            os.makedirs(plt_path)
+            save_args = {
+                'filename': os.path.join(plt_path, 'structure.html'),
+                'auto_open': False
+            }
+            srs_as.visualise(show_iplot=False, save=True, save_args=save_args)
+
+        # print('plt_path: \n{}\n'.format(plt_path))
 
         # Process CASTEP options
         if srs_opt['method'] == 'castep':

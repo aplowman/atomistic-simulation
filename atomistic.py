@@ -212,6 +212,8 @@ class AtomisticStructure(object):
         self._all_species = all_species
         self._all_species_idx = all_species_idx
 
+        self.check_overlapping_atoms()
+
     def visualise(self, show_iplot=True, save=False, save_args=None):
         """
         TODO:
@@ -679,6 +681,98 @@ class AtomisticStructure(object):
             _, all_sp_idx = self.get_all_species()
             return all_sp_idx
 
+    def get_tiled_atoms(self, tiles):
+        """
+        Get atom sites tiled by some integer factors in each supercell
+        direction.
+
+        Atoms are tiled in the positive supercell directions.
+
+        Parameters
+        ----------
+        tiles : tuple or list of length 3
+            Number of repeats in each supercell direction.        
+
+        Returns
+        -------
+        ndarray
+
+        """
+
+        invalid_msg = ('`tiles` must be a tuple or list of 3 integers greater'
+                       ' than 0.')
+        if len(tiles) != 3:
+            raise ValueError(invalid_msg)
+
+        as_tiled = np.copy(self.atom_sites)
+        for t_idx, t in enumerate(tiles):
+
+            if t == 1:
+                continue
+
+            if not isinstance(t, int) or t == 0:
+                raise ValueError(invalid_msg)
+
+            v = self.supercell[:, t_idx:t_idx + 1]
+            all_t = (v * np.arange(1, t)).T[:, :, np.newaxis]
+            as_tiled_t = np.hstack(all_t + as_tiled)
+            as_tiled = np.hstack([as_tiled, as_tiled_t])
+
+        return as_tiled
+
+    def get_interatomic_dist(self, periodic=True):
+        """
+        Find the distances between unique atom pairs across the whole 
+        structure.
+
+        Parameters
+        ----------
+        periodic : bool
+            If True, the atom sites are first tiled in each supercell direction
+            to ensure that distances between periodic cells are considered. 
+            Currently, this is crude, and so produces interatomic distances 
+            between like atoms (i.e. of one supercell vector length).
+
+        Returns
+        ------
+        ndarray of shape (N,)
+
+        TODO: 
+        -   Improve consideration of periodicity. Maybe instead have a function
+            `get_min_interatomic_dist` which gets the minimum distances of each
+            atom and every other atom, given periodicity.
+
+        """
+        if periodic:
+            atms = self.get_tiled_atoms([2, 2, 2])
+        else:
+            atms = self.atom_sites
+
+        return vectors.get_vec_distances(atms)
+
+    def check_overlapping_atoms(self, tol=1):
+        """
+        Returns True if any atoms are overlapping within a tolerance.abs
+
+        Parameters
+        ----------
+        tol : float
+            Distance below which atoms are considered to be overlapping.abs
+
+        Raises
+        ------
+        ValueError
+            If any atoms are found to overlap.
+
+        Returns
+        -------
+        None
+
+        """
+        dist = self.get_interatomic_dist()
+        if np.any(dist < tol):
+            raise ValueError('Found overlapping atoms.')
+
     # def __str__(self):
     #     pass
 
@@ -1121,6 +1215,8 @@ class CSLBicrystal(AtomisticStructure):
             'origin': grn_b_org_vac
         })
 
+        self.check_overlapping_atoms()
+
     def apply_relative_shift(self, shift):
         """
         Apply in-boundary-plane shifts to grain_a to explore the microscopic
@@ -1167,6 +1263,8 @@ class CSLBicrystal(AtomisticStructure):
 
             # Update attribute:
             self.supercell = sup_shift
+
+        self.check_overlapping_atoms()
 
     def wrap_atoms_to_supercell(self):
         """

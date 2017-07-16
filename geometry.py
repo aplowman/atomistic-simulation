@@ -42,7 +42,7 @@ def check_centrosymmetry(points, centre, periodic_box=None):
 
     """
 
-    if periodic_box is not None:
+    if periodic_box is None:
 
         # Invert points:
         p_inv = (2 * centre) - points

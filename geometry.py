@@ -272,3 +272,23 @@ def get_bounding_box(box, bound_vecs=None, padding=0):
     }
 
     return out
+
+
+def get_box_centre(box, origin=None):
+    """
+    Find the centre of a parallelepiped.
+
+    Parameters
+    ----------
+    box : ndarray of shape (3, 3)
+        Array of edge vectors defining a parallelopiped.
+    origin : ndarray of shape (3, 1)
+        Origin of the parallelepiped.
+
+    Returns
+    -------
+    ndarray of shape (3, N)
+
+    """
+
+    return get_box_corners(box, origin=origin).mean(2).T

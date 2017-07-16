@@ -679,6 +679,13 @@ class AtomisticStructure(object):
             _, all_sp_idx = self.get_all_species()
             return all_sp_idx
 
+    @property
+    def crystal_centres(self):
+        """Get the midpoints of each crystal in the structure."""
+
+        return [geometry.get_box_centre(c['crystal'], origin=c['origin'])
+                for c in self.crystals]
+
     def get_tiled_atoms(self, tiles):
         """
         Get atom sites tiled by some integer factors in each supercell

@@ -528,8 +528,6 @@ class AtomisticStructure(object):
 
         # Snap to 0 and 1:
         as_sup_wrp = vectors.snap_arr_to_val(as_sup_wrp, 0, 1e-12)
-        as_sup_wrp = vectors.snap_arr_to_val(as_sup_wrp, 1, 1e-12)
-        as_sup_wrp[as_sup_wrp == 1] = 0
 
         # Convert back to Cartesian basis
         as_std_wrp = np.dot(self.supercell, as_sup_wrp)

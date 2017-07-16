@@ -526,7 +526,7 @@ class AtomisticStructure(object):
         as_sup_wrp = np.copy(as_sup)
         as_sup_wrp[dirs] -= np.floor(as_sup_wrp[dirs])
 
-        # Snap to 0 and 1:
+        # Snap to 0:
         as_sup_wrp = vectors.snap_arr_to_val(as_sup_wrp, 0, 1e-12)
 
         # Convert back to Cartesian basis

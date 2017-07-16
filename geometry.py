@@ -2,6 +2,72 @@ import numpy as np
 import vectors
 
 
+def check_centrosymmetry(points, centre, periodic_box=None):
+    """
+    Determine if a set of points exhibit centrosymmetry about a centre.
+
+    Parameters
+    ----------
+    points : ndarray of shape (3, N)
+        Array of column vectors representing a set of points in 3D space to
+        test for centrosymmetry.
+    centre : ndarray of shape (3, 1)
+        Position in space representing the candidate inversion centre of the
+        set of points `points`.
+    periodic_box : ndarray of shape (3, 3), optional
+        Array of column vectors representing the edge vectors of a
+        parallelopiped. If this is specified, the points are assumed to be
+        periodic in this box.
+
+    Returns
+    -------
+    bool
+        True if the set of points have an inversion centre at `centre`.
+        Otherwise, False.
+
+    Notes
+    -----
+    Algorithm proceeds as follows:
+    If `periodic_box` not specified:
+        1. Invert `points` through `centre`
+        2. Test if inverted points and original points are the same
+    If `periodic_box` is specified:
+        1. Change `points` to fractional coordinates of `box`.
+        2. Wrap all points inside box and wrap coordinate of 1 to 0.
+        3. Change `centre` to fractional coordinates of `box.
+        4. Invert fractional, wrapped points through centre.
+        5. Wrap all inverted points inside box and wrap coordinate of 1 to 0.
+        6. Test if inverted points and original points are the same
+
+
+    """
+
+    if periodic_box is not None:
+
+        # Invert points:
+        p_inv = (2 * centre) - points
+
+    else:
+
+        box_inv = np.linalg.inv(periodic_box)
+        p_frac = np.dot(box_inv, points)
+        p_frac -= np.floor(p_frac)
+        cen_frac = np.dot(box_inv, centre)
+
+        # Invert points:
+        p_inv = (2 * cen_frac) - p_frac
+        p_inv -= np.floor(p_inv)
+        points = p_frac
+
+    # Compare inverted points to original points
+    srt_idx = np.lexsort((points[2], points[1], points[0]))
+    srt_inv_idx = np.lexsort((p_inv[2], p_inv[1], p_inv[0]))
+    p_sort = points[:, srt_idx]
+    p_inv_sort = p_inv[:, srt_inv_idx]
+
+    return np.allclose(p_sort, p_inv_sort)
+
+
 def get_box_corners(box, origin=None, tolerance=1E-10):
     """
     Get all 8 corners of parallelopipeds, each defined by three edge vectors.

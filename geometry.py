@@ -43,12 +43,10 @@ def check_centrosymmetry(points, centre, periodic_box=None):
     """
 
     if periodic_box is None:
-
         # Invert points:
         p_inv = (2 * centre) - points
 
     else:
-
         box_inv = np.linalg.inv(periodic_box)
         p_frac = np.dot(box_inv, points)
         p_frac -= np.floor(p_frac)
@@ -59,7 +57,10 @@ def check_centrosymmetry(points, centre, periodic_box=None):
         p_inv -= np.floor(p_inv)
         points = p_frac
 
-    # Compare inverted points to original points
+    # Round to ensure correct sorting
+    points = np.round(points, decimals=13)
+    p_inv = np.round(p_inv, decimals=13)
+
     srt_idx = np.lexsort((points[2], points[1], points[0]))
     srt_inv_idx = np.lexsort((p_inv[2], p_inv[1], p_inv[0]))
     p_sort = points[:, srt_idx]

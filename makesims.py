@@ -518,7 +518,8 @@ def main():
         'filename': stage.get_path('base_structure.html'),
         'auto_open': False
     }
-    base_as.visualise(show_iplot=False, save=True, save_args=save_args)
+    base_as.visualise(show_iplot=False, save=True,
+                      save_args=save_args, proj_2d=True)
 
     # Save original options file
     opt_src_path = os.path.join(SU_PATH, 'opt.txt')
@@ -606,7 +607,8 @@ def main():
                 'filename': os.path.join(plt_path, 'structure.html'),
                 'auto_open': False
             }
-            srs_as.visualise(show_iplot=False, save=True, save_args=save_args)
+            srs_as.visualise(show_iplot=False, save=True,
+                             save_args=save_args, proj_2d=True)
 
         # print('plt_path: \n{}\n'.format(plt_path))
 

@@ -1217,18 +1217,26 @@ class CSLBicrystal(AtomisticStructure):
             rot_mat = np.eye(3)
 
         else:
-            rot_angle = vectors.col_wise_angles(
-                csl_vecs_std[0], csl_vecs_std[1])[0]
+            rot_angles = vectors.col_wise_angles(
+                csl_vecs_std[0], csl_vecs_std[1])
 
-            rot_mat = vectors.rotation_matrix(rot_ax_std[:, 0], rot_angle)[0]
+            if not np.isclose(*rot_angles[0:2]):
+                raise ValueError('Non-equivalent rotation angles found '
+                                 'between CSL vectors.')
 
-        rot_angle_deg = np.rad2deg(rot_angle)
+            rot_mat = vectors.rotation_matrix(
+                rot_ax_std[:, 0], rot_angles[0])[0]
+
+        rot_angle_deg = np.rad2deg(rot_angles[0])
+        grn_vols = [np.dot(np.cross(g[:, 0], g[:, 1]), g[:, 2])
+                    for g in (grn_a_std, grn_b_std)]
+
+        # Check grain volumes are the same:
+        if not np.isclose(*np.abs(grn_vols)):
+            raise ValueError('Grain A and B have different volumes.')
 
         # Check if grain A forms a right-handed coordinate system:
-        grn_vol = np.dot(np.cross(grn_a_std[:, 0],
-                                  grn_a_std[:, 1]), grn_a_std[:, 2])
-
-        if grn_vol < 0:
+        if grn_vols[0] < 0:
             # Swap boundary vectors to make a right-handed coordinate system:
             grn_a_lat[:, [0, 1]] = grn_a_lat[:, [1, 0]]
             grn_b_lat[:, [0, 1]] = grn_b_lat[:, [1, 0]]

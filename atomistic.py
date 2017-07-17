@@ -16,7 +16,7 @@ TODO:
 import numpy as np
 import os
 from plotly import graph_objs
-from plotly.offline import plot, iplot
+from plotly.offline import plot, iplot, init_notebook_mode
 from crystal import CrystalBox, CrystalStructure
 import simsio
 import geometry
@@ -214,11 +214,19 @@ class AtomisticStructure(object):
 
         self.check_overlapping_atoms()
 
-    def visualise(self, show_iplot=True, save=False, save_args=None):
+    def visualise(self, proj_2d=False, show_iplot=True, save=False, save_args=None):
         """
+        Parameters
+        ----------
+        proj_2d : bool
+            If True, 2D plots are also drawn.
+
+
         TODO:
         -   Add 3D arrows/cones to supercell vectors using mesh3D.
         -   Add lattice vectors/arrows to lattice unit cells
+        -   Add minimums lengths to 2D projection subplots so for very slim
+            supercells, we can still see the shorter directions.
 
         """
 
@@ -229,11 +237,35 @@ class AtomisticStructure(object):
         crystal_cols = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
                         '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 
+        if show_iplot:
+            init_notebook_mode()
+
         # Get colours for atom species:
         atom_cols = readwrite.read_pickle(
             os.path.join(REF_PATH, 'jmol_colours.pickle'))
 
+        if save:
+            if save_args is None:
+                save_args = {
+                    'filename': 'plots.html',
+                    'auto_open': False
+                }
+            elif save_args.get('filename') is None:
+                save_args.update({'filename': 'plots.html'})
+
         data = []
+        div_2d = ''
+        if proj_2d:
+
+            data_2d = []
+            proj_2d_dirs = [0, 1, 2]
+            vert_space = 0.050
+            hori_space = 0.050
+
+            # Tuples for each projection direction (x, y, z):
+            dirs_2d = ((1, 2), (0, 2), (1, 0))
+            ax_lab_2d = (('x', 'y'), ('x2', 'y'), ('x', 'y3'))
+            show_leg_2d = (True, False, False)
 
         # Supercell box
         sup_xyz = geometry.get_box_xyz(self.supercell)[0]
@@ -252,6 +284,20 @@ class AtomisticStructure(object):
                 **sup_props
             )
         )
+
+        if proj_2d:
+            for i in proj_2d_dirs:
+                data_2d.append({
+                    'type': 'scatter',
+                    'x': sup_xyz[dirs_2d[i][0]],
+                    'y': sup_xyz[dirs_2d[i][1]],
+                    'xaxis': ax_lab_2d[i][0],
+                    'yaxis': ax_lab_2d[i][1],
+                    'name': 'Supercell',
+                    'legendgroup': 'Supercell',
+                    'showlegend': show_leg_2d[i],
+                    **sup_props
+                })
 
         # Supercell edge vectors
         sup_edge_props = {
@@ -274,20 +320,48 @@ class AtomisticStructure(object):
                     **sup_edge_props
                 )
             )
+            sup_vecs_lab_props = {
+                'mode': 'text',
+                'text': [sup_vec_labs[i]],
+                'legendgroup': 'Supercell vectors',
+                'showlegend': False,
+                'textfont': {
+                    'size': 20
+                }
+            }
             data.append(
                 graph_objs.Scatter3d(
-                    mode='text',
                     x=[self.supercell[0, i]],
                     y=[self.supercell[1, i]],
                     z=[self.supercell[2, i]],
-                    text=[sup_vec_labs[i]],
-                    legendgroup='Supercell vectors',
-                    showlegend=False,
-                    textfont={
-                        'size': 20
-                    }
+                    **sup_vecs_lab_props
                 )
             )
+            if proj_2d:
+                for j in proj_2d_dirs:
+                    data_2d.append({
+                        'type': 'scatter',
+                        'x': [0, self.supercell[dirs_2d[j][0], i]],
+                        'y': [0, self.supercell[dirs_2d[j][1], i]],
+                        'xaxis': ax_lab_2d[j][0],
+                        'yaxis': ax_lab_2d[j][1],
+                        'name': 'Supercell vectors',
+                        'legendgroup': 'Supercell vectors',
+                        'showlegend': show_leg_2d[j] if i == 0 else False,
+                        'visible': 'legendonly',
+                        **sup_edge_props
+                    })
+                    if i == j:
+                        continue
+                    data_2d.append({
+                        'type': 'scatter',
+                        'x': [self.supercell[dirs_2d[j][0], i]],
+                        'y': [self.supercell[dirs_2d[j][1], i]],
+                        'xaxis': ax_lab_2d[j][0],
+                        'yaxis': ax_lab_2d[j][1],
+                        'visible': 'legendonly',
+                        **sup_vecs_lab_props
+                    })
 
         if self.crystals is None:
             # Plot all atoms by species:
@@ -320,6 +394,20 @@ class AtomisticStructure(object):
                     )
                 )
 
+                if proj_2d:
+                    for i in proj_2d_dirs:
+                        data_2d.append({
+                            'type': 'scatter',
+                            'x': atom_sites_sp[dirs_2d[i][0]],
+                            'y': atom_sites_sp[dirs_2d[i][1]],
+                            'xaxis': ax_lab_2d[i][0],
+                            'yaxis': ax_lab_2d[i][1],
+                            'name': trace_name,
+                            'legendgroup': trace_name,
+                            'showlegend': show_leg_2d[i],
+                            **atom_site_props
+                        })
+
         else:
 
             ccent = self.crystal_centres
@@ -328,23 +416,40 @@ class AtomisticStructure(object):
             # Crystal boxes and atoms
             for c_idx, c in enumerate(self.crystals):
 
-                # Crystal centre
+                # Crystal centres
+                cc_trce_nm = 'Crystal #{} centre'.format(c_idx + 1)
+                cc_props = {
+                    'mode': 'markers',
+                    'marker': {
+                        'color': 'red',
+                        'symbol': 'x',
+                        'size': 3
+                    }
+                }
                 data.append(
                     graph_objs.Scatter3d(
                         x=ccent[c_idx][0],
                         y=ccent[c_idx][1],
                         z=ccent[c_idx][2],
-                        name='Crystal #{} centre'.format(c_idx + 1),
-                        mode='markers',
-                        marker={
-                            'color': 'red',
-                            'symbol': 'x',
-                            'size': 3
-                        }
+                        name=cc_trce_nm,
+                        **cc_props
                     )
                 )
+                if proj_2d:
+                    for i in proj_2d_dirs:
+                        data_2d.append({
+                            'type': 'scatter',
+                            'x': ccent[c_idx][dirs_2d[i][0]],
+                            'y': ccent[c_idx][dirs_2d[i][1]],
+                            'xaxis': ax_lab_2d[i][0],
+                            'yaxis': ax_lab_2d[i][1],
+                            'name': cc_trce_nm,
+                            'legendgroup': cc_trce_nm,
+                            'showlegend': show_leg_2d[i],
+                            **cc_props
+                        })
 
-                # Crystal box
+                # Crystal boxes
                 c_xyz = geometry.get_box_xyz(
                     c['crystal'], origin=c['origin'])[0]
                 c_props = {
@@ -353,15 +458,29 @@ class AtomisticStructure(object):
                         'color': crystal_cols[c_idx]
                     }
                 }
+                c_trce_nm = 'Crystal #{}'.format(c_idx + 1)
                 data.append(
                     graph_objs.Scatter3d(
                         x=c_xyz[0],
                         y=c_xyz[1],
                         z=c_xyz[2],
-                        name='Crystal #{}'.format(c_idx + 1),
+                        name=c_trce_nm,
                         **c_props
                     )
                 )
+                if proj_2d:
+                    for i in proj_2d_dirs:
+                        data_2d.append({
+                            'type': 'scatter',
+                            'x': c_xyz[dirs_2d[i][0]],
+                            'y': c_xyz[dirs_2d[i][1]],
+                            'xaxis': ax_lab_2d[i][0],
+                            'yaxis': ax_lab_2d[i][1],
+                            'name': c_trce_nm,
+                            'legendgroup': c_trce_nm,
+                            'showlegend': show_leg_2d[i],
+                            **c_props
+                        })
 
                 # Get CrystalStructure associated with this crystal:
                 cs = self.crystal_structures[c['cs_idx']]
@@ -392,6 +511,19 @@ class AtomisticStructure(object):
                         **uc_props
                     )
                 )
+                if proj_2d:
+                    for i in proj_2d_dirs:
+                        data_2d.append({
+                            'type': 'scatter',
+                            'x': uc_xyz[dirs_2d[i][0]],
+                            'y': uc_xyz[dirs_2d[i][1]],
+                            'xaxis': ax_lab_2d[i][0],
+                            'yaxis': ax_lab_2d[i][1],
+                            'name': uc_trace_name,
+                            'legendgroup': uc_trace_name,
+                            'showlegend': show_leg_2d[i],
+                            **uc_props
+                        })
 
                 # Lattice sites
                 ls_idx = np.where(self.lat_crystal_idx == c_idx)[0]
@@ -408,7 +540,6 @@ class AtomisticStructure(object):
                     'legendgroup': ls_trace_name,
                     'visible': 'legendonly',
                 }
-
                 data.append(
                     graph_objs.Scatter3d(
                         x=ls[0],
@@ -417,6 +548,17 @@ class AtomisticStructure(object):
                         **lat_site_props
                     )
                 )
+                if proj_2d:
+                    for i in proj_2d_dirs:
+                        data_2d.append({
+                            'type': 'scatter',
+                            'x': ls[dirs_2d[i][0]],
+                            'y': ls[dirs_2d[i][1]],
+                            'xaxis': ax_lab_2d[i][0],
+                            'yaxis': ax_lab_2d[i][1],
+                            'showlegend': show_leg_2d[i],
+                            **lat_site_props
+                        })
 
                 # Get motif associated with this crystal:
                 sp_motif = cs.species_motif
@@ -445,7 +587,6 @@ class AtomisticStructure(object):
                         'name': trace_name,
                         'legendgroup': trace_name,
                     }
-
                     data.append(
                         graph_objs.Scatter3d(
                             x=atom_sites_sp[0],
@@ -454,6 +595,17 @@ class AtomisticStructure(object):
                             **atom_site_props
                         )
                     )
+                    if proj_2d:
+                        for i in proj_2d_dirs:
+                            data_2d.append({
+                                'type': 'scatter',
+                                'x': atom_sites_sp[dirs_2d[i][0]],
+                                'y': atom_sites_sp[dirs_2d[i][1]],
+                                'xaxis': ax_lab_2d[i][0],
+                                'yaxis': ax_lab_2d[i][1],
+                                'showlegend': show_leg_2d[i],
+                                **atom_site_props
+                            })
 
         layout = graph_objs.Layout(
             width=1000,
@@ -463,15 +615,70 @@ class AtomisticStructure(object):
             }
         )
 
+        if proj_2d:
+            # Get approximate ratio of y1 : y3
+            sup_z_rn = np.max(sup_xyz[2]) - np.min(sup_xyz[2])
+            sup_x_rn = np.max(sup_xyz[0]) - np.min(sup_xyz[0])
+            sup_tot_rn_vert = sup_z_rn + sup_x_rn
+
+            # Get ratio of x1 : x2
+            sup_y_rn = np.max(sup_xyz[1]) - np.min(sup_xyz[1])
+            sup_tot_rn_hori = sup_y_rn + sup_x_rn
+            y1_frac = sup_z_rn / sup_tot_rn_vert
+            y3_frac = sup_x_rn / sup_tot_rn_vert
+            x1_frac = sup_y_rn / sup_tot_rn_hori
+            x2_frac = sup_x_rn / sup_tot_rn_hori
+
+            layout_2d = {
+                'height': 1000,
+                'width': 1000,
+
+                'xaxis': {
+                    'domain': [0, x1_frac - hori_space / 2],
+                    'anchor': 'y',
+                    'scaleanchor': 'y',
+                    'side': 'top',
+                    'title': 'y',
+                },
+                'yaxis': {
+                    'domain': [y3_frac + vert_space / 2, 1],
+                    'anchor': 'x',
+                    'title': 'z',
+                },
+
+                'xaxis2': {
+                    'domain': [x1_frac + hori_space / 2, 1],
+                    'anchor': 'y',
+                    'side': 'top',
+                    'scaleanchor': 'y',
+                    'title': 'x',
+                },
+                'yaxis3': {
+                    'domain': [0, y3_frac - vert_space / 2],
+                    'anchor': 'x',
+                    'scaleanchor': 'x',
+                    'title': 'x',
+                },
+            }
+
+            fig_2d = graph_objs.Figure(data=data_2d, layout=layout_2d)
+            if show_iplot:
+                iplot(fig_2d)
+            if save:
+                div_2d = plot(fig_2d, **save_args,
+                              output_type='div', include_plotlyjs=False)
+
         fig = graph_objs.Figure(data=data, layout=layout)
 
         if show_iplot:
             iplot(fig)
-
         if save:
-            if save_args is None:
-                save_args = {}
-            plot(fig, **save_args)
+            div_3d = plot(fig, **save_args, output_type='div',
+                          include_plotlyjs=True)
+
+            html_all = div_3d + div_2d
+            with open(save_args.get('filename'), 'w') as plt_file:
+                plt_file.write(html_all)
 
     def reorient_to_lammps(self):
         """

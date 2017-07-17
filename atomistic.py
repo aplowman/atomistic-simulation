@@ -887,8 +887,10 @@ class CSLBicrystal(AtomisticStructure):
         Edge conditions for each grain in the bicrystal. See `CrystalBox` for
         details.
     maintain_inv_sym : bool, optional
-        If True, methods acting on the `CSLBicrystal` object will maintain
-        inversion symmetry of the bicrystal.
+        If True, the supercell atoms will be checked for inversion symmetry
+        through the centres of both crystals. This check will be repeated
+        following methods which manipulate atom positions. In this way, the two
+        grain boundaries in the bicrystal are ensured to be identical.
     reorient : bool, optional
         If True, after construction of the boundary, reorient_to_lammps() is
         invoked. Default is True.
@@ -916,8 +918,6 @@ class CSLBicrystal(AtomisticStructure):
     4.  Fill the two grains with atoms
 
     TODO:
-    -   Clarify the docstring about `maintain_inv_sym`; inversion symmetry
-        will be maintained about what point?
     -   Sort out lattice sites in apply_boundary_vac() & apply_relative_shift()
     -   Rename wrap_atoms_to_supercell to wrap_to_supercell and apply wrapping
         to lattice sites, and crystal boxes as well.
@@ -1116,6 +1116,8 @@ class CSLBicrystal(AtomisticStructure):
                          species_idx=species_idx,
                          motif_idx=motif_idx)
 
+        self.check_inv_symmetry()
+
         # Invoke additional methods:
         if reorient:
             self.reorient_to_lammps()
@@ -1240,6 +1242,7 @@ class CSLBicrystal(AtomisticStructure):
         })
 
         self.check_overlapping_atoms()
+        self.check_inv_symmetry()
 
     def apply_relative_shift(self, shift):
         """
@@ -1289,6 +1292,7 @@ class CSLBicrystal(AtomisticStructure):
             self.supercell = sup_shift
 
         self.check_overlapping_atoms()
+        self.check_inv_symmetry()
 
     def wrap_atoms_to_supercell(self):
         """
@@ -1297,6 +1301,21 @@ class CSLBicrystal(AtomisticStructure):
         """
 
         super().wrap_atoms_to_supercell(dirs=self.boundary_idx)
+        self.check_inv_symmetry()
+
+    def check_inv_symmetry(self):
+        """
+        Check atoms exhibit inversion symmetry through the two crystal centres,
+        if `self.maintain_inv_sym` is True.
+
+        """
+
+        if self.maintain_inv_sym:
+            for cc_idx, cc in enumerate(self.crystal_centres):
+                if not geometry.check_centrosymmetry(
+                        self.atom_sites, cc, periodic_box=self.supercell):
+                    raise ValueError('The bicrystal does not have inversion '
+                                     'symmetry through the crystral centres.')
 
 
 class CSLBulkCrystal(CSLBicrystal):

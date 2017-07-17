@@ -321,9 +321,28 @@ class AtomisticStructure(object):
                 )
 
         else:
+
+            ccent = self.crystal_centres
+
             # Plot atoms by crystal and motif
             # Crystal boxes and atoms
             for c_idx, c in enumerate(self.crystals):
+
+                # Crystal centre
+                data.append(
+                    graph_objs.Scatter3d(
+                        x=ccent[c_idx][0],
+                        y=ccent[c_idx][1],
+                        z=ccent[c_idx][2],
+                        name='Crystal #{} centre'.format(c_idx + 1),
+                        mode='markers',
+                        marker={
+                            'color': 'red',
+                            'symbol': 'x',
+                            'size': 3
+                        }
+                    )
+                )
 
                 # Crystal box
                 c_xyz = geometry.get_box_xyz(

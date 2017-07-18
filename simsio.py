@@ -579,33 +579,37 @@ def read_castep_output(dir_path, seedname=None, ignore_missing_output=False):
 
 def read_castep_file(cst_path):
     """
-        Function to parse a .castep file. Returns a dict.
+    Function to parse a .castep file. Returns a dict.
 
-        CASTEP versions tested:
-            17.2
+    CASTEP versions tested:
+        17.2
 
-        CASTEP tasks tested:
-            SinglePoint, GeometryOptimisation
+    CASTEP tasks tested:
+        SinglePoint, GeometryOptimisation
 
-        Notes:
+    Notes:
 
-        -   Unconstrained forces reported in the BFGS: Final Configuration section
-        -   Constrained forces reported after each SCF cycle and in BFGS: Final
-            Configuration section
+    -   Unconstrained forces reported in the BFGS: Final Configuration section
+    -   Constrained forces reported after each SCF cycle and in BFGS: Final
+        Configuration section
 
-        -   BFGS Final Configuration:
-            - Cell contents (if ions relaxed)
-            - Unit cell (if cell relaxed)
-            - BFGS Final Enthalpy
-            - BFGS Final <frequency> (if cell fixed?)
-            - BFGS Final bulk modulus (if cell relaxed)
-            - Unconstrained Forces
-            - Constrained (symmetrised) Forces
-            - (Symmetrised) Stress Tensor
-            - Atomic populations
+    -   BFGS Final Configuration:
+        - Cell contents (if ions relaxed)
+        - Unit cell (if cell relaxed)
+        - BFGS Final Enthalpy
+        - BFGS Final <frequency> (if cell fixed?)
+        - BFGS Final bulk modulus (if cell relaxed)
+        - Unconstrained Forces
+        - Constrained (symmetrised) Forces
+        - (Symmetrised) Stress Tensor
+        - Atomic populations
 
-        -   cell contents will be listed more than scf_num_cycles if BFGS reverts
-            to an earlier configuration.
+    -   cell contents will be listed more than scf_num_cycles if BFGS reverts
+        to an earlier configuration.
+
+    TODO:
+    -   Test version 16.1.1
+    -   Parse SCF warning lines like in: "\2017-04-01-2206_64626\calcs\0.360\"
 
     """
 

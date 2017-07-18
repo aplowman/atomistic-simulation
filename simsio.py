@@ -936,6 +936,7 @@ def read_castep_file(cst_path):
 
                 elif force_ion_idx >= 0:
 
+                    ln_s = [i.split("(cons'd)")[0] for i in ln_s]
                     force_xyz = [float(ln_s[i]) for i in [3, 4, 5]]
                     current_bfgs_forces.append(
                         np.array(force_xyz)[:, np.newaxis])

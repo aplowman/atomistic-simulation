@@ -109,6 +109,43 @@ class Stage(object):
                 # Use rsync/scp
                 raise NotImplementedError('Unsupported local transfer.')
 
+    def submit_on_scratch(self, scratch):
+        """
+        Submit simulations on Scratch.
+
+        Parameters
+        ----------
+        scratch : Scratch
+
+        """
+
+        if scratch.remote:
+
+            if self.os_name == 'nt' and scratch.os_name == 'posix':
+
+                if not utils.dir_exists_remote(scratch.host, scratch.path):
+                    raise ValueError('Directory does not exist on scratch.'
+                                     ' Aborting.')
+
+                print('Submitting simulations on scratch...')
+                comp_proc = subprocess.run(
+                    ['bash',
+                     '-c',
+                     'ssh {} "cd {} && qsub jobscript.sh"'.format(
+                         scratch.host, scratch.path)])
+            else:
+                raise NotImplementedError('Unsupported remote transfer.')
+
+        else:
+
+            if self.os_name == 'nt' and scratch.os_name == 'nt':
+                # Use shutil
+                raise NotImplementedError('Unsupported local transfer.')
+
+            elif self.os_name == 'posix' and scratch.os_name == 'posix':
+                # Use rsync/scp
+                raise NotImplementedError('Unsupported local transfer.')
+
 
 class Scratch(object):
     """
@@ -659,6 +696,10 @@ def main():
     print('Simulation series generated here: {}'.format(stage.path))
     if utils.confirm('Copy to scratch?'):
         stage.copy_to_scratch(scratch)
+        if utils.confirm('Submit on scratch?'):
+            stage.submit_on_scratch(scratch)
+        else:
+            print('Did not submit.')
     else:
         print('Exiting.')
         return

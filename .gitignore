@@ -99,3 +99,4 @@ ENV/
 
 # Custom
 set_up/opt.txt
+set_up/temp_db

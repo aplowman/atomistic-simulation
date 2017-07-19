@@ -541,10 +541,17 @@ def main():
     for k, v in base_as_opt.items():
         if k == 'type':
             continue
+        elif k == 'crystal_idx':
+            if base_as_opt['type'] == 'CSLSurfaceCrystal':
+                struct_opt.update({'surface_idx': v})
         elif k == 'cs_idx':
             struct_opt.update({'crystal_structure': cs[v]})
         elif k == 'sigma':
-            struct_opt.update({'csl_vecs': csl_lookup[v]})
+            if base_as_opt['type'] in ['CSLBulkCrystal', 'CSLSurfaceCrystal']:
+                sig_idx = base_as_opt['crystal_idx']
+                struct_opt.update({'csl_vecs': csl_lookup[v][sig_idx]})
+            else:
+                struct_opt.update({'csl_vecs': csl_lookup[v]})
         else:
             struct_opt.update({k: v})
 
@@ -594,10 +601,17 @@ def main():
         for k, v in srs_as_opt.items():
             if k == 'type':
                 continue
+            elif k == 'crystal_idx':
+                if srs_as_opt['type'] == 'CSLSurfaceCrystal':
+                    srs_struct_opt.update({'surface_idx': v})
             elif k == 'cs_idx':
                 srs_struct_opt.update({'crystal_structure': cs[v]})
             elif k == 'sigma':
-                srs_struct_opt.update({'csl_vecs': csl_lookup[v]})
+                if srs_as_opt['type'] in ['CSLBulkCrystal', 'CSLSurfaceCrystal']:
+                    sig_idx = srs_as_opt['crystal_idx']
+                    srs_struct_opt.update({'csl_vecs': csl_lookup[v][sig_idx]})
+                else:
+                    srs_struct_opt.update({'csl_vecs': csl_lookup[v]})
             else:
                 srs_struct_opt.update({k: v})
 

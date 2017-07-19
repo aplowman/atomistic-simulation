@@ -4,6 +4,7 @@ import numpy as np
 import copy
 import collections
 import subprocess
+import dropbox
 
 """
 TODO:
@@ -408,3 +409,47 @@ def rsync_remote(src, host, dst):
     rsync_cmd = ('rsync -az --chmod=Du=rwx,Dgo=rx,Fu=rw,Fog=r'
                  ' {} {}:{}').format(src, host, dst)
     subprocess.run(['bash', '-c', rsync_cmd])
+
+
+def get_dropbox(key):
+    return dropbox.Dropbox(key)
+
+
+def check_dropbox_file_exist(dbx, dropbox_path):
+    try:
+        dbx.files_get_metadata(dropbox_path)
+        return True
+    except:
+        return False
+
+
+def download_dropbox_file(dbx, dropbox_path, local_path):
+    dbx.files_download_to_file(local_path, dropbox_path)
+
+
+def upload_dropbox_file(dbx, local_path, dropbox_path, overwrite=False,
+                        autorename=False):
+    """
+    Parameters
+    ----------
+    dropbox: Dropbox
+    local_path : str
+        Path of file on local computer to upload to dropbox.
+    dropbox_path : str
+        Directory on dropbox to upload the file to.
+    overwrite : bool
+        If True, the file overwrites an existing file with the same name.
+    autorename : bool
+        If True, rename the file if there is a conflict.
+
+    """
+
+    if overwrite:
+        mode = dropbox.dropbox.files.WriteMode('overwrite', None)
+    else:
+        mode = dropbox.dropbox.files.WriteMode('add', None)
+
+    with open(local_path, mode='rb') as f:
+
+        dbx.files_upload(f.read(), dropbox_path,
+                         mode=mode, autorename=autorename)

@@ -14,6 +14,8 @@ import shutil
 import subprocess
 import posixpath
 import ntpath
+import time
+import warnings
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
@@ -444,6 +446,46 @@ def process_castep_opt(opt):
                 opt['atom_constraints'][k] = v[:, 0]
 
 
+def append_db(opt):
+
+    # Add to database
+    su = opt['set_up']
+
+    if su['database'].get('dropbox'):
+
+        dpbx_key = su['database'].get('dropbox_key')
+        if dpbx_key is not None:
+
+            dbx = utils.get_dropbox(dpbx_key)
+
+            # Download database file:
+            tmp_db_path = os.path.join(SU_PATH, 'temp_db')
+            dpbx_path = '/calcs/db.pickle'
+
+            # Check if db file exists, if not prompt to create:
+            db_exists = utils.check_dropbox_file_exist(dbx, dpbx_path)
+
+            if db_exists:
+                utils.download_dropbox_file(dbx, dpbx_path, tmp_db_path)
+            else:
+                db_create = utils.confirm('Database file does not exist. '
+                                          'Create it?')
+                if db_create:
+                    readwrite.write_pickle({}, tmp_db_path)
+                else:
+                    warnings.warn('This simulaton has not been added to a '
+                                  'database')
+
+            if db_exists or db_create:
+
+                # Modify database file:
+                db_file = readwrite.read_pickle(tmp_db_path)
+                db_file.update({su['time_stamp']: opt})
+                readwrite.write_pickle(db_file, tmp_db_path)
+                utils.upload_dropbox_file(dbx, tmp_db_path, dpbx_path,
+                                          overwrite=True)
+
+
 def main():
     """
     Read the options file and generate a simulation (series).
@@ -461,6 +503,10 @@ def main():
         base_structure --> cs_idx = [0] we could have base_structure
         --> crystal_structure = <crystal_structures>[0] where
         crystal_structures is also defined in the opt.txt
+    -   Move more code into separate functions (e.g. dropbox database stuff)
+    -   Can possible update database without writing a temp file.
+    -   Form session id from timestamp instead of separate function
+    -   Store dropbox key in separate file to options.
 
     """
 
@@ -537,6 +583,10 @@ def main():
     su = opt['set_up']
 
     # Modify options dictionary to include additional info
+
+    # Get unique representation of this series:
+    ts = time.time()
+    su['time_stamp'] = ts
 
     s_date, s_num = utils.get_date_time_stamp(split=True)
     s_id = s_date + '_' + s_num
@@ -733,6 +783,7 @@ def main():
     print('Simulation series generated here: {}'.format(stage.path))
     if utils.confirm('Copy to scratch?'):
         stage.copy_to_scratch(scratch)
+        append_db(opt)
         if utils.confirm('Submit on scratch?'):
             stage.submit_on_scratch(scratch)
         else:

@@ -20,6 +20,23 @@ REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
 SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
 
 
+class Archive(object):
+    """
+    Class to represent the area on a machine where simulations are archived.
+
+    Attributes
+    ----------
+    path : str
+    dropbox : bool
+
+    """
+
+    def __init__(self, session_id, path, dropbox):
+
+        self.dropbox = dropbox
+        self.path = os.path.join(path, session_id)
+
+
 class Stage(object):
     """
     Class to represent the area on the local machine in which simulations
@@ -108,6 +125,11 @@ class Stage(object):
             elif self.os_name == 'posix' and scratch.os_name == 'posix':
                 # Use rsync/scp
                 raise NotImplementedError('Unsupported local transfer.')
+
+    def copy_plots_to_archive(self, archive):
+        """
+        """
+        pass
 
     def submit_on_scratch(self, scratch):
         """
@@ -523,6 +545,7 @@ def main():
 
     stage = Stage(session_id=s_id, path=su['stage_path'])
     scratch = Scratch(session_id=s_id, **su['scratch'])
+    archive = Archive(session_id=s_id, **su['archive'])
 
     # log.append('Making stage directory at: {}.'.format(stage_path))
     os.makedirs(stage.path, exist_ok=False)

@@ -1213,7 +1213,7 @@ class CSLBicrystal(AtomisticStructure):
 
         # Get rotation matrix for rotating grain B onto grain A
         if np.all(csl_vecs[0] == csl_vecs[1]):
-            rot_angle = 0
+            rot_angles = [0, 0, 0]
             rot_mat = np.eye(3)
 
         else:

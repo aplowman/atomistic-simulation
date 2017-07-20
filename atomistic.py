@@ -23,6 +23,8 @@ import geometry
 import vectors
 import mathsutils
 import readwrite
+from mendeleev import element
+import utils
 
 REF_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ref')
 
@@ -119,6 +121,7 @@ class AtomisticStructure(object):
         (`all_species` and `all_species_idx`) or (`species_idx` and
         `motif_idx`), but not both.
 
+    atom_sites_frac
     num_atoms_per_crystal
     num_atoms
     num_crystals
@@ -760,6 +763,20 @@ class AtomisticStructure(object):
 
         # Update attributes:
         self.atom_sites = as_std_wrp
+
+    @property
+    def atom_sites_frac(self):
+        return np.dot(np.linalg.inv(self.supercell), self.atom_sites)
+
+    @property
+    def spglib_cell(self):
+        """Returns a tuple representing valid input for the spglib library."""
+
+        cell = (self.supercell.T,
+                self.atom_sites_frac.T,
+                [element(i).atomic_number
+                 for i in self.all_species[self.all_species_idx]])
+        return cell
 
     @property
     def num_atoms_per_crystal(self):

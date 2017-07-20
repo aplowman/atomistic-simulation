@@ -362,3 +362,65 @@ def get_sphere_plotly(radius, colour='blue', n=50, lighting_args=None,
         })
 
     return data
+
+
+def get_circle_shape_plotly(radius, origin=None, fill_colour=None,
+                            line_args=None, text=''):
+    """
+    Generate a trace and a dict which can be added to a Plotly 
+    `layout['shapes']` list to represent a circle with a text hover.
+
+    Parameters
+    ----------
+    radius : float
+        Radius of the circle.
+    origin: list of length two, optional
+        Position of the circle's centre. By default, None, in which case
+        set to (0,0).
+
+    Returns
+    -------
+    tuple of (dict, dict)
+        The first dict is the trace which holds the text information. The 
+        second is the shape dict which is to be added to the Plotly 
+        `layout['shapes']` list.
+
+    Notes
+    -----
+    This generates a shape for adding to a Plotly layout, rather than a circle
+    trace.
+
+    """
+
+    if origin is None:
+        origin = [0, 0]
+
+    shape = {
+        'type': 'circle',
+        'x0': origin[0] - radius,
+        'x1': origin[0] + radius,
+        'y0': origin[1] - radius,
+        'y1': origin[1] + radius,
+    }
+
+    if fill_colour is not None:
+        shape.update({
+            'fillcolor': fill_colour,
+        })
+
+    if line_args is not None:
+        shape.update({
+            'line': line_args
+        })
+
+    trace = {
+        'type': 'scatter',
+        'x': [origin[0]],
+        'y': [origin[1]],
+        'text': [text],
+        'mode': 'markers',
+        'opacity': 0,
+        'showlegend': False,
+    }
+
+    return (trace, shape)

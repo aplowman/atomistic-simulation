@@ -58,8 +58,8 @@ def check_centrosymmetry(points, centre, periodic_box=None):
         points = p_frac
 
     # Round to ensure correct sorting
-    points = np.round(points, decimals=12)
-    p_inv = np.round(p_inv, decimals=12)
+    points = np.round(points, decimals=10)
+    p_inv = np.round(p_inv, decimals=10)
 
     srt_idx = np.lexsort((points[2], points[1], points[0]))
     srt_inv_idx = np.lexsort((p_inv[2], p_inv[1], p_inv[0]))

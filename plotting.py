@@ -261,7 +261,7 @@ def get_3d_arrow_plotly(dir, origin, length, head_length=None,
 
 def get_sphere_plotly(radius, colour='blue', n=50, lighting_args=None,
                       θ_max=np.pi, φ_max=2 * np.pi, label=None,
-                      wireframe=False):
+                      wireframe=False, origin=None):
     """
     Get a surface trace representing a (segment of a) sphere.
 
@@ -281,6 +281,9 @@ def get_sphere_plotly(radius, colour='blue', n=50, lighting_args=None,
         Maximum angle to draw in the azimuthal coordinate.
     wireframe : bool
         If True, draw a wireframe sphere instead of a filled sphere.
+    origin : ndarray of shape (3, 1)
+        If specified, the origin for the centre of the sphere. Default is None,
+        in which case it is set to (0,0,0).
 
     Returns
     -------
@@ -296,10 +299,15 @@ def get_sphere_plotly(radius, colour='blue', n=50, lighting_args=None,
 
     """
 
+    if origin is None:
+        origin = np.zeros((3, 1))
+
     if lighting_args is None:
         lighting_args = {
-            'ambient': 0.9,
-            'specular': 0.2
+            'ambient': 0.85,
+            'roughness': 0.4,
+            'diffuse': 0.2,
+            'specular': 0.10
         }
 
     θ = np.linspace(0, θ_max, n)
@@ -307,6 +315,10 @@ def get_sphere_plotly(radius, colour='blue', n=50, lighting_args=None,
     x = radius * np.outer(np.cos(φ), np.sin(θ))
     y = radius * np.outer(np.sin(φ), np.sin(θ))
     z = radius * np.outer(np.ones(n), np.cos(θ))
+
+    x += origin[0][0]
+    y += origin[1][0]
+    z += origin[2][0]
 
     data = [
         {

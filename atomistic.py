@@ -15,6 +15,7 @@ TODO:
 
 import numpy as np
 import os
+import plotting
 from plotly import graph_objs
 from plotly.offline import plot, iplot, init_notebook_mode
 from crystal import CrystalBox, CrystalStructure
@@ -212,17 +213,31 @@ class AtomisticStructure(object):
         self.lat_crystal_idx = lat_crystal_idx
         self.species_idx = species_idx
         self.motif_idx = motif_idx
-        self._all_species = all_species
-        self._all_species_idx = all_species_idx
+
+        if all_species is None:
+            self._all_species = all_species
+        else:
+            self._all_species = np.array(all_species)
+
+        if all_species_idx is None:
+            self._all_species_idx = all_species_idx
+        else:
+            self._all_species_idx = utils.parse_as_int_arr(all_species_idx)
 
         self.check_overlapping_atoms()
 
-    def visualise(self, proj_2d=False, show_iplot=True, save=False, save_args=None):
+    def visualise(self, proj_2d=False, show_iplot=True, save=False,
+                  save_args=None, sym_op=None, wrap_sym_op=False,
+                  atoms_3d=True):
         """
         Parameters
         ----------
         proj_2d : bool
             If True, 2D plots are also drawn.
+        sym_op : list of ndarrays
+        atoms_3d : bool
+            If True, plots atoms as appropriately sized spheres instead of
+            markers.
 
 
         TODO:
@@ -269,6 +284,37 @@ class AtomisticStructure(object):
             dirs_2d = ((1, 2), (0, 2), (1, 0))
             ax_lab_2d = (('x', 'y'), ('x2', 'y'), ('x', 'y3'))
             show_leg_2d = (True, False, False)
+
+        # Sym ops to atom sites:
+        if sym_op is not None:
+            atom_sites_sym = np.dot(sym_op[0], self.atom_sites)
+            atom_sites_sym += np.dot(self.supercell, sym_op[1])
+
+            if wrap_sym_op:
+                as_sym_frac = np.dot(np.linalg.inv(self.supercell),
+                                     atom_sites_sym)
+                as_sym_frac -= np.floor(as_sym_frac)
+                atom_sites_sym = np.dot(self.supercell, as_sym_frac)
+
+            sym_atom_site_props = {
+                'mode': 'markers',
+                'marker': {
+                    'symbol': 'x',
+                    'size': 5,
+                    'color': 'purple'
+                },
+                'name': 'Sym op',
+                'legendgroup': 'Sym op',
+            }
+
+            data.append(
+                graph_objs.Scatter3d(
+                    x=atom_sites_sym[0],
+                    y=atom_sites_sym[1],
+                    z=atom_sites_sym[2],
+                    **sym_atom_site_props
+                )
+            )
 
         # Supercell box
         sup_xyz = geometry.get_box_xyz(self.supercell)[0]
@@ -374,7 +420,6 @@ class AtomisticStructure(object):
                 atom_idx = np.where(self.all_species_idx == sp_idx)[0]
                 atom_sites_sp = self.atom_sites[:, atom_idx]
                 sp_col = str(atom_cols[sp])
-
                 trace_name = sp
 
                 atom_site_props = {
@@ -388,14 +433,32 @@ class AtomisticStructure(object):
                     'legendgroup': trace_name,
                 }
 
-                data.append(
-                    graph_objs.Scatter3d(
-                        x=atom_sites_sp[0],
-                        y=atom_sites_sp[1],
-                        z=atom_sites_sp[2],
-                        **atom_site_props
+                if atoms_3d:
+                    rad = element(sp).vdw_radius * 0.25 * 1e-2  # in Ang
+                    # Get sphere trace for each atom:
+                    for i in atom_sites_sp.T:
+                        sph_args = {
+                            'radius': rad,
+                            'colour': sp_col,
+                            'origin': i[:, np.newaxis],
+                            'n': 10
+                        }
+                        sph = plotting.get_sphere_plotly(**sph_args)
+                        sph[0].update({
+                            'name': trace_name,
+                            'legendgroup': trace_name,
+                        })
+                        data.append(sph[0])
+
+                else:
+                    data.append(
+                        graph_objs.Scatter3d(
+                            x=atom_sites_sp[0],
+                            y=atom_sites_sp[1],
+                            z=atom_sites_sp[2],
+                            **atom_site_props
+                        )
                     )
-                )
 
                 if proj_2d:
                     for i in proj_2d_dirs:
@@ -576,7 +639,8 @@ class AtomisticStructure(object):
                     atom_idx = np.where(
                         self.motif_idx[crys_atm_idx] == sp_idx)[0]
                     atom_sites_sp = self.atom_sites[:, crys_atm_idx[atom_idx]]
-                    sp_col = str(atom_cols[cs.motif['species'][sp_idx]])
+                    sp_i = cs.motif['species'][sp_idx]
+                    sp_col = 'rgb' + str(atom_cols[sp_i])
 
                     trace_name = sp_name + ' (crystal #{})'.format(c_idx + 1)
 
@@ -585,19 +649,38 @@ class AtomisticStructure(object):
                         'marker': {
                             'symbol': 'o',
                             'size': 7,
-                            'color': 'rgb' + sp_col
+                            'color': sp_col
                         },
                         'name': trace_name,
                         'legendgroup': trace_name,
                     }
-                    data.append(
-                        graph_objs.Scatter3d(
-                            x=atom_sites_sp[0],
-                            y=atom_sites_sp[1],
-                            z=atom_sites_sp[2],
-                            **atom_site_props
+
+                    if atoms_3d:
+                        rad = element(sp_i).vdw_radius * 0.25 * 1e-2  # in Ang
+                        # Get sphere trace for each atom:
+                        for i in atom_sites_sp.T:
+                            sph_args = {
+                                'radius': rad,
+                                'colour': sp_col,
+                                'origin': i[:, np.newaxis],
+                                'n': 10
+                            }
+                            sph = plotting.get_sphere_plotly(**sph_args)
+                            sph[0].update({
+                                'name': trace_name,
+                                'legendgroup': trace_name,
+                            })
+                            data.append(sph[0])
+
+                    else:
+                        data.append(
+                            graph_objs.Scatter3d(
+                                x=atom_sites_sp[0],
+                                y=atom_sites_sp[1],
+                                z=atom_sites_sp[2],
+                                **atom_site_props
+                            )
                         )
-                    )
                     if proj_2d:
                         for i in proj_2d_dirs:
                             data_2d.append({

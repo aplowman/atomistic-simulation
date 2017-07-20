@@ -408,9 +408,17 @@ def dir_exists_remote(host, dir_path):
         return False
 
 
-def rsync_remote(src, host, dst):
-    rsync_cmd = ('rsync -az --chmod=Du=rwx,Dgo=rx,Fu=rw,Fog=r'
-                 ' {} {}:{}').format(src, host, dst)
+def rsync_remote(src, host, dst, exclude=None):
+    """
+    exclude : list
+        List of strings to pass to --exclude option
+    """
+    if exclude is not None:
+        ex_str = ''.join([' --exclude={}'.format(i) for i in exclude])
+    else:
+        ex_str = ''
+    rsync_cmd = ('rsync -az --chmod=Du=rwx,Dgo=rx,Fu=rw,Fog=r{}'
+                 ' {} {}:{}').format(ex_str, src, host, dst)
     subprocess.run(['bash', '-c', rsync_cmd])
 
 

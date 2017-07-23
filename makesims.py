@@ -33,10 +33,11 @@ class Archive(object):
 
     """
 
-    def __init__(self, session_id, path, dropbox):
+    def __init__(self, session_id, path, dropbox, key):
 
         self.dropbox = dropbox
-        self.path = os.path.join(path, session_id)
+        self.key = key
+        self.path = posixpath.join(path, session_id)
 
 
 class Stage(object):
@@ -103,6 +104,9 @@ class Stage(object):
 
         """
 
+        # Don't copy html plots
+        rsync_ex = ['*.html', 'plots']
+
         if scratch.remote:
 
             if self.os_name == 'nt' and scratch.os_name == 'posix':
@@ -113,7 +117,8 @@ class Stage(object):
 
                 print('Remotely copying simulations to scratch.')
                 bash_path = self.get_bash_path(end_path_sep=True)
-                utils.rsync_remote(bash_path, scratch.host, scratch.path)
+                utils.rsync_remote(bash_path, scratch.host, scratch.path,
+                                   exclude=rsync_ex)
 
             else:
                 raise NotImplementedError('Unsupported remote transfer.')
@@ -128,10 +133,14 @@ class Stage(object):
                 # Use rsync/scp
                 raise NotImplementedError('Unsupported local transfer.')
 
-    def copy_plots_to_archive(self, archive):
+    def copy_to_archive(self, archive):
         """
         """
-        pass
+        dbx = utils.get_dropbox(archive.key)
+        db_path = archive.path
+        # Only copy plots:
+        db_inc = ['*.html']
+        utils.upload_dropbox_dir(dbx, self.path, db_path, include=db_inc)
 
     def submit_on_scratch(self, scratch):
         """
@@ -202,8 +211,10 @@ class Scratch(object):
 
     """
 
-    def __init__(self, path, remote, os_name, session_id, offline_files=None,
-                 host=None):
+    def __init__(self, path, remote, os_name, session_id, num_cores, host=None,
+                 offline_files=None, parallel_env=None, sge=False,
+                 job_array=False, job_name=None, selective_submission=False,
+                 module_load=None):
         """Constructor method to generate a Scratch object."""
         self.os_name = os_name
         if self.os_name == 'nt':
@@ -216,6 +227,13 @@ class Scratch(object):
         self.remote = remote
         self.host = host
         self.offline_files = offline_files
+        self.num_cores = num_cores
+        self.parallel_env = parallel_env
+        self.sge = sge
+        self.job_array = job_array
+        self.selective_submission = selective_submission
+        self.job_name = job_name
+        self.module_load = module_load
 
     def get_path(self, *add_path):
         """Get the path of a directory inside the scratch area."""
@@ -410,40 +428,43 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
     return all_updates
 
 
-def process_castep_opt(opt):
+def process_castep_opt(castep_opt):
     """
 
     """
 
-    if opt.get('checkpoint') is True:
-        if opt.get('backup_interval') is not None:
-            opt['param'].update(
-                {'backup_interval': opt['backup_interval']})
+    if castep_opt.get('checkpoint') is True:
+        if castep_opt.get('backup_interval') is not None:
+            castep_opt['param'].update(
+                {'backup_interval': castep_opt['backup_interval']})
 
     else:
-        opt['param'].update({'write_checkpoint': 'none'})
+        castep_opt['param'].update({'write_checkpoint': 'none'})
 
-    opt.pop('backup_interval', None)
-    opt.pop('checkpoint', None)
+    castep_opt.pop('backup_interval', None)
+    castep_opt.pop('checkpoint', None)
 
-    task = opt['param']['task']
 
-    if task == 'SinglePoint':
-        opt['cell_constraints'].pop('cell_angles_equal', None)
-        opt['cell_constraints'].pop('cell_lengths_equal', None)
-        opt['cell_constraints'].pop('fix_cell_angles', None)
-        opt['cell_constraints'].pop('fix_cell_lengths', None)
-        opt['atom_constraints'].pop('fix_xy_idx', None)
-        opt['atom_constraints'].pop('fix_xyz_idx', None)
+def process_constraints(opt):
 
-    elif task == 'GeometryOptimisation':
+    if opt['method'] == 'castep':
 
-        # atom constraints are parsed as 2D arrays (pending todo of
-        # dict-parser) (want 1D arrays)
+        task = opt['castep']['param']['task']
 
-        for k, v in opt['atom_constraints'].items():
-            if isinstance(v, np.ndarray):
-                opt['atom_constraints'][k] = v[:, 0]
+        if task == 'SinglePoint':
+            opt['constraints']['cell'].pop('cell_angles_equal', None)
+            opt['constraints']['cell'].pop('cell_lengths_equal', None)
+            opt['constraints']['cell'].pop('fix_cell_angles', None)
+            opt['constraints']['cell'].pop('fix_cell_lengths', None)
+            opt['constraints']['atom'].pop('fix_xy_idx', None)
+            opt['constraints']['atom'].pop('fix_xyz_idx', None)
+
+        elif task == 'GeometryOptimisation':
+            # atom constraints are parsed as 2D arrays (pending todo of
+            # dict-parser) (want 1D arrays)
+            for k, v in opt['constraints']['atom'].items():
+                if isinstance(v, np.ndarray):
+                    opt['constraints']['atom'][k] = v[:, 0]
 
 
 def append_db(opt):
@@ -591,7 +612,7 @@ def main():
     s_date, s_num = utils.get_date_time_stamp(split=True)
     s_id = s_date + '_' + s_num
     su['session_id'] = s_id
-    su['job_name'] = "j_" + s_num
+    su['scratch']['job_name'] = "j_" + s_num
 
     stage = Stage(session_id=s_id, path=su['stage_path'])
     scratch = Scratch(session_id=s_id, **su['scratch'])
@@ -734,7 +755,8 @@ def main():
             srs_as.visualise(show_iplot=False, save=True,
                              save_args=save_args, proj_2d=True)
 
-        # print('plt_path: \n{}\n'.format(plt_path))
+        # Process constraints options
+        process_constraints(srs_opt)
 
         # Process CASTEP options
         if srs_opt['method'] == 'castep':
@@ -757,19 +779,16 @@ def main():
         'path': stage.path,
         'calc_paths': all_scratch_paths,
         'method': opt['method'],
-        'num_cores': su['num_cores'],
-        'sge': su['sge'],
-        'job_array': su['job_array'],
+        'num_cores': scratch.num_cores,
         'scratch_os': scratch.os_name,
-        'scratch_path': scratch.path
+        'scratch_path': scratch.path,
+        'sge': scratch.sge,
+        'job_array': scratch.job_array,
+        'job_name': scratch.job_name,
+        'parallel_env': scratch.parallel_env,
+        'selective_submission': scratch.selective_submission,
+        'module_load': scratch.module_load
     }
-    selective_submission = su.get('selective_submission')
-    if selective_submission:
-        js_params.update({'selective_submission': selective_submission})
-
-    job_name = su.get('job_name')
-    if job_name:
-        js_params.update({'job_name': job_name})
 
     if opt['method'] == 'castep':
         seedname = opt['castep'].get('seedname')
@@ -788,6 +807,8 @@ def main():
             stage.submit_on_scratch(scratch)
         else:
             print('Did not submit.')
+        print('Uploading plots to dropbox...')
+        stage.copy_to_archive(archive)
     else:
         print('Exiting.')
         return

@@ -39,25 +39,40 @@ class AtomisticSimulation(object):
 
     def write_input_files(self):
 
+        set_opt = self.options['set_up']
+        common_params = {
+            'supercell': self.structure.supercell,
+            'atom_sites': self.structure.atom_sites,
+            'species': self.structure.all_species,
+            'species_idx': self.structure.all_species_idx,
+            'path': set_opt['stage_series_path'],
+            'atom_constraints': self.options['constraints']['atom'],
+        }
+
         if self.options['method'] == 'castep':
 
             cst_opt = self.options['castep']
-            set_opt = self.options['set_up']
-
             cst_in_params = {
-                'supercell': self.structure.supercell,
-                'atom_sites': self.structure.atom_sites,
-                'species': self.structure.all_species,
-                'species_idx': self.structure.all_species_idx,
-                'path': set_opt['stage_series_path'],
+                'cell_constraints': self.options['constraints']['cell'],
                 'seedname': cst_opt['seedname'],
                 'cell': cst_opt['cell'],
                 'param': cst_opt['param'],
-                'cell_constraints': cst_opt['cell_constraints'],
-                'atom_constraints': cst_opt['atom_constraints'],
+                **common_params
             }
-
             simsio.write_castep_inputs(**cst_in_params)
+
+        elif self.options['method'] == 'lammps':
+
+            lmp_opt = self.options['lammps']
+            lmp_in_params = {
+                'potential_path': lmp_opt['potential_path'],
+                'potential_type': lmp_opt['potential_type'],
+                'computes': lmp_opt['computes'],
+                'thermos_dt': lmp_opt['thermos_dt'],
+                'dump_dt': lmp_opt['dump_dt'],
+                **common_params
+            }
+            simsio.write_lammps_inputs(**lmp_in_params)
 
 
 class AtomisticStructure(object):
@@ -228,7 +243,7 @@ class AtomisticStructure(object):
 
     def visualise(self, proj_2d=False, show_iplot=True, save=False,
                   save_args=None, sym_op=None, wrap_sym_op=False,
-                  atoms_3d=True):
+                  atoms_3d=False):
         """
         Parameters
         ----------
@@ -237,7 +252,7 @@ class AtomisticStructure(object):
         sym_op : list of ndarrays
         atoms_3d : bool
             If True, plots atoms as appropriately sized spheres instead of
-            markers.
+            markers. Not recommended for more than a handful of atoms!
 
 
         TODO:

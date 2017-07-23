@@ -2,7 +2,7 @@ import os
 import numpy as np
 import readwrite
 from readwrite import format_arr as fmt_arr
-from readwrite import replace_in_file, delete_line
+from readwrite import replace_in_file, delete_line, add_line
 import vectors
 import utils
 import shutil
@@ -12,8 +12,9 @@ JS_TEMPLATE_DIR = os.path.join(SCRIPTS_PATH, 'set_up', 'jobscript_templates')
 
 
 def write_jobscript(path, calc_paths, method, num_cores, sge, job_array,
-                    scratch_os=None, scratch_path=None,
-                    selective_submission=False, job_name=None, seedname=None):
+                    scratch_os=None, scratch_path=None, parallel_env=None,
+                    selective_submission=False, module_load=None,
+                    job_name=None, seedname=None):
     """
     Write a jobscript file whose execution runs calculation input files.
 
@@ -47,11 +48,18 @@ def write_jobscript(path, calc_paths, method, num_cores, sge, job_array,
         if the jobscript will be executed in a location different to the
         directory `path`, in which it is generated. By default, this is set to
         the same string as `path`.
+    parallel_env : str, optional
+        The SGE parallel environment on which to submit the calculations. Only
+        applicable in `num_cores` > 1. Default is None.
     selective_submission : bool, optional
         Only applicable if `sge` is True. If True, the SGE task id flag `-t`
         [1] will be excluded from the jobscript file and instead this flag will
         be expected as a command line argument when executing the jobscript:
         e.g. "qsub jobscript.sh -t 1-10:2". Default is False.
+    module_load : str, optional
+        A string representing the path to a module to load within the 
+        jobscript. If specified, the statement "module load `module_load`" will
+        be added to the top of the jobscript.
     job_name : str, optional
         Only applicable if `sge` is True. Default is None.
     seedname : str, optional
@@ -74,6 +82,9 @@ def write_jobscript(path, calc_paths, method, num_cores, sge, job_array,
 
     if method == 'castep' and seedname is None:
         raise ValueError('`seedname` must be specified for CASTEP jobscripts.')
+
+    if num_cores > 1 and parallel_env is None:
+        raise ValueError('`parallel_env` must be set if `num_cores` > 1.')
 
     num_calcs = len(calc_paths)
 
@@ -132,11 +143,17 @@ def write_jobscript(path, calc_paths, method, num_cores, sge, job_array,
     js_path = os.path.join(path, js_name)
     shutil.copy(tmp_path, js_path)
 
+    # Add module load to jobscript:
+    if module_load is not None:
+        add_line(js_path, 1, '')
+        add_line(js_path, 2, 'module load {}'.format(module_load))
+
     # Make replacements in template file:
     replace_in_file(js_path, '<replace_with_dir_list>', dir_list_path_scratch)
 
     if multi_type == 'parallel':
         replace_in_file(js_path, '<replace_with_num_cores>', str(num_cores))
+        replace_in_file(js_path, '<replace_with_pe>', parallel_env)
 
     if sge:
         if job_name is not None:

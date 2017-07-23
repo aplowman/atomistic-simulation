@@ -6,7 +6,7 @@
 #$ -V
 #$ -o output/
 #$ -e output/
-#$ -pe smp.pe <replace_with_num_cores>
+#$ -pe <replace_with_pe> <replace_with_num_cores>
 
 SUBDIR=`sed -n 1p <replace_with_dir_list>`
 cd $SUBDIR

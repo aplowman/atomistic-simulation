@@ -359,3 +359,34 @@ def replace_in_file(file_path, search_str, replace_str):
 
     with open(file_path, 'w', encoding='utf-8', newline='') as new_file:
         new_file.write(file_data)
+
+
+def add_line(file_path, line_idx, line):
+    """
+    Add a line to a file at a specified line index, pushing subsequent lines
+    down by one.
+
+    Parameters
+    ---------
+    file_path : str
+    line_idx : int
+    line : str
+
+    Returns
+    -------
+    None
+
+    """
+
+    # Validation
+    if not isinstance(line_idx, int):
+        raise ValueError('`line_idx` must be an integer.')
+
+    with open(file_path, 'r', encoding='utf-8', newline='') as f:
+        lns = f.readlines()
+
+    lns.insert(line_idx, line + '\n')
+
+    with open(file_path, 'w', encoding='utf-8', newline='') as f:
+        lns = ''.join(lns)
+        f.write(lns)

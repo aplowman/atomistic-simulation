@@ -350,7 +350,7 @@ def write_lammps_atoms(supercell, atom_sites, species, species_idx, path):
     atom_type = (species_idx + 1)[:, np.newaxis]
 
     os.makedirs(path, exist_ok=True)
-    atom_path = os.path.join(calc_path, 'atoms.lammps')
+    atom_path = os.path.join(path, 'atoms.lammps')
 
     with open(atom_path, 'w', newline='') as at_f:
 
@@ -374,12 +374,12 @@ def write_lammps_atoms(supercell, atom_sites, species, species_idx, path):
         arr_fm = readwrite.format_arr([atom_id, atom_type, atom_sites.T],
                                       format_spec=fmt_sp)
         at_f.write(arr_fm)
-        print('\n')
 
 
 def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
-                        potential_path, potential_type, atom_constraints=None,
-                        computes=None, thermos_dt=1, dump_dt=1):
+                        potential_path, potential_type, potential_species,
+                        atom_constraints=None, computes=None, thermos_dt=1,
+                        dump_dt=1):
     """
     Generate LAMMPS input files for energy minimisation of a 3D periodic
     supercell.
@@ -400,16 +400,18 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
         Absolute path to the potential file.
     potential_type : str
         Type of potential which `potential_path` points to.
+    potential_species : str
+        Species which is modelled by the potential which `potential_path`
+        points to.
     atom_constraints : dict, optional
         A dict with the following keys:
-            fix_xy_idx : list or ndarray of dimension 1 or str
+            fix_xy_idx : list or ndarray of dimension 1
                 If array, the atom indices whose `x` and `y` coordinates are to
-                be fixed. If str, must be 'all' or 'none'. Set to 'none'
+                be fixed. By default, None.
                 if `atom_constraints` is not specified.
-            fix_xyz_idx : list or ndarray of dimension 1 or str
+            fix_xyz_idx : list or ndarray of dimension 1
                 If array, the atom indices whose `x`, `y` and `z` coordinates
-                are to be fixed. If str, must be 'all' or 'none'. Set to 'none'
-                if `atom_constraints` is not specified.
+                are to be fixed. By default, None.
     computes : list of str, optional
         A list of quantities to compute during the simulation. If not
         specified, set to a list with elements: `pe/atom`, `displace/atom`,
@@ -472,7 +474,7 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
         'box          tilt large',
         'read_data    atoms.lammps',
         'pair_style   {}'.format(potential_type),
-        'pair_coeff   * * "{}"'.format(potential_path)
+        'pair_coeff   * * "{}" {}'.format(potential_path, potential_species)
     ]
 
     fix_lns = []
@@ -518,7 +520,7 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
         c_fm = cinf['fmt']
         compute_lns.append('compute {} all {}'.format(c_nm, c))
 
-        if len(c_dm) == 1:
+        if c_dm == 1:
             dmp_computes += ' c_{}'.format(c_nm)
             dmp_fmt += ' {}'.format(c_fm)
 
@@ -531,7 +533,8 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
     thermo_args = ['step', 'atoms', 'pe', 'ke', 'etotal']
     thermo_args_all = ' '.join(thermo_args)
     thermo_lns = [
-        'thermo_style {}'.format(thermo_args_all),
+        'thermo_style custom {}'.format(thermo_args_all),
+        'thermo_modify format float %20.10f',
         'thermo {:d}'.format(thermos_dt)
     ]
 
@@ -548,20 +551,26 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
     #   force tol: ev / ang for units = metal
     #   max iterations:
     #   max force/energy evaluations:
+    max_iters = int(1e4)
+    max_force_per_energy_evals = int(1e5)
     sim_lns = []
     sim_lns.append('min_style cg')
-    sim_lns.append('minimize 0.0 1.0e-6 1.0e4 1.0e5')
+    sim_lns.append('minimize 0.0 1.0e-6 {} {}'.format(
+        str(max_iters),
+        str(max_force_per_energy_evals)
+    ))
 
     all_lns = [command_lns, fix_lns, compute_lns, thermo_lns,
                dump_lns, sim_lns]
 
     # Write all lines to input script file
     os.makedirs(path, exist_ok=True)
-    in_path = os.path.join(calc_path, 'in.lammps')
+    in_path = os.path.join(path, 'in.lammps')
     with open(in_path, 'w', newline='') as in_f:
-        for i in all_lns:
+        for i_idx, i in enumerate(all_lns):
+            if i_idx > 0:
+                in_f.write('\n')
             in_f.writelines([j + '\n' for j in i])
-            print('\n')
 
 
 def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
@@ -582,11 +591,11 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
         Maps each atom site to a given species in `species`.
     path : str
         Directory in which to generate input files.
-    seedname : str
-        The seedname of the CASTEP calculation.
-    cell : dict
+    seedname : str, optional
+        The seedname of the CASTEP calculation. Default is `sim`.
+    cell : dict, optional
         Key value pairs to add to the cell file.
-    param : dict
+    param : dict, optional
         Key value pairs to add to the param file.
     cell_constraints : dict, optional
         A dict with the following keys:

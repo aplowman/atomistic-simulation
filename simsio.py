@@ -422,12 +422,12 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
             'name': 'peatom',
             'dims': 1,
             'fmt': '%.10f',
-        }
+        },
         'displace/atom': {
             'name': 'datom',
             'dims': 4,
             'fmt': '%.10f',
-        }
+        },
         'voronoi/atom': {
             'name': 'voratom',
             'dims': 2,

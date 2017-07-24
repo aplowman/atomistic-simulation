@@ -57,7 +57,7 @@ def write_jobscript(path, calc_paths, method, num_cores, sge, job_array,
         be expected as a command line argument when executing the jobscript:
         e.g. "qsub jobscript.sh -t 1-10:2". Default is False.
     module_load : str, optional
-        A string representing the path to a module to load within the 
+        A string representing the path to a module to load within the
         jobscript. If specified, the statement "module load `module_load`" will
         be added to the top of the jobscript.
     job_name : str, optional
@@ -406,12 +406,11 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
     atom_constraints : dict, optional
         A dict with the following keys:
             fix_xy_idx : list or ndarray of dimension 1
-                If array, the atom indices whose `x` and `y` coordinates are to
-                be fixed. By default, None.
-                if `atom_constraints` is not specified.
+                The atom indices whose `x` and `y` coordinates are to
+                be fixed. By default, set to None.
             fix_xyz_idx : list or ndarray of dimension 1
-                If array, the atom indices whose `x`, `y` and `z` coordinates
-                are to be fixed. By default, None.
+                The atom indices whose `x`, `y` and `z` coordinates
+                are to be fixed. By default, set to None.
     computes : list of str, optional
         A list of quantities to compute during the simulation. If not
         specified, set to a list with elements: `pe/atom`, `displace/atom`,
@@ -440,17 +439,17 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
         'pe/atom': {
             'name': 'peatom',
             'dims': 1,
-            'fmt': '%.10f',
+            'fmt': ['%20.10f'],
         },
         'displace/atom': {
             'name': 'datom',
             'dims': 4,
-            'fmt': '%.10f',
+            'fmt': ['%20.10f'] * 4,
         },
         'voronoi/atom': {
             'name': 'voratom',
             'dims': 2,
-            'fmt': '%.10f',
+            'fmt': ['%20.10f', '%5.f'],
         }
     }
 
@@ -522,12 +521,12 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
 
         if c_dm == 1:
             dmp_computes += ' c_{}'.format(c_nm)
-            dmp_fmt += ' {}'.format(c_fm)
+            dmp_fmt += ' {}'.format(c_fm[0])
 
         else:
             for i in range(c_dm):
                 dmp_computes += ' c_{}['.format(c_nm) + '{:d}]'.format(i + 1)
-                dmp_fmt += ' {}'.format(c_fm)
+                dmp_fmt += ' {}'.format(c_fm[i])
 
     # thermo prints info to the log file
     thermo_args = ['step', 'atoms', 'pe', 'ke', 'etotal']
@@ -540,7 +539,7 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
 
     dump_str = 'dump 1 all custom {} dump.*.txt id type x y z'.format(dump_dt)
     dump_str += dmp_computes
-    dump_mod = 'dump_modify 1 format "%d %d %.10f %.10f %.10f'
+    dump_mod = 'dump_modify 1 format "%5d %5d %20.10f %20.10f %20.10f'
     dump_mod += dmp_fmt + '"'
     dump_lns = [dump_str, dump_mod]
 
@@ -571,6 +570,341 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
             if i_idx > 0:
                 in_f.write('\n')
             in_f.writelines([j + '\n' for j in i])
+
+
+def read_lammps_log(path):
+    """"""
+
+    # Map `thermo_style` args to how they appears in the thermo output,
+    # and their data type.
+    thermo_map = {
+        'step': {
+            'name': 'Step',
+            'dtype': int
+        },
+        'atoms': {
+            'name': 'Atoms',
+            'dtype': int
+        },
+        'pe': {
+            'name': 'PotEng',
+            'dtype': float
+        },
+        'ke': {
+            'name': 'KinEng',
+            'dtype': float
+        },
+        'etotal': {
+            'name': 'TotEng',
+            'dtype': float
+        }
+    }
+
+    DUMP = 'dump'
+    THERMO_STYLE = 'thermo_style'
+    THERMO_OUT_END = 'Loop'
+    WARN = 'WARNING:'
+    ERR = 'ERROR:'
+    VERS = 'LAMMPS'
+
+    dump_name = None
+    thermo_style_args = None
+    thermo_style_out = None
+    vers = None
+
+    warns = []
+    errs = []
+
+    with open(path, 'r', encoding='utf-8', newline='') as lf:
+
+        mode = 'scan'
+        for ln in lf:
+
+            ln = ln.strip()
+            ln_s = ln.split()
+
+            if ln == '':
+                continue
+
+            if mode == 'scan':
+
+                if VERS in ln:
+                    vers = ln.split('(')[1].split(')')[0]
+
+                if ln_s[0] == DUMP:
+                    dump_name = ln_s[5]
+
+                elif ln_s[0] == THERMO_STYLE:
+                    thermo_style_args = ln_s[2:]
+                    tm = thermo_map
+                    thermo_style_out = [tm[i]['name']
+                                        for i in thermo_style_args]
+                    thermo_out = {i: [] for i in thermo_style_out}
+
+                if thermo_style_out is not None:
+                    if ln_s[0] == thermo_style_out[0]:
+                        mode = 'thermo'
+                        continue
+
+                if WARN in ln:
+                    warns.append(ln)
+
+                if ERR in ln:
+                    errs.append(ln)
+
+            if mode == 'thermo':
+                if ln_s[0] == THERMO_OUT_END:
+                    mode = 'scan'
+                else:
+                    for i_idx, i in enumerate(thermo_style_out):
+                        thermo_out[i].append(ln_s[i_idx])
+
+    # Parse thermo as correct dtypes
+    for k, v in thermo_out.items():
+        dt = thermo_map[thermo_style_args[thermo_style_out.index(k)]]['dtype']
+        thermo_out[k] = np.array(v, dtype=dt)
+
+    out = {
+        'version': vers,
+        'warnings': warns,
+        'errors': errs,
+        'thermo': thermo_out,
+        'dump_name': dump_name
+    }
+
+    return out
+
+
+def read_lammps_dump(path):
+    """
+    Read a LAMMPS dump file.
+
+    Notes
+    -----
+    This is not generalised, in terms of the fields present in the `ATOMS`
+    block, but could be developed to be more-generalised in the future.
+
+    """
+
+    # Search strings
+    TS = 'ITEM: TIMESTEP'
+    NUMATOMS = 'ITEM: NUMBER OF ATOMS'
+    BOX = 'ITEM: BOX BOUNDS'
+    ATOMS = 'ITEM: ATOMS'
+    TILT_FACTORS = 'xy xz yz'
+
+    ts = None
+    num_atoms = None
+    box_tilt = False
+    box_periodicity = None
+    box = []
+    atom_sites = None
+    atom_types = None
+    atom_disp = None
+    atom_pot = None
+    vor_vols = None
+    vor_faces = None
+
+    out = {}
+    with open(path, 'r', encoding='utf-8', newline='') as df:
+        mode = 'scan'
+        for ln in df:
+
+            ln = ln.strip()
+            ln_s = ln.split()
+
+            if TS in ln:
+                mode = 'ts'
+                continue
+
+            elif NUMATOMS in ln:
+                mode = 'num_atoms'
+                continue
+
+            elif BOX in ln:
+                mode = 'box'
+                box_ln_idx = 0
+                box_periodicity = [ln_s[-i] for i in [3, 2, 1]]
+                if TILT_FACTORS in ln:
+                    box_tilt = True
+                continue
+
+            elif ATOMS in ln:
+                mode = 'atoms'
+                headers = ln_s[2:]
+
+                x_col = headers.index('x')
+                y_col = headers.index('y')
+                z_col = headers.index('z')
+
+                atom_type_col = headers.index('type')
+                vor_vol_col = headers.index('c_voratom[1]')
+                vor_face_col = headers.index('c_voratom[2]')
+                d1c = headers.index('c_datom[1]')
+                d2c = headers.index('c_datom[2]')
+                d3c = headers.index('c_datom[3]')
+                d4c = headers.index('c_datom[4]')
+                pot_col = headers.index('c_peatom')
+
+                atom_ln_idx = 0
+                atom_sites = np.zeros((3, num_atoms))
+                atom_types = np.zeros((num_atoms,), dtype=int)
+                atom_pot = np.zeros((num_atoms,))
+                atom_disp = np.zeros((4, num_atoms))
+                vor_vols = np.zeros((num_atoms,))
+                vor_faces = np.zeros((num_atoms,), dtype=int)
+
+                continue
+
+            if mode == 'ts':
+                ts = int(ln)
+                mode = 'scan'
+
+            elif mode == 'num_atoms':
+                num_atoms = int(ln)
+                mode = 'scan'
+
+            elif mode == 'box':
+                box.append([float(i) for i in ln_s])
+                box_ln_idx += 1
+                if box_ln_idx == 3:
+                    mode = 'scan'
+
+            elif mode == 'atoms':
+
+                atom_sites[:, atom_ln_idx] = [
+                    float(i) for i in (ln_s[x_col], ln_s[y_col], ln_s[z_col])]
+
+                atom_disp[:, atom_ln_idx] = [
+                    float(i) for i in [ln_s[j] for j in (d1c, d2c, d3c, d4c)]]
+
+                atom_pot[atom_ln_idx] = float(ln_s[pot_col])
+                atom_types[atom_ln_idx] = int(ln_s[atom_type_col])
+                vor_vols[atom_ln_idx] = float(ln_s[vor_vol_col])
+                vor_faces[atom_ln_idx] = int(ln_s[vor_face_col])
+
+                atom_ln_idx += 1
+                if atom_ln_idx == num_atoms:
+                    mode = 'scan'
+
+    # Form supercell edge vectors as column vectors:
+    supercell = np.array([
+        [box[0][1] - box[0][0], box[0][2], box[1][2]],
+        [0, box[1][1] - box[1][0], box[2][2]],
+        [0, 0, box[2][1] - box[2][0]]
+    ])
+
+    out = {
+        'time_step': ts,
+        'num_atoms': num_atoms,
+        'box_tilt': box_tilt,
+        'box_periodicity': box_periodicity,
+        'box': box,
+        'supercell': supercell,
+        'atom_sites': atom_sites,
+        'atom_types': atom_types,
+        'atom_pot_energy': atom_pot,
+        'atom_disp': atom_disp,
+        'vor_vols': vor_vols,
+        'vor_faces': vor_faces
+    }
+
+    # print('ts: \n{}\n'.format(ts))
+    # print('num_atoms: \n{}\n'.format(num_atoms))
+    # print('box_tilt: \n{}\n'.format(box_tilt))
+    # print('box_periodicity: \n{}\n'.format(box_periodicity))
+    # print('box: \n{}\n'.format(box))
+    # print('supercell: \n{}\n'.format(supercell))
+    # print('atom_sites: \n{}\n'.format(atom_sites))
+    # print('atom_pot: \n{}\n'.format(atom_pot))
+    # print('atom_types: \n{}\n'.format(atom_types))
+    # print('atom_disp: \n{}\n'.format(atom_disp))
+    # print('vor_vols: \n{}\n'.format(vor_vols))
+    # print('vor_faces: \n{}\n'.format(vor_faces))
+
+    return out
+
+
+def read_lammps_output(dir_path, log_name='log.lammps'):
+    """
+
+    References
+    ----------
+    [1] https://technet.microsoft.com/en-us/library/gg440701.aspx
+
+    """
+
+    # Get the format of dummp files from the log file
+    log_path = os.path.join(dir_path, log_name)
+    log_out = read_lammps_log(log_path)
+    dump_name = log_out['dump_name']
+
+    # Convert * wildcard in `dump_name` to regex (see ref. [1]):
+    dump_name = dump_name.replace('.', '\.').replace('*', '.*')
+    dmp_fns = readwrite.find_files_in_dir(dir_path, dump_name)
+
+    """
+
+            'time_step': ts,
+            'num_atoms': num_atoms,
+            'box_tilt': box_tilt,
+            'box_periodicity': box_periodicity,
+            'box': box,
+            'supercell': supercell,
+            'atom_sites': atom_sites,
+            'atom_types': atom_types,
+            'atom_pot_energy': atom_pot,
+            'atom_disp': atom_disp,
+            'vor_vols': vor_vols,
+            'vor_faces': vor_faces
+    """
+
+    all_dmps = {}
+    atoms = []
+    atom_disp = []
+    atom_pot_energy = []
+    vor_vols = []
+    vor_faces = []
+    supercell = []
+    time_steps = []
+
+    for dfn in dmp_fns:
+        dmp_path = os.path.join(dir_path, dfn)
+        dmp_i = read_lammps_dump(dmp_path)
+        dmp_ts = dmp_i['time_step']
+        all_dmps.update({dmp_ts: dmp_i})
+        atoms.append(dmp_i['atom_sites'])
+        atom_disp.append(dmp_i['atom_disp'])
+        atom_pot_energy.append(dmp_i['atom_pot_energy'])
+        vor_vols.append(dmp_i['vor_vols'])
+        vor_faces.append(dmp_i['vor_faces'])
+        supercell.append(dmp_i['supercell'])
+        time_steps.append(dmp_i['time_step'])
+
+    atoms = np.array(atoms)
+    atom_disp = np.array(atom_disp)
+    atom_pot_energy = np.array(atom_pot_energy)
+    vor_vols = np.array(vor_vols)
+    vor_faces = np.array(vor_faces)
+    supercell = np.array(supercell)
+    time_steps = np.array(time_steps)
+
+    final_energy = log_out['thermo']['TotEng']
+
+    out = {
+        **log_out,
+        'dumps': all_dmps,
+        'atoms': atoms,
+        'atom_disp': atom_disp,
+        'atom_pot_energy': atom_pot_energy,
+        'vor_vols': vor_vols,
+        'vor_faces': vor_faces,
+        'supercell': supercell,
+        'time_steps': time_steps,
+        'final_energy': final_energy
+    }
+
+    return out
 
 
 def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
@@ -610,17 +944,15 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                 supercell vectors are to remain fixed.
             fix_angles : str
                 Some combination of 'a', 'b' and 'c'. Represents which
-                supercell angles are to remain fixed.
+                supercell angles are to remain fixed.                
     atom_constraints : dict, optional
         A dict with the following keys:
-            fix_xy_idx : list or ndarray of dimension 1 or str
-                If array, the atom indices whose `x` and `y` coordinates are to
-                be fixed. If str, must be 'all' or 'none'. Set to 'none'
-                if `atom_constraints` is not specified.
-            fix_xyz_idx : list or ndarray of dimension 1 or str
-                If array, the atom indices whose `x`, `y` and `z` coordinates
-                are to be fixed. If str, must be 'all' or 'none'. Set to 'none'
-                if `atom_constraints` is not specified.
+            fix_xy_idx : list or ndarray of dimension 1
+                The atom indices whose `x` and `y` coordinates are to
+                be fixed. By default, set to None.
+            fix_xyz_idx : list or ndarray of dimension 1
+                The atom indices whose `x`, `y` and `z` coordinates
+                are to be fixed. By default, set to None.
 
     TODO:
     -   Generalise atom constraints.
@@ -641,8 +973,8 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
     }
 
     atom_cnst_def = {
-        'fix_xy_idx': 'none',
-        'fix_xyz_idx': 'none'
+        'fix_xy_idx': None,
+        'fix_xyz_idx': None
     }
 
     if cell_constraints is None:
@@ -657,15 +989,11 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
     for k, v in atom_constraints.items():
 
-        if not isinstance(v, (list, np.ndarray, str)):
-            raise ValueError('`atom_constraints[{}]` must be a 1D list, 1D '
-                             'array or str.'.format(k))
+        if isinstance(v, (np.ndarray, list)):
 
-        if not isinstance(v, str):
             atom_constraints[k] = utils.parse_as_int_arr(v)
             v = atom_constraints[k]
 
-        if isinstance(v, np.ndarray):
             if v.ndim != 1:
                 raise ValueError('`atom_constraints[{}]` must be a 1D list, '
                                  '1D array or str.'.format(k))
@@ -674,22 +1002,17 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                 raise IndexError('`atom_constraints[{}]` must index '
                                  '`atom_sites`'.format(k))
 
+        elif v is not None:
+            raise ValueError('`atom_constraints[{}]` must be a 1D list or 1D '
+                             'array.'.format(k))
+
     f_xy = atom_constraints.get('fix_xy_idx')
     f_xyz = atom_constraints.get('fix_xyz_idx')
 
-    if isinstance(f_xy, str):
-        if f_xy == 'all':
-            f_xy = np.arange(atom_sites.shape[1])
-
-        elif f_xy == 'none':
-            f_xy = np.array([])
-
-    if isinstance(f_xyz, str):
-        if f_xyz == 'all':
-            f_xyz = np.arange(atom_sites.shape[1])
-
-        elif f_xyz == 'none':
-            f_xyz = np.array([])
+    if f_xy is None:
+        f_xy = np.array([])
+    if f_xyz is None:
+        f_xyz = np.array([])
 
     if len(f_xyz) > 0 and len(f_xy) > 0:
         if len(np.intersect1d(f_xyz, f_xy)) > 0:

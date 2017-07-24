@@ -1583,8 +1583,6 @@ class CSLBicrystal(AtomisticStructure):
 
         """
 
-        print('shift: \n{}\n'.format(shift))
-
         if isinstance(shift, np.ndarray):
             if shift.shape[0] == 1:
                 shift = shift[0]

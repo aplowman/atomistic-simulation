@@ -288,7 +288,8 @@ def prepare_series_update(series_spec, atomistic_structure):
         'kpoint',
         'cut_off_energy',
         'smearing_width',
-        'gb_size'
+        'gb_size',
+        'box_lat'
     ]
 
     if sn not in allowed_sn:
@@ -380,6 +381,18 @@ def prepare_series_update(series_spec, atomistic_structure):
                 'base_structure': {'gb_size': v},
                 'series_id': {
                     'gb_size': {'val': v, 'path': '{}_{}_{}'.format(*v[0])}}
+            })
+
+    elif sn == 'box_lat':
+
+        for v in vals:
+
+            out.append({
+                'base_structure': {'box_lat': v},
+                'series_id': {
+                    'box_lat': {'val': v,
+                                'path': '{}_{}_{}-{}_{}_{}-{}_{}_{}'.format(
+                                    *v.flatten())}}
             })
 
     return out
@@ -605,7 +618,8 @@ def main():
         'kpoint': False,
         'cut_off_energy': False,
         'smearing_width': False,
-        'gb_size': True
+        'gb_size': True,
+        'box_lat': True
     }
     csl_lookup = {
         7: [
@@ -794,11 +808,6 @@ def main():
         else:
             srs_path.append('')
 
-        # Get the last series depth index which affects the structure:
-        lst_struct_idx = -1
-        if True in is_struct:
-            lst_struct_idx = [idx for idx, i in enumerate(is_struct) if i][-1]
-
         stage_srs_path = stage.get_path('calcs', *srs_path)
         scratch_srs_path = scratch.get_path('calcs', *srs_path)
 
@@ -806,18 +815,25 @@ def main():
         srs_opt['set_up']['stage_series_path'] = stage_srs_path
         srs_opt['set_up']['scratch_srs_path'] = scratch_srs_path
 
-        plt_path_lst = [stage.path, 'calcs'] + \
-            srs_path[:lst_struct_idx + 1] + ['plots']
-        plt_path = os.path.join(*plt_path_lst)
+        # Get the last series depth index which affects the structure:
+        lst_struct_idx = -1
+        if True in is_struct:
+            lst_struct_idx = [idx for idx, i in enumerate(is_struct) if i][-1]
 
-        if not os.path.isdir(plt_path):
-            os.makedirs(plt_path)
-            save_args = {
-                'filename': os.path.join(plt_path, 'structure.html'),
-                'auto_open': False
-            }
-            srs_as.visualise(show_iplot=False, save=True,
-                             save_args=save_args, proj_2d=True)
+        if lst_struct_idx > -1:
+
+            plt_path_lst = [stage.path, 'calcs'] + \
+                srs_path[:lst_struct_idx + 1] + ['plots']
+            plt_path = os.path.join(*plt_path_lst)
+
+            if not os.path.isdir(plt_path):
+                os.makedirs(plt_path)
+                save_args = {
+                    'filename': os.path.join(plt_path, 'structure.html'),
+                    'auto_open': False
+                }
+                srs_as.visualise(show_iplot=False, save=True,
+                                 save_args=save_args, proj_2d=True)
 
         # Process constraints options
         process_constraints(srs_opt, srs_as)

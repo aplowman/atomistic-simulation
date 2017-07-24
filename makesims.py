@@ -104,6 +104,10 @@ class Stage(object):
 
         """
 
+        scratch_dir_exists = 'Directory already exists on scratch. Aborting.'
+        copy_msg = 'Copying simulations to {} scratch.'.format(
+            'remote' if scratch.remote else 'local'
+        )
         # Don't copy html plots
         rsync_ex = ['*.html', 'plots']
 
@@ -112,10 +116,9 @@ class Stage(object):
             if self.os_name == 'nt' and scratch.os_name == 'posix':
 
                 if utils.dir_exists_remote(scratch.host, scratch.path):
-                    raise ValueError('Directory already exists on scratch.'
-                                     ' Aborting.')
+                    raise ValueError(scratch_dir_exists)
 
-                print('Remotely copying simulations to scratch.')
+                print(copy_msg)
                 bash_path = self.get_bash_path(end_path_sep=True)
                 utils.rsync_remote(bash_path, scratch.host, scratch.path,
                                    exclude=rsync_ex)
@@ -126,8 +129,12 @@ class Stage(object):
         else:
 
             if self.os_name == 'nt' and scratch.os_name == 'nt':
-                # Use shutil
-                raise NotImplementedError('Unsupported local transfer.')
+
+                if os.path.isdir(scratch.path):
+                    raise ValueError(scratch_dir_exists)
+
+                print(copy_msg)
+                shutil.copytree(self.path, scratch.path)
 
             elif self.os_name == 'posix' and scratch.os_name == 'posix':
                 # Use rsync/scp
@@ -152,13 +159,14 @@ class Stage(object):
 
         """
 
+        no_dir_msg = 'Directory does not exist on scratch. Aborting.'
+
         if scratch.remote:
 
             if self.os_name == 'nt' and scratch.os_name == 'posix':
 
                 if not utils.dir_exists_remote(scratch.host, scratch.path):
-                    raise ValueError('Directory does not exist on scratch.'
-                                     ' Aborting.')
+                    raise ValueError(no_dir_msg)
 
                 print('Submitting simulations on scratch...')
                 comp_proc = subprocess.run(
@@ -172,12 +180,17 @@ class Stage(object):
         else:
 
             if self.os_name == 'nt' and scratch.os_name == 'nt':
-                # Use shutil
-                raise NotImplementedError('Unsupported local transfer.')
+                if not os.path.isdir(scratch.path):
+                    raise ValueError(no_dir_msg)
+
+                js_path = os.path.join(scratch.path, 'jobscript.bat')
+                # Run batch file in a new console window:
+                subprocess.Popen(js_path,
+                                 creationflags=subprocess.CREATE_NEW_CONSOLE)
 
             elif self.os_name == 'posix' and scratch.os_name == 'posix':
                 # Use rsync/scp
-                raise NotImplementedError('Unsupported local transfer.')
+                raise NotImplementedError('Unsupported.')
 
 
 class Scratch(object):
@@ -211,11 +224,19 @@ class Scratch(object):
 
     """
 
-    def __init__(self, path, remote, os_name, session_id, num_cores, host=None,
-                 offline_files=None, parallel_env=None, sge=False,
+    def __init__(self, path, remote, session_id, num_cores,  os_name=None,
+                 host=None, offline_files=None, parallel_env=None, sge=False,
                  job_array=False, job_name=None, selective_submission=False,
                  module_load=None):
         """Constructor method to generate a Scratch object."""
+
+        # Validation
+        if remote and os_name is None:
+            raise ValueError('If `remote` is True, must specify `os_name`.')
+
+        if not remote:
+            os_name = os.name
+
         self.os_name = os_name
         if self.os_name == 'nt':
             path_mod = ntpath
@@ -445,7 +466,57 @@ def process_castep_opt(castep_opt):
     castep_opt.pop('checkpoint', None)
 
 
-def process_constraints(opt):
+def process_lammps_opt(lammps_opt, structure):
+    """
+    """
+
+    # Set full potential path
+    fn = lammps_opt['potential_file']
+    lammps_opt['potential_path'] = os.path.join(REF_PATH, 'potentials', fn)
+    lammps_opt.pop('potential_file')
+
+    # Set the potential species
+    sp = structure.all_species
+
+    print('process_lammps_opt: sp: {}'.format(sp))
+    print('process_lammps_opt: type(sp): {}'.format(type(sp)))
+
+    if len(sp) > 1:
+        raise NotImplementedError('Writing the potential command in '
+                                  'multi-species LAMMPS input files has not '
+                                  'yet been implemented.')
+
+    lammps_opt['potential_species'] = sp[0]
+
+
+def process_constraints(opt, structure):
+    """
+    Process constraint options, so they are ready to be passed to the methods
+    which write input files.
+
+    For atom constraints, convert `none` to None, and convert `all` to an index
+    array of all atoms. 
+
+    """
+
+    atm_cnst = opt['constraints']['atom']
+    atm_cnst_def = {
+        'fix_xy_idx': 'none',
+        'fix_xyz_idx': 'none'
+    }
+    atm_cnst = {**atm_cnst_def, **atm_cnst}
+
+    for fx in ['fix_xy_idx', 'fix_xyz_idx']:
+        if atm_cnst[fx] == 'none':
+            atm_cnst[fx] = None
+        elif atm_cnst[fx] == 'all':
+            atm_cnst[fx] = np.arange(structure.atom_sites.shape[1])
+        else:
+            # atom constraints are parsed as 2D arrays (pending todo of
+            # dict-parser) (want 1D arrays)
+            atm_cnst[fx] = atm_cnst[fx][:, 0]
+
+    opt['constraints']['atom'] = atm_cnst
 
     if opt['method'] == 'castep':
 
@@ -458,13 +529,6 @@ def process_constraints(opt):
             opt['constraints']['cell'].pop('fix_cell_lengths', None)
             opt['constraints']['atom'].pop('fix_xy_idx', None)
             opt['constraints']['atom'].pop('fix_xyz_idx', None)
-
-        elif task == 'GeometryOptimisation':
-            # atom constraints are parsed as 2D arrays (pending todo of
-            # dict-parser) (want 1D arrays)
-            for k, v in opt['constraints']['atom'].items():
-                if isinstance(v, np.ndarray):
-                    opt['constraints']['atom'][k] = v[:, 0]
 
 
 def append_db(opt):
@@ -756,11 +820,14 @@ def main():
                              save_args=save_args, proj_2d=True)
 
         # Process constraints options
-        process_constraints(srs_opt)
+        process_constraints(srs_opt, srs_as)
 
         # Process CASTEP options
         if srs_opt['method'] == 'castep':
             process_castep_opt(srs_opt['castep'])
+
+        elif srs_opt['method'] == 'lammps':
+            process_lammps_opt(srs_opt['lammps'], srs_as)
 
         # Generate AtomisticSim:
         asim = atomistic.AtomisticSimulation(srs_as, srs_opt)

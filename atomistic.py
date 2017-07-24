@@ -65,11 +65,7 @@ class AtomisticSimulation(object):
 
             lmp_opt = self.options['lammps']
             lmp_in_params = {
-                'potential_path': lmp_opt['potential_path'],
-                'potential_type': lmp_opt['potential_type'],
-                'computes': lmp_opt['computes'],
-                'thermos_dt': lmp_opt['thermos_dt'],
-                'dump_dt': lmp_opt['dump_dt'],
+                **lmp_opt,
                 **common_params
             }
             simsio.write_lammps_inputs(**lmp_in_params)
@@ -1587,8 +1583,14 @@ class CSLBicrystal(AtomisticStructure):
 
         """
 
-        shift = np.array(shift)
-        if any(shift <= -1) or any(shift >= 1):
+        print('shift: \n{}\n'.format(shift))
+
+        if isinstance(shift, np.ndarray):
+            if shift.shape[0] == 1:
+                shift = shift[0]
+        else:
+            shift = np.array(shift)
+        if np.any(shift <= -1) or np.any(shift >= 1):
             raise ValueError('Elements of `shift` should be between -1 and 1.')
 
         # Convenience:

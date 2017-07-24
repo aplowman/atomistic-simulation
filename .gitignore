@@ -101,4 +101,5 @@ ENV/
 set_up/opt.txt
 set_up/temp_db
 set_up/example_options
+ref/potentials
 test.py

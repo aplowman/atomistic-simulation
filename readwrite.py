@@ -260,17 +260,17 @@ def format_list(lst, depth=0, indent='\t', assign='=', arr_kw=None):
         if isinstance(elem, dict):
             out += (indent * depth) + '{\n' + \
                 format_dict(elem, depth + 1, indent, assign, arr_kw) + \
-                (indent * depth) + '}\n\n'
+                (indent * depth) + '}\n'
 
         elif isinstance(elem, list):
             out += (indent * depth) + '[\n' + \
                 format_list(elem, depth + 1, indent, assign, arr_kw) + \
-                (indent * depth) + ']\n\n'
+                (indent * depth) + ']\n'
 
         elif isinstance(elem, np.ndarray):
             out += (indent * depth) + '*[\n' + \
                 format_arr(elem, depth + 1, indent, **arr_kw) + \
-                (indent * depth) + ']\n\n'
+                (indent * depth) + ']\n'
 
         elif isinstance(elem, (int, float, str)):
             out += (indent * depth) + '{}\n'.format(elem)
@@ -321,17 +321,17 @@ def format_dict(d, depth=0, indent='\t', assign='=', arr_kw=None):
         if isinstance(v, dict):
             out += (indent * depth) + '{} '.format(k) + assign + ' {\n' + \
                 format_dict(v, depth + 1, indent, assign, arr_kw) + \
-                (indent * depth) + '}\n\n'
+                (indent * depth) + '}\n'
 
         elif isinstance(v, list):
             out += (indent * depth) + '{} '.format(k) + assign + ' [\n' + \
                 format_list(v, depth + 1, indent, assign, arr_kw) + \
-                (indent * depth) + ']\n\n'
+                (indent * depth) + ']\n'
 
         elif isinstance(v, np.ndarray):
             out += (indent * depth) + '{} '.format(k) + assign + ' *[\n' + \
                 format_arr(v, depth + 1, indent, **arr_kw) + \
-                (indent * depth) + ']\n\n'
+                (indent * depth) + ']\n'
 
         elif isinstance(v, (int, float, str)):
             out += (indent * depth) + '{} '.format(k) + \

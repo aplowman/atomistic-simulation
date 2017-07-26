@@ -420,3 +420,29 @@ def rsync_remote(src, host, dst, exclude=None):
     rsync_cmd = ('rsync -az --chmod=Du=rwx,Dgo=rx,Fu=rw,Fog=r{}'
                  ' {} {}:{}').format(ex_str, src, host, dst)
     subprocess.run(['bash', '-c', rsync_cmd])
+
+
+def get_idx_arr(arr):
+    """
+    Return an array which indexes all elements in a given array.
+
+    Parameters
+    ----------
+    arr : ndarray of dimension N or list
+
+    Returns
+    -------
+    ndarray of shape (N.ndim, N.size)
+
+    """
+
+    if isinstance(arr, list):
+        arr = np.array(arr)
+
+    idx = np.indices(arr.shape)
+    flt = arr.flatten()
+
+    idx_i = [idx[i].flatten() for i in range(idx.shape[0])]
+    all_idx = np.vstack(idx_i)
+
+    return all_idx

@@ -36,6 +36,45 @@ def find_files_in_dir(dir_path, match_regex, recursive=False):
     return matched_files
 
 
+def make_int_dir(path, zero_pad=2):
+    """
+    Find directories in a path whose names can be parsed as integers and make a
+    new directory with a larger integer name.
+
+    Parameters
+    ----------
+    path : str
+        The directory in which to make a new integer-parsable directory.
+    zero_pad : int, optional
+        The zero-padded width of the new directory name.
+
+    Returns
+    -------
+    str
+
+    """
+
+    # Check for existing directories:
+    cur = [i for i in os.listdir(path)
+           if os.path.isdir(os.path.join(path, i))]
+
+    # Keep only integer-parsable directories:
+    cur_int = []
+    for i in cur:
+        try:
+            cur_int.append(int(i))
+        except:
+            pass
+
+    # Make new directory
+    new_int = np.max(cur_int) + 1 if len(cur_int) > 0 else 1
+    new_dir = ('{{:0{}'.format(zero_pad) + 'd}').format(new_int)
+    new_path = os.path.join(path, new_dir)
+    os.makedirs(new_path)
+
+    return new_path
+
+
 def write_pickle(obj, file_path):
     """ Write `obj` to a pickle file at `file_path`. """
 

@@ -735,8 +735,6 @@ def main():
         'filename': stage.get_path('base_structure.html'),
         'auto_open': False
     }
-    base_as.visualise(show_iplot=False, save=True,
-                      save_args=save_args, proj_2d=True)
 
     # Save original options file
     opt_src_path = os.path.join(SU_PATH, 'opt.txt')
@@ -751,6 +749,26 @@ def main():
     # Get series definitions:
     srs_df = opt.get('series')
     is_srs = srs_df is not None and len(srs_df) > 0
+
+    is_struct = []
+    if is_srs:
+        for i in srs_df:
+            if isinstance(i, dict):
+                is_struct.append(srs_is_struct.get(i.get('name')))
+
+            elif isinstance(i, list):
+                is_struct.append(any([
+                    srs_is_struct.get(j.get('name')) for j in i]))
+
+    # Get the last series depth index which affects the structure:
+    lst_struct_idx = -1
+    if True in is_struct:
+        lst_struct_idx = [idx for idx, i in enumerate(is_struct) if i][-1]
+
+    # If only one simulation, plot the structure:
+    if lst_struct_idx == -1:
+        base_as.visualise(show_iplot=False, save=True,
+                          save_args=save_args, proj_2d=True)
 
     # Prepare series update data:
     all_upd = [{}]
@@ -793,19 +811,15 @@ def main():
         # Form the directory path for this sim
         # and find out which series affect the structure (for plotting purposes):
         srs_path = []
-        is_struct = []
         if is_srs:
             for i in srs_df:
                 if isinstance(i, dict):
                     srs_path.append(upd['series_id'][i['name']]['path'])
-                    is_struct.append(srs_is_struct.get(i.get('name')))
 
                 elif isinstance(i, list):
                     srs_path.append(
                         '_'.join([upd['series_id'][j['name']]['path']
                                   for j in i]))
-                    is_struct.append(any([
-                        srs_is_struct.get(j.get('name')) for j in i]))
         else:
             srs_path.append('')
 
@@ -815,11 +829,6 @@ def main():
         all_scratch_paths.append(scratch_srs_path)
         srs_opt['set_up']['stage_series_path'] = stage_srs_path
         srs_opt['set_up']['scratch_srs_path'] = scratch_srs_path
-
-        # Get the last series depth index which affects the structure:
-        lst_struct_idx = -1
-        if True in is_struct:
-            lst_struct_idx = [idx for idx, i in enumerate(is_struct) if i][-1]
 
         if lst_struct_idx > -1:
 

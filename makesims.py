@@ -3,6 +3,7 @@ import numpy as np
 import shutil
 import dict_parser
 import utils
+import dbhelpers
 import readwrite
 from readwrite import replace_in_file, delete_line
 import atomistic
@@ -143,11 +144,11 @@ class Stage(object):
     def copy_to_archive(self, archive):
         """
         """
-        dbx = utils.get_dropbox(archive.key)
+        dbx = dbhelpers.get_dropbox(archive.key)
         db_path = archive.path
         # Only copy plots:
         db_inc = ['*.html']
-        utils.upload_dropbox_dir(dbx, self.path, db_path, include=db_inc)
+        dbhelpers.upload_dropbox_dir(dbx, self.path, db_path, include=db_inc)
 
     def submit_on_scratch(self, scratch):
         """
@@ -554,17 +555,17 @@ def append_db(opt):
         dpbx_key = su['database'].get('dropbox_key')
         if dpbx_key is not None:
 
-            dbx = utils.get_dropbox(dpbx_key)
+            dbx = dbhelpers.get_dropbox(dpbx_key)
 
             # Download database file:
             tmp_db_path = os.path.join(SU_PATH, 'temp_db')
             dpbx_path = '/calcs/db.pickle'
 
             # Check if db file exists, if not prompt to create:
-            db_exists = utils.check_dropbox_file_exist(dbx, dpbx_path)
+            db_exists = dbhelpers.check_dropbox_file_exist(dbx, dpbx_path)
 
             if db_exists:
-                utils.download_dropbox_file(dbx, dpbx_path, tmp_db_path)
+                dbhelpers.download_dropbox_file(dbx, dpbx_path, tmp_db_path)
             else:
                 db_create = utils.confirm('Database file does not exist. '
                                           'Create it?')
@@ -580,8 +581,8 @@ def append_db(opt):
                 db_file = readwrite.read_pickle(tmp_db_path)
                 db_file.update({su['time_stamp']: opt})
                 readwrite.write_pickle(db_file, tmp_db_path)
-                utils.upload_dropbox_file(dbx, tmp_db_path, dpbx_path,
-                                          overwrite=True)
+                dbhelpers.upload_dropbox_file(dbx, tmp_db_path, dpbx_path,
+                                              overwrite=True)
 
 
 def main():

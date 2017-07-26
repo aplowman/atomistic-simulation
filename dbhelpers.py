@@ -1,4 +1,7 @@
 import dropbox
+import os
+import posixpath
+import fnmatch
 
 
 def get_dropbox(key):

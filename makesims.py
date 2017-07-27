@@ -459,7 +459,20 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
             su_flat.append(si_sub)
 
     all_updates_lst = utils.nest_lists(su_flat)
-    all_updates = [utils.combine_list_of_dicts(i) for i in all_updates_lst]
+
+    all_updates = []
+    for i in all_updates_lst:
+
+        all_sids = []
+        for j in i:
+            for k, v in j.items():
+                if k == 'series_id':
+                    all_sids.append(v)
+
+        m = utils.combine_list_of_dicts(i)
+        m['series_id'] = all_sids
+        all_updates.append(m)
+
     return all_updates
 
 
@@ -812,14 +825,8 @@ def main():
         # and find out which series affect the structure (for plotting purposes):
         srs_path = []
         if is_srs:
-            for i in srs_df:
-                if isinstance(i, dict):
-                    srs_path.append(upd['series_id'][i['name']]['path'])
-
-                elif isinstance(i, list):
-                    srs_path.append(
-                        '_'.join([upd['series_id'][j['name']]['path']
-                                  for j in i]))
+            for sid in upd['series_id']:
+                srs_path.append('_'.join([v['path'] for k, v in sid.items()]))
         else:
             srs_path.append('')
 
@@ -863,7 +870,8 @@ def main():
     # Save all sims as pickle file:
     pick_path = stage.get_path('sims.pickle')
     pick = {
-        'all_sims': all_sims
+        'all_sims': all_sims,
+        'base_options': opt,
     }
     readwrite.write_pickle(pick, pick_path)
 

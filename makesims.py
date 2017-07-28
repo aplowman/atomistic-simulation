@@ -344,10 +344,8 @@ def prepare_series_update(series_spec, atomistic_structure):
 
             v = float(v)  # TODO: parse data types in option file
             out.append({
-                'castep': {
-                    'cell': {'kpoint_mp_spacing': '{:.3f}'.format(v)}},
-                'series_id': {
-                    'kpoint': {'val': v, 'path': '{:.3f}'.format(v)}}
+                'castep': {'cell': {'kpoint_mp_spacing': '{:.3f}'.format(v)}},
+                'series_id': {'name': 'kpoint', 'val': v, 'path': '{:.3f}'.format(v)}
             })
 
     elif sn == 'cut_off_energy':
@@ -356,10 +354,8 @@ def prepare_series_update(series_spec, atomistic_structure):
 
             v = float(v)  # TODO: parse data types in option file
             out.append({
-                'castep': {
-                    'param': {'cut_off_energy': '{:.0f}'.format(v)}},
-                'series_id': {
-                    'cut_off_energy': {'val': v, 'path': '{:.0f}'.format(v)}}
+                'castep': {'param': {'cut_off_energy': '{:.0f}'.format(v)}},
+                'series_id': {'name': 'cut_off_energy', 'val': v, 'path': '{:.0f}'.format(v)}
             })
 
     elif sn == 'smearing_width':
@@ -368,10 +364,8 @@ def prepare_series_update(series_spec, atomistic_structure):
 
             v = float(v)  # TODO: parse data types in option file
             out.append({
-                'castep': {
-                    'param': {'smearing_width': '{:.2f}'.format(v)}},
-                'series_id': {
-                    'smearing_width': {'val': v, 'path': '{:.2f}'.format(v)}}
+                'castep': {'param': {'smearing_width': '{:.2f}'.format(v)}},
+                'series_id': {'name': 'smearing_width', 'val': v, 'path': '{:.2f}'.format(v)}
             })
 
     elif sn == 'gb_size':
@@ -380,8 +374,7 @@ def prepare_series_update(series_spec, atomistic_structure):
 
             out.append({
                 'base_structure': {'gb_size': v},
-                'series_id': {
-                    'gb_size': {'val': v, 'path': '{}_{}_{}'.format(*v[0])}}
+                'series_id': {'name': 'gb_size', 'val': v, 'path': '{}_{}_{}'.format(*v[0])}
             })
 
     elif sn == 'box_lat':
@@ -390,10 +383,9 @@ def prepare_series_update(series_spec, atomistic_structure):
 
             out.append({
                 'base_structure': {'box_lat': v},
-                'series_id': {
-                    'box_lat': {'val': v,
-                                'path': '{}_{}_{}-{}_{}_{}-{}_{}_{}'.format(
-                                    *v.flatten())}}
+                'series_id': {'name': 'box_lat', 'val': v,
+                              'path': '{}_{}_{}-{}_{}_{}-{}_{}_{}'.format(
+                                  *v.flatten())}
             })
 
     return out
@@ -416,53 +408,43 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
 
     """
 
+    # Replace each series dict with a list of update dicts:
     srs_update = []
     for i in all_series_spec:
+        srs_update.append(
+            [prepare_series_update(j, atomistic_structure) for j in i])
 
-        if isinstance(i, dict):
-            srs_update.append(prepare_series_update(i, atomistic_structure))
+    # Combine parallel series:
+    for s_idx, s in enumerate(srs_update):
 
-        elif isinstance(i, list):
-            sub_up = []
-            for j in i:
-                sub_up.append(prepare_series_update(j, atomistic_structure))
+        l = [len(i) for i in s]
+        if len(set(l)) > 1:
+            raise ValueError('Length of parallel series must be identical.')
 
-            srs_update.append(sub_up)
-    """
-        Given update data for nested series passed in this form: [data_1, [data_2, data_3]], where
-        data_i are lists of dicts, each element in the list represents a series to be
-        nested and each element in a sublist represents a set of parallel series which
-        must have the same length, combine the series to form and return a list of
-        the necessary combinations of the update data, such that each element in the return list
-        corresponds to a single simulation.
+        s_t = utils.transpose_list(s)
+        for i_idx, i in enumerate(s_t):
 
-    """
+            new_sid = [copy.deepcopy(s_t[i_idx][0]['series_id'])]
 
-    # Now combine update data for each series into a flat list of dicts, where
-    # each dict represents the update data for a single simulation series
-    # element.
-    su_flat = []
-    for i in srs_update:
+            for j_idx, j in enumerate(i[1:]):
 
-        if isinstance(i[0], dict):
-            su_flat.append(i)
+                next_sid = copy.deepcopy(s_t[i_idx][j_idx + 1]['series_id'])
+                new_sid.append(next_sid)
 
-        elif isinstance(i[0], list):
+                s_t[i_idx][0] = utils.update_dict(
+                    s_t[i_idx][0], s_t[i_idx][j_idx + 1])
 
-            if len(set([len(j) for j in i])) > 1:
-                raise ValueError('Parallel series must have the same length.')
+            s_t[i_idx] = s_t[i_idx][0]
+            s_t[i_idx]['series_id'] = new_sid
 
-            si_sub = []
-            for j in utils.transpose_list(i):
-                si_sub.extend([utils.combine_list_of_dicts(j)])
+        srs_update[s_idx] = s_t
 
-            su_flat.append(si_sub)
+    # Nest series:
+    srs_update_nest = utils.nest_lists(srs_update)
 
-    all_updates_lst = utils.nest_lists(su_flat)
-
+    # Combine dicts into single update dict for each series element:
     all_updates = []
-    for i in all_updates_lst:
-
+    for i in srs_update_nest:
         all_sids = []
         for j in i:
             for k, v in j.items():
@@ -826,7 +808,7 @@ def main():
         srs_path = []
         if is_srs:
             for sid in upd['series_id']:
-                srs_path.append('_'.join([v['path'] for k, v in sid.items()]))
+                srs_path.append('_'.join([i['path'] for i in sid]))
         else:
             srs_path.append('')
 

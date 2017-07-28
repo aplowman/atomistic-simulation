@@ -1222,6 +1222,7 @@ def read_castep_file(cst_path):
     TESTED_VERS = ['17.2']
 
     VERS = 'CASTEP version'
+    CALC_TYPE = 'type of calculation                            :'
     PARAM_ECUT = 'plane wave basis set cut-off                   :'
     PARAM_FINE_GRID = 'size of   fine   gmax                          :'
     PARAM_NUM_ELEC = 'number of  electrons                           :'
@@ -1252,6 +1253,8 @@ def read_castep_file(cst_path):
     GO_PARAM_WRITE_GEOM = 'write geom trajectory file                     :'
     UNCON_FORCES_START = '******************* Unconstrained Forces *******************'
     UNCON_FORCES_END = '*                                                          *'
+    CON_FORCES_SP_START = '******************** Constrained Forces ********************'
+    CON_FORCES_SP_END = UNCON_FORCES_END
     CON_FORCES_GO_START = '******************************** Constrained Forces ********************************'
     CON_FORCES_GO_END = '*                                                                                  *'
     CON_SYM_FORCES_GO_START = '************************** Constrained Symmetrised Forces **************************'
@@ -1520,7 +1523,9 @@ def read_castep_file(cst_path):
                     scf_iter_idx += 1
 
             # Parse a forces block:
-            elif mode in ['parse_con_forces', 'parse_uncon_forces', 'parse_con_sym_forces']:
+            elif mode in ['parse_con_forces',
+                          'parse_uncon_forces',
+                          'parse_con_sym_forces']:
 
                 if force_ion_idx < 0:
                     force_ion_idx += 1
@@ -1560,6 +1565,9 @@ def read_castep_file(cst_path):
                     if version not in TESTED_VERS:
                         raise NotImplementedError(
                             'Parser not tested on this version of CASTEP: {}'.format(version))
+
+                elif CALC_TYPE in ln:
+                    calc_type_str = ln.split(':')[1].strip()
 
                 elif PARAM_ECUT in ln:
                     ecut = float(ln_s[-2])
@@ -1632,7 +1640,7 @@ def read_castep_file(cst_path):
                 elif FBC_RESULT in ln:
                     finite_basis_correction = float(ln_s[-1].split('eV')[0])
 
-                elif CON_FORCES_GO_START in ln:
+                elif CON_FORCES_GO_START in ln or CON_FORCES_SP_START in ln:
                     mode = 'parse_con_forces'
 
                 elif UNCON_FORCES_START in ln:
@@ -1716,13 +1724,15 @@ def read_castep_file(cst_path):
         species = np.array(species)
         species_idx = np.array(species_idx)
 
-        # Constrained forces are repeated at the end of BFGS output in Final config,
-        # so remove the last entry:
-        all_constrained_forces = all_constrained_forces[:-1]
+        # Constrained forces are repeated at the end of BFGS output in Final
+        # config, so remove the last entry if geometry optimisation:
+        if calc_type_str == 'geometry optimization':
+            all_constrained_forces = all_constrained_forces[:-1]
 
         tot_time_hrs = tot_time / 3600
 
         params = {
+            'calc_type':                calc_type_str,
             'cut_off_energy':           ecut,
             'fine_grid_size':           fine_grid,
             'num_electrons':            num_elec,
@@ -1740,7 +1750,7 @@ def read_castep_file(cst_path):
             'space_group':              space_group,
             'cell_constraints':         cell_constraints,
             'cell_constraints_num':     cell_constraints_num,
-            'finite_basis_correction':  finite_basis_correction
+            'finite_basis_correction':  finite_basis_correction,
 
         }
 
@@ -1775,8 +1785,7 @@ def read_castep_file(cst_path):
             'forces_unconstrained':     all_unconstrained_forces,
             'forces_constrained_sym':   all_constrained_symmetrised_forces,
             'species':                  species,
-            'species_idx':              species_idx
-
+            'species_idx':              species_idx,
         }
 
         return out

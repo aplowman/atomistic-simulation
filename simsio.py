@@ -1829,7 +1829,7 @@ def process_castep_out(out):
     s = np.round((m - np.floor(m)) * 60, decimals=0)
     t = [int(np.floor(i)) for i in [d, h, m]]
     time_strs = ['days', 'hrs', 'mins']
-    time_fmt = ''.join(['{} {}'.format(i, j)
+    time_fmt = ''.join(['{} {} '.format(i, j)
                         for i, j in zip(t, time_strs) if i > 0])
     time_fmt += '{:.0f} sec'.format(s)
 

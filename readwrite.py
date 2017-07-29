@@ -2,6 +2,10 @@ import os
 import re
 import pickle
 import numpy as np
+import fnmatch
+import shutil
+import filecmp
+import json
 
 
 def find_files_in_dir(dir_path, match_regex, recursive=False):
@@ -72,7 +76,131 @@ def make_int_dir(path, zero_pad=2):
     new_path = os.path.join(path, new_dir)
     os.makedirs(new_path)
 
-    return new_path
+    return new_dir
+
+
+def factor_common_files(path, common_files):
+    """
+    Search for identical files (name and content) in a directory, extract out
+    to a common path, and write a mapping JSON file.
+
+    Parameters
+    ----------
+    path : str
+        Directory in which to search for common files and in which a new
+        directory `common_files` will be generated containing factored out
+        files.
+    common_files : list of str
+        File names to include in the search, according to Unix shell-style
+        wildcards.
+
+    See Also
+    --------
+    `unfactor_common_files`
+
+    """
+
+    exclude = ['common_files']
+
+    # First generate a dict containing the directories of files
+    # which match `common_files`
+    cmn_fls = {}
+    for (root, drs, fls) in os.walk(path, topdown=True):
+
+        drs[:] = [d for d in drs if d not in exclude]
+        pth = os.path.relpath(root, path).split(os.path.sep)
+
+        for f in fls:
+            if any([fnmatch.fnmatch(f, c) for c in common_files]):
+                if f in cmn_fls:
+                    cmn_fls[f].append(pth)
+                else:
+                    cmn_fls.update({f: [pth]})
+
+    map_dir_path = os.path.join(path, 'common_files')
+    os.makedirs(map_dir_path, exist_ok=True)
+
+    # Now check which are identical and extract out:
+    cmn_map = {}
+    first_idx = None
+    for k, v in cmn_fls.items():
+
+        x = range(len(v))
+        skip_idx = []
+
+        for i in x:
+
+            if i in skip_idx:
+                continue
+
+            same_idx = [v[i]]
+
+            for j in x[i + 1:]:
+
+                if j in skip_idx:
+                    continue
+
+                pth_1 = os.path.join(path, *v[i], k)
+                pth_2 = os.path.join(path, *v[j], k)
+
+                if filecmp.cmp(pth_1, pth_2):
+                    same_idx.append(v[j])
+                    skip_idx.append(j)
+
+            if len(same_idx) > 1:
+                new_dir = make_int_dir(map_dir_path, zero_pad=2)
+                if first_idx is None:
+                    first_idx = new_dir
+                cmn_map.update({new_dir: {'filename': k, 'dirs': same_idx}})
+
+                # Factor out common files
+                src_fl_path = pth_1
+                dst_fl_path = os.path.join(map_dir_path, new_dir, k)
+                shutil.copy(src_fl_path, dst_fl_path)
+
+                # Remove common files which have been factored out:
+                for s in same_idx:
+                    rm_path = os.path.normpath(os.path.join(path, *s, k))
+                    os.remove(rm_path)
+
+    if len(cmn_map) > 0:
+        last_idx = int(first_idx) + len(cmn_map) - 1
+        map_id = '{}-{:02}'.format(first_idx, last_idx)
+        map_fn = os.path.join(map_dir_path, map_id + '_map.json')
+        with open(map_fn, 'w') as mf:
+            json.dump(cmn_map, mf, indent=2, sort_keys=True)
+
+
+def unfactor_common_files(path):
+    """To be used in conjunction with `factor_common_files`."""
+
+    map_dir_path = os.path.join(path, 'common_files')
+    if not os.path.isdir(map_dir_path):
+        raise ValueError('Cannot find map directory path.')
+
+    map_fls = find_files_in_dir(map_dir_path, '.map\.json')
+
+    for m in map_fls:
+
+        with open(os.path.join(map_dir_path, m), 'r') as mf:
+            cmn_map = json.load(mf)
+
+        for k, v in cmn_map.items():
+
+            src_path = os.path.join(map_dir_path, k, v['filename'])
+
+            for p in v['dirs']:
+                dst_path = os.path.join(path, *p)
+                shutil.copy(src_path, dst_path)
+
+            # Remove maps dir:
+            shutil.rmtree(os.path.join(map_dir_path, k))
+
+        # Remove JSON map file:
+        os.remove(os.path.join(map_dir_path, m))
+
+    # Remove common_files dir
+    os.rmdir(map_dir_path)
 
 
 def write_pickle(obj, file_path):

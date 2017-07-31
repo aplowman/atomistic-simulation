@@ -1791,59 +1791,6 @@ def read_castep_file(cst_path):
         return out
 
 
-def process_castep_out(out):
-    """Some simple calculations for convenience."""
-
-    def get_rms_force(forces):
-        """
-        Parameters
-        ----------
-        forces : ndarray of shape (M, 3, N)
-            Array representing the force components on N atoms 
-            for M steps.
-        """
-        if len(forces) == 0:
-            return None
-
-        forces_rshp = forces.reshape(forces.shape[0], -1)
-        forces_rms = np.sqrt(np.mean(forces_rshp ** 2, axis=1))
-
-        return forces_rms
-
-    n = out['num_ions']
-
-    # Energies per atom:
-    final_energy_pa = out['final_energy'] / n
-    final_fenergy_pa = out['final_fenergy'] / n
-    final_zenergy_pa = out['final_zenergy'] / n
-
-    # RMS forces
-    forces_cons_rms = get_rms_force(out['forces_constrained'])
-    forces_uncons_rms = get_rms_force(out['forces_unconstrained'])
-    forces_cons_sym_rms = get_rms_force(out['forces_constrained_sym'])
-
-    # Nicely formatted time
-    d = out['tot_time'] / (24 * 60 * 60)
-    h = (d - np.floor(d)) * 24
-    m = (h - np.floor(h)) * 60
-    s = np.round((m - np.floor(m)) * 60, decimals=0)
-    t = [int(np.floor(i)) for i in [d, h, m]]
-    time_strs = ['days', 'hrs', 'mins']
-    time_fmt = ''.join(['{} {} '.format(i, j)
-                        for i, j in zip(t, time_strs) if i > 0])
-    time_fmt += '{:.0f} sec'.format(s)
-
-    out.update({
-        'final_energy_pa': final_energy_pa,
-        'final_fenergy_pa': final_fenergy_pa,
-        'final_zenergy_pa': final_zenergy_pa,
-        'forces_cons_rms': forces_cons_rms,
-        'forces_uncons_rms': forces_uncons_rms,
-        'forces_cons_sym_rms': forces_cons_sym_rms,
-        'time_fmt': time_fmt,
-    })
-
-
 def read_castep_geom_file(geom_path):
     """
         Function to parse a .geom geomtery trajectory file from a CASTEP geometry

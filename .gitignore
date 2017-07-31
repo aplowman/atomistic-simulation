@@ -102,3 +102,4 @@ set_up/
 !set_up/jobscript_templates
 ref/potentials
 test.py
+dbkey.py

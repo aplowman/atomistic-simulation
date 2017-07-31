@@ -282,6 +282,7 @@ def prepare_series_update(series_spec, atomistic_structure):
     step = ss.get('step')
     stop = ss.get('stop')
     vals = ss.get('vals')
+    exclude = ss.get('exclude')
 
     # Validation
 
@@ -309,8 +310,14 @@ def prepare_series_update(series_spec, atomistic_structure):
     # If start, step and stop are provided, generate a set of vals from these:
     if vals is None:
         diff = start - stop if start > stop else stop - start
-        num = (diff + step) / step
+        num = int(np.round((diff + step) / step))
         vals = np.linspace(start, stop, num=num)
+
+        if exclude is not None:
+            # TODO: parse single line arrays as 1D arrays in dict-parser
+            exclude = exclude[0, :]
+            # TODO: Maybe need to round both vals and exclude here:
+            vals = np.setdiff1d(vals, exclude)
 
     # Additional processing of series values
     if sn == 'kpoint':
@@ -321,6 +328,7 @@ def prepare_series_update(series_spec, atomistic_structure):
         for v in vals:
 
             v = float(v)
+            print('v: {}'.format(v))
             kpt_gd = tuple(atomistic_structure.get_kpoint_grid(v))
 
             if unique_grids.get(kpt_gd) is None:
@@ -333,6 +341,7 @@ def prepare_series_update(series_spec, atomistic_structure):
             unique_vals.append(sorted(v)[0])
 
         vals = sorted(unique_vals)
+        print(vals)
 
     out = []
 
@@ -345,7 +354,7 @@ def prepare_series_update(series_spec, atomistic_structure):
             v = float(v)  # TODO: parse data types in option file
             out.append({
                 'castep': {'cell': {'kpoint_mp_spacing': '{:.3f}'.format(v)}},
-                'series_id': {'name': 'kpoint', 'val': v, 'path': '{:.3f}'.format(v)}
+                'series_id': {'name': sn, 'val': v, 'path': '{:.3f}'.format(v)}
             })
 
     elif sn == 'cut_off_energy':
@@ -354,8 +363,8 @@ def prepare_series_update(series_spec, atomistic_structure):
 
             v = float(v)  # TODO: parse data types in option file
             out.append({
-                'castep': {'param': {'cut_off_energy': '{:.0f}'.format(v)}},
-                'series_id': {'name': 'cut_off_energy', 'val': v, 'path': '{:.0f}'.format(v)}
+                'castep': {'param': {sn: '{:.0f}'.format(v)}},
+                'series_id': {'name': sn, 'val': v, 'path': '{:.0f}'.format(v)}
             })
 
     elif sn == 'smearing_width':
@@ -364,8 +373,8 @@ def prepare_series_update(series_spec, atomistic_structure):
 
             v = float(v)  # TODO: parse data types in option file
             out.append({
-                'castep': {'param': {'smearing_width': '{:.2f}'.format(v)}},
-                'series_id': {'name': 'smearing_width', 'val': v, 'path': '{:.2f}'.format(v)}
+                'castep': {'param': {sn: '{:.2f}'.format(v)}},
+                'series_id': {'name': sn, 'val': v, 'path': '{:.2f}'.format(v)}
             })
 
     elif sn == 'gb_size':
@@ -373,8 +382,8 @@ def prepare_series_update(series_spec, atomistic_structure):
         for v in vals:
 
             out.append({
-                'base_structure': {'gb_size': v},
-                'series_id': {'name': 'gb_size', 'val': v, 'path': '{}_{}_{}'.format(*v[0])}
+                'base_structure': {sn: v},
+                'series_id': {'name': sn, 'val': v, 'path': '{}_{}_{}'.format(*v[0])}
             })
 
     elif sn == 'box_lat':
@@ -382,8 +391,8 @@ def prepare_series_update(series_spec, atomistic_structure):
         for v in vals:
 
             out.append({
-                'base_structure': {'box_lat': v},
-                'series_id': {'name': 'box_lat', 'val': v,
+                'base_structure': {sn: v},
+                'series_id': {'name': sn, 'val': v,
                               'path': '{}_{}_{}-{}_{}_{}-{}_{}_{}'.format(
                                   *v.flatten())}
             })

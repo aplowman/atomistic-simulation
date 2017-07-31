@@ -30,7 +30,8 @@ def find_files_in_dir(dir_path, match_regex, recursive=False):
                     matched_path = f
 
                 else:
-                    matched_path = os.path.join(root.split(os.path.sep)[-1], f)
+                    pth = os.path.relpath(root, dir_path).split(os.path.sep)
+                    matched_path = os.path.join(*pth, f)
 
                 matched_files.append(matched_path)
 
@@ -62,7 +63,8 @@ def find_files_in_dir_glob(dir_path, match_glob, recursive=False):
                     matched_path = f
 
                 else:
-                    matched_path = os.path.join(root.split(os.path.sep)[-1], f)
+                    pth = os.path.relpath(root, dir_path).split(os.path.sep)
+                    matched_path = os.path.join(*pth, f)
 
                 matched_files.append(matched_path)
 

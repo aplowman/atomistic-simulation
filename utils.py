@@ -446,3 +446,19 @@ def get_idx_arr(arr):
     all_idx = np.vstack(idx_i)
 
     return all_idx
+
+
+def format_time(secs):
+    """Format a time in seconds into days, hours, minutes and seconds."""
+
+    d = secs / (24 * 60 * 60)
+    h = (d - np.floor(d)) * 24
+    m = (h - np.floor(h)) * 60
+    s = np.round((m - np.floor(m)) * 60, decimals=0)
+    t = [int(np.floor(i)) for i in [d, h, m]]
+    time_strs = ['days', 'hrs', 'mins']
+    time_fmt = ''.join(['{} {} '.format(i, j)
+                        for i, j in zip(t, time_strs) if i > 0])
+    time_fmt += '{:.0f} sec'.format(s)
+
+    return time_fmt

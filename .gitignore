@@ -98,8 +98,7 @@ ENV/
 /site
 
 # Custom
-set_up/opt.txt
-set_up/temp_db
-set_up/example_options
+set_up/
+!set_up/jobscript_templates
 ref/potentials
 test.py

@@ -1683,7 +1683,7 @@ def read_castep_file(cst_path):
                 elif SCF_FINAL_FEN in ln:
                     final_fenergy.append(float(ln_s[-2]))
 
-                elif SCF_FINAL_EN in ln:
+                elif SCF_FINAL_ZEN in ln:
                     final_zenergy.append(float(ln_s[-2]))
 
                 elif BFGS_DE in ln:

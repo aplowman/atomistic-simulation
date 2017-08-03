@@ -789,8 +789,8 @@ def read_lammps_dump(path):
 
     # Form supercell edge vectors as column vectors:
     supercell = np.array([
-        [box[0][1] - box[0][0], box[0][2], box[1][2]],
-        [0, box[1][1] - box[1][0], box[2][2]],
+        [box[0][1] - box[0][0] - box[0][2] - box[1][2], box[0][2], box[1][2]],
+        [0, box[1][1] - box[1][0] - box[2][2], box[2][2]],
         [0, 0, box[2][1] - box[2][0]]
     ])
 

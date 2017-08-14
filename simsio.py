@@ -220,17 +220,17 @@ def get_castep_cell_constraints(lengths_equal, angles_equal, fix_lengths,
 
     """
 
-    if lengths_equal == 'none':
-        lengths_equal == ''
+    if lengths_equal is None:
+        lengths_equal = ''
 
-    if angles_equal == 'none':
-        angles_equal == ''
+    if angles_equal is None:
+        angles_equal = ''
 
-    if fix_lengths == 'none':
-        fix_lengths == ''
+    if fix_lengths is None:
+        fix_lengths = ''
 
-    if fix_angles == 'none':
-        fix_angles == ''
+    if fix_angles is None:
+        fix_angles = ''
 
     eqs_params = [lengths_equal, angles_equal]
     fxd_params = [fix_lengths, fix_angles]

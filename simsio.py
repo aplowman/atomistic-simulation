@@ -931,22 +931,6 @@ def read_lammps_output(dir_path, log_name='log.lammps'):
     dump_name = dump_name.replace('.', '\.').replace('*', '.*')
     dmp_fns = readwrite.find_files_in_dir(dir_path, dump_name)
 
-    """
-
-            'time_step': ts,
-            'num_atoms': num_atoms,
-            'box_tilt': box_tilt,
-            'box_periodicity': box_periodicity,
-            'box': box,
-            'supercell': supercell,
-            'atom_sites': atom_sites,
-            'atom_types': atom_types,
-            'atom_pot_energy': atom_pot,
-            'atom_disp': atom_disp,
-            'vor_vols': vor_vols,
-            'vor_faces': vor_faces
-    """
-
     all_dmps = {}
     atoms = []
     atom_disp = []
@@ -954,6 +938,7 @@ def read_lammps_output(dir_path, log_name='log.lammps'):
     vor_vols = []
     vor_faces = []
     supercell = []
+    box = []
     time_steps = []
 
     for dfn in dmp_fns:
@@ -967,15 +952,18 @@ def read_lammps_output(dir_path, log_name='log.lammps'):
         vor_vols.append(dmp_i['vor_vols'])
         vor_faces.append(dmp_i['vor_faces'])
         supercell.append(dmp_i['supercell'])
+        box.append(dmp_i['box'])
         time_steps.append(dmp_i['time_step'])
 
-    atoms = np.array(atoms)
-    atom_disp = np.array(atom_disp)
-    atom_pot_energy = np.array(atom_pot_energy)
-    vor_vols = np.array(vor_vols)
-    vor_faces = np.array(vor_faces)
-    supercell = np.array(supercell)
     time_steps = np.array(time_steps)
+    srt_idx = np.argsort(time_steps)
+    atoms = np.array(atoms)[srt_idx]
+    atom_disp = np.array(atom_disp)[srt_idx]
+    atom_pot_energy = np.array(atom_pot_energy)[srt_idx]
+    vor_vols = np.array(vor_vols)[srt_idx]
+    vor_faces = np.array(vor_faces)[srt_idx]
+    supercell = np.array(supercell)[srt_idx]
+    box = np.array(box)[srt_idx]
 
     final_energy = log_out['thermo']['TotEng']
 
@@ -988,6 +976,7 @@ def read_lammps_output(dir_path, log_name='log.lammps'):
         'vor_vols': vor_vols,
         'vor_faces': vor_faces,
         'supercell': supercell,
+        'box': box,
         'time_steps': time_steps,
         'final_energy': final_energy
     }

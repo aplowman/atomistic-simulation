@@ -241,7 +241,7 @@ class AtomisticStructure(object):
 
     def visualise(self, proj_2d=False, show_iplot=True, save=False,
                   save_args=None, sym_op=None, wrap_sym_op=False,
-                  atoms_3d=False):
+                  atoms_3d=False, ret_fig=False):
         """
         Parameters
         ----------
@@ -262,7 +262,7 @@ class AtomisticStructure(object):
         """
 
         # Validation:
-        if not show_iplot and not save:
+        if not show_iplot and not save and not ret_fig:
             raise ValueError('Visualisation will not be displayed or saved!')
 
         crystal_cols = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
@@ -778,6 +778,9 @@ class AtomisticStructure(object):
             html_all = div_3d + div_2d
             with open(save_args.get('filename'), 'w') as plt_file:
                 plt_file.write(html_all)
+
+        if ret_fig:
+            return fig
 
     def reorient_to_lammps(self):
         """

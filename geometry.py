@@ -293,3 +293,364 @@ def get_box_centre(box, origin=None):
     """
 
     return get_box_corners(box, origin=origin).mean(2).T
+
+
+class Grid(object):
+    """
+    Class to represent a 2D nested grid structure formed in 3D space.
+
+    Attributes
+    ----------
+    grids : list of dicts
+
+    Methods
+    -------
+    plot
+    get_grid_points
+
+    TODO:
+    -   Fix issues for nesting depths greater than 1
+    -   Support the offset grid key
+
+    """
+
+    def __init__(self, edge_vecs, grid_spec):
+
+        # First form base grid parent grid spec:
+
+        A = edge_vecs[:, 0:1]
+        B = edge_vecs[:, 1:2]
+        θ = vectors.col_wise_angles(A, B)[0]
+        A_mag = np.linalg.norm(A)
+        B_mag = np.linalg.norm(B)
+        α = A_mag * np.array([[1, 0]]).T
+        β = B_mag * np.array([[1, 0]]).T
+        β = vectors.rotate_2D(β, θ)
+        edge_vecs = np.hstack([α, β])
+
+        parent_gs = {
+            'size': (1, 1),
+            'edge_vecs': edge_vecs,
+            'origin_std': np.zeros((2, 1)),
+            'origin_frac': np.zeros((2, 1)),
+            'start': (0, 0),
+            'step': (1, 1),
+            'stop': (1, 1),
+            'par_frac': np.array([[1], [1]]),
+        }
+
+        # We hard code parent_start/stop for the base grid.
+        if (grid_spec.get('parent_start') is not None
+                or grid_spec.get('parent_stop') is not None):
+            raise ValueError(
+                '`parent_start` and `parent_stop` are not allowed keys in the'
+                ' base grid spec.')
+
+        grid_spec.update({
+            'parent_start': (0, 0),
+            'parent_stop': (1, 1),
+        })
+
+        self.grids = self._compute_grid_points(edge_vecs, grid_spec, parent_gs)
+        self._remove_duplicate_points()
+
+    def get_grid_points(self):
+        """
+        Get all grid points from all grids and subgrids.
+
+        Returns
+        -------
+        dict
+            Keys:
+                points_std : ndarray
+                points_frac : ndarray
+                points_frac_obj : list of list of Fraction
+                grid_idx_nested : list of lists
+                grid_idx_flat : ndarray
+                point_idx : ndarray        
+
+        """
+
+        points_std = []
+        points_frac = []
+        grid_idx_nested = []
+        grid_idx_flat = []
+        point_idx = []
+
+        for gd_idx, gd in enumerate(self.grids):
+
+            if gd['use_points']:
+
+                pnts_s = gd['grid_points_std']
+                pnts_f = gd['grid_points_frac']
+                num_pnts = pnts_s.shape[1]
+
+                points_std.append(pnts_s)
+                points_frac.append(pnts_f)
+                grid_idx_nested.extend([gd['idx']] * num_pnts)
+                grid_idx_flat.extend([gd_idx] * num_pnts)
+                point_idx.extend(range(num_pnts))
+
+        points_frac = np.hstack(points_frac)
+
+        points_frac_obj = []
+        for i in points_frac:
+            sublist = []
+            for j in i:
+                sublist.append(fractions.Fraction(j).limit_denominator())
+            points_frac_obj.append(sublist)
+
+        out = {
+            'points_std': np.hstack(points_std),
+            'points_frac': points_frac,
+            'points_frac_obj': points_frac_obj,
+            'grid_idx_nested': grid_idx_nested,
+            'grid_idx_flat': np.array(grid_idx_flat),
+            'point_idx': np.array(point_idx),
+        }
+        return out
+
+    def plot(self):
+        """Generate a plot showing grid points and lines."""
+
+        data = []
+
+        for gd_idx, gd in enumerate(self.grids):
+
+            gd_tr = plotting.get_grid_trace_plotly(
+                gd['unit_cell'],
+                gd['size'],
+                grid_origin=gd['origin_std'].flatten(),
+                line_args={'color': cols[gd_idx]})
+
+            data.extend(gd_tr)
+
+            if gd['use_points']:
+                pnts = gd['grid_points_std']
+
+                spec_str = (' @ ({0}:{2}, {1}:{3}) => ({10}x{11}), ({4}:{6}:'
+                            '{8}, {5}:{7}:{9})')
+                spec_fmt = (*gd['parent_start'], *gd['parent_stop'],
+                            *gd['start'], *gd['step'], *gd['stop'],
+                            *gd['size'])
+                label = str(gd['idx']) + spec_str.format(*spec_fmt)
+
+                data.append({
+                    'type': 'scatter',
+                    'x': pnts[0],
+                    'y': pnts[1],
+                    'mode': 'markers',
+                    'marker': {
+                        'color': cols[gd_idx],
+                    },
+                    'name': label,
+                    'legendgroup': label,
+                })
+
+        layout = {
+            'width': 1000,
+            'height': 800,
+            'xaxis': {
+                'showgrid': False,
+                'title': 'x',
+                'scaleanchor': 'y',
+            },
+            'yaxis': {
+                'showgrid': False,
+                'title': 'y',
+            },
+
+        }
+
+        fig = go.Figure(data=data, layout=layout)
+        return fig
+
+    def _remove_duplicate_points(self):
+        """
+        Remove duplicate grid points, keeping points which are more-nested.
+
+        """
+
+        p = self.get_grid_points()
+        points_std = p['points_std']
+        gi_nested = p['grid_idx_nested']
+        gi_flat = p['grid_idx_flat']
+        point_idx = p['point_idx']
+
+        # Find which grid point are equivalent
+        eq_gp = vectors.get_equal_indices(points_std.T)[0]
+
+        # For each set of equivalent grid points find the grid point which
+        # is most-nested, i.e. that which has the longest length grid idx,
+        # and get the local indices of the grid points which are to be
+        # removed from each grid.
+        del_idx = [[] for _ in range(len(self.grids))]
+        for k, v in eq_gp.items():
+            i = [k] + v
+            most_nest_idx = 0
+            for j_idx, j in enumerate(i):
+                if len(gi_nested[j]) > len(gi_nested[i[most_nest_idx]]):
+                    most_nest_idx = j_idx
+
+            i.pop(most_nest_idx)
+            for k in i:
+                del_idx[gi_flat[k]].append(point_idx[k])
+
+        # Remove duplicate point from each grid
+        for gd_idx, (gd, di) in enumerate(zip(self.grids, del_idx)):
+
+            pnts_std = gd['grid_points_std']
+            pnts_frac = gd['grid_points_frac']
+            num_pnts = pnts_std.shape[1]
+
+            msk = np.ones(num_pnts, dtype=int)
+            msk[di] = False
+
+            w = np.where(msk)[0]
+            unique_pnts_std = pnts_std[:, w]
+            unique_pnts_frac = pnts_frac[:, w]
+
+            self.grids[gd_idx]['grid_points_std'] = unique_pnts_std
+            self.grids[gd_idx]['grid_points_frac'] = unique_pnts_frac
+
+    def _compute_grid_points(self, global_edge_vecs, grid_spec,
+                             parent_grid_spec, depth=0, idx=[0]):
+
+        # Convenience:
+        gs = grid_spec
+        pg = parent_grid_spec
+
+        if depth > 1:
+            raise NotImplementedError(
+                'Higher order nesting is not yet supported.')
+
+        if gs.get('offset') is not None:
+            raise NotImplementedError(
+                'Grid point offset is not yet supported.')
+
+        if gs.get('parent_start') is None or gs.get('parent_stop') is None:
+            raise ValueError('Subgrids specs must have keys: `parent_start` '
+                             'and `parent_stop`.')
+
+        valid_specs = [
+            'size',
+            'start',
+            'step',
+            'stop',
+            'use_points',
+            'sub_grids',
+            'offset',
+            'parent_start',
+            'parent_stop',
+        ]
+
+        for k, v in grid_spec.items():
+            if k not in valid_specs:
+                raise ValueError('Invalid grid specification: "{}". Allowed '
+                                 'keys are: {}'.format(k, valid_specs))
+
+        # Get grid edge vecs:
+        par_start = gs['parent_start']
+        par_stop = gs['parent_stop']
+
+        pg_sz = np.array(pg['size'])
+        pg_ev = pg['edge_vecs']
+        pg_pf = pg['par_frac']
+        pg_start = np.array(pg['start'])
+        pg_stop = np.array(pg['stop'])
+        pg_step = np.array(pg['step'])
+        pg_origin = pg['origin_frac']
+
+        par_frac = (np.array(par_stop) - np.array(par_start)) / \
+            np.array(((pg_stop - pg_start) / pg_step) + pg_start)
+        edge_vecs = par_frac * pg_ev
+
+        # Get grid origin:
+        origin_frac = (np.array(par_start) / np.array(pg_sz)).reshape((2, 1))
+        origin_frac += pg_origin + (pg_start / pg_sz).reshape((2, 1)) * pg_pf
+        origin_std = np.dot(global_edge_vecs, origin_frac)
+
+        # Get grid points:
+        gs_sz = gs['size']
+
+        # Add defaults:
+        if gs.get('step') is None:
+            gs['step'] = (1, 1)
+
+        if gs.get('start') is None:
+            gs['start'] = (0, 0)
+
+        if gs.get('stop') is None:
+            gs['stop'] = gs_sz
+
+        # Validation:
+        if any([sp > sz for sp, sz in zip(gs.get('stop'), gs.get('size'))]):
+            raise ValueError('Stop value cannot be larger than size value.')
+
+        gs_msh = np.meshgrid(*tuple(np.arange(g + 1) for g in gs_sz))
+
+        # Slice according to start, stop and step:
+        x_slice = slice(gs['start'][0], gs['stop'][0] + 1, gs['step'][0])
+        y_slice = slice(gs['start'][1], gs['stop'][1] + 1, gs['step'][1])
+        gs_msh = [m[:, x_slice] for m in gs_msh]
+        gs_msh = [m[y_slice] for m in gs_msh]
+
+        gs_points_num = np.vstack(gs_msh).reshape(2, -1)
+        gs_points_den = np.array(gs['size']).reshape((2, 1))
+        gs_points_frac = (gs_points_num / gs_points_den) * \
+            pg_pf * par_frac.reshape((2, 1)) + origin_frac
+        gs_points_std = np.dot(global_edge_vecs, gs_points_frac)
+
+        unit_cell = edge_vecs / gs_sz
+
+        grid_spec.update({
+            'edge_vecs': edge_vecs,
+            'unit_cell': unit_cell,
+            'origin_std': origin_std,
+            'origin_frac': origin_frac,
+            'grid_points': gs_points_std,
+            'par_frac': par_frac.reshape((2, 1)),
+        })
+
+        all_grids = [
+            {
+                'unit_cell': unit_cell,
+                'origin_std': origin_std,
+                'grid_points_std': gs_points_std,
+                'grid_points_frac': gs_points_frac,
+                'size': gs_sz,
+                'start': gs['start'],
+                'step': gs['step'],
+                'stop': gs['stop'],
+                'parent_start': par_start,
+                'parent_stop': par_stop,
+                'idx': idx,
+                'use_points': True,
+            }
+        ]
+
+        sub_grids = gs.get('sub_grids')
+        use_points = gs.get('use_points')
+        if sub_grids is not None:
+
+            if use_points is None:
+                use_points = False
+            all_grids[0].update({'use_points': use_points})
+
+            all_subgrids = []
+            for sg_idx, sg in enumerate(sub_grids):
+
+                gds = self._compute_grid_points(global_edge_vecs, sg,
+                                                grid_spec, depth=depth + 1,
+                                                idx=idx + [sg_idx])
+                all_subgrids.extend(gds)
+
+            all_grids.extend(all_subgrids)
+
+        else:
+            if use_points is not None and not use_points:
+                raise ValueError('Setting `use_points` to `False` is not '
+                                 'allowed for grids which do not contain '
+                                 'subgrids.')
+
+        return all_grids

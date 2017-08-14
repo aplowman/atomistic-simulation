@@ -1472,6 +1472,14 @@ class CSLBicrystal(AtomisticStructure):
         return np.einsum('ij,ij', sup_nb, self.n_unit)
 
     @property
+    def boundary_area(self):
+        """Computes the grain boundary area, in square Angstroms."""
+        bi = self.boundary_idx
+        sup_a = self.supercell[:, bi[0]]
+        sup_b = self.supercell[:, bi[1]]
+        return np.linalg.norm(np.cross(sup_a, sup_b))
+
+    @property
     def atoms_gb_dist(self):
         """
         Computes the distance from each atom to the origin grain boundary

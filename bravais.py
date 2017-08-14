@@ -103,6 +103,8 @@ class BravaisLattice(object):
         restrictions to be "any n parameters must be..." rather than "the first
         two parameters must be". E.g. monoclinic: "two of the angle parameters
         must be 90 deg" rather than "parameters 3 and 5 must be 90 deg".
+    -   Add option for angles in radians.
+    -   Add align option ('ax' or 'cz').
 
     """
 

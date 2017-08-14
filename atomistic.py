@@ -154,7 +154,7 @@ class AtomisticStructure(object):
     def __init__(self, atom_sites, supercell, lattice_sites=None,
                  crystals=None, crystal_structures=None, crystal_idx=None,
                  lat_crystal_idx=None, species_idx=None, motif_idx=None,
-                 all_species=None, all_species_idx=None):
+                 all_species=None, all_species_idx=None, overlap_tol=1):
         """Constructor method for AtomisticStructure object."""
 
         # Input validation
@@ -225,6 +225,7 @@ class AtomisticStructure(object):
         self.lat_crystal_idx = lat_crystal_idx
         self.species_idx = species_idx
         self.motif_idx = motif_idx
+        self._overlap_tol = overlap_tol
 
         if all_species is None:
             self._all_species = all_species
@@ -236,7 +237,7 @@ class AtomisticStructure(object):
         else:
             self._all_species_idx = utils.parse_as_int_arr(all_species_idx)
 
-        self.check_overlapping_atoms()
+        self.check_overlapping_atoms(overlap_tol)
 
     def visualise(self, proj_2d=False, show_iplot=True, save=False,
                   save_args=None, sym_op=None, wrap_sym_op=False,
@@ -1093,7 +1094,7 @@ class AtomisticStructure(object):
 
         return vectors.get_vec_distances(atms)
 
-    def check_overlapping_atoms(self, tol=1):
+    def check_overlapping_atoms(self, tol):
         """
         Returns True if any atoms are overlapping within a tolerance.abs
 
@@ -1270,7 +1271,7 @@ class CSLBicrystal(AtomisticStructure):
                  gb_type=None, gb_size=None, edge_conditions=None,
                  maintain_inv_sym=False, reorient=True,
                  boundary_vac_args=None, relative_shift_args=None,
-                 wrap=True):
+                 wrap=True, overlap_tol=1):
         """Constructor method for CSLBicrystal object."""
 
         if np.all(csl_vecs[0][:, 2] != csl_vecs[1][:, 2]):
@@ -1441,7 +1442,8 @@ class CSLBicrystal(AtomisticStructure):
                          crystal_idx=crystal_idx,
                          lat_crystal_idx=lat_crystal_idx,
                          species_idx=species_idx,
-                         motif_idx=motif_idx)
+                         motif_idx=motif_idx,
+                         overlap_tol=overlap_tol)
 
         self.check_inv_symmetry()
 
@@ -1568,7 +1570,7 @@ class CSLBicrystal(AtomisticStructure):
             'origin': grn_b_org_vac
         })
 
-        self.check_overlapping_atoms()
+        self.check_overlapping_atoms(self._overlap_tol)
         self.check_inv_symmetry()
 
     def apply_relative_shift(self, shift):
@@ -1622,7 +1624,7 @@ class CSLBicrystal(AtomisticStructure):
             # Update attribute:
             self.supercell = sup_shift
 
-        self.check_overlapping_atoms()
+        self.check_overlapping_atoms(self._overlap_tol)
         self.check_inv_symmetry()
 
     def wrap_atoms_to_supercell(self):

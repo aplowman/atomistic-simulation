@@ -48,13 +48,13 @@ class AtomisticSimulation(object):
             'species_idx': self.structure.all_species_idx,
             'path': set_opt['stage_series_path'],
             'atom_constraints': self.options['constraints']['atom'],
+            'cell_constraints': self.options['constraints']['cell'],
         }
 
         if self.options['method'] == 'castep':
 
             cst_opt = self.options['castep']
             cst_in_params = {
-                'cell_constraints': self.options['constraints']['cell'],
                 'seedname': cst_opt['seedname'],
                 'cell': cst_opt['cell'],
                 'param': cst_opt['param'],

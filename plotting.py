@@ -35,11 +35,14 @@ def get_grid_trace_plotly(vectors, grid_size, grid_origin=None, line_args=None,
     if grid_origin is None:
         grid_origin = (0, 0)
 
+    line_args_def = {
+        'color': 'silver',
+        'width': 1
+    }
     if line_args is None:
-        line_args = {
-            'color': 'silver',
-            'width': 1
-        }
+        line_args = line_args_def
+    else:
+        line_args = {**line_args_def, **line_args}
 
     # We want grid_size number of 'boxes' so grid_size + 1 number of lines:
     grid_size = (grid_size[0] + 1, grid_size[1] + 1)
@@ -49,11 +52,6 @@ def get_grid_trace_plotly(vectors, grid_size, grid_origin=None, line_args=None,
 
     gd_lns_yy = np.array([[0, grid_size[1] - 1]] * (grid_size[0]))
     gd_lns_yx = np.array([[i, i] for i in range(grid_size[0])])
-
-    gd_lns_xx -= grid_origin[0]
-    gd_lns_xy -= grid_origin[1]
-    gd_lns_yx -= grid_origin[0]
-    gd_lns_yy -= grid_origin[1]
 
     (gd_lns_xx_v,
      gd_lns_xy_v) = np.einsum('ij,jkm->ikm',
@@ -66,6 +64,11 @@ def get_grid_trace_plotly(vectors, grid_size, grid_origin=None, line_args=None,
                               vectors,
                               np.concatenate([gd_lns_yx[np.newaxis],
                                               gd_lns_yy[np.newaxis]]))
+
+    gd_lns_xx_v = gd_lns_xx_v + grid_origin[0]
+    gd_lns_xy_v = gd_lns_xy_v + grid_origin[1]
+    gd_lns_yx_v = gd_lns_yx_v + grid_origin[0]
+    gd_lns_yy_v = gd_lns_yy_v + grid_origin[1]
 
     sct = []
 
@@ -294,7 +297,7 @@ def get_sphere_plotly(radius, colour='blue', n=50, lighting_args=None,
     Uses the physics convention of (r, θ, φ) being radial, polar and azimuthal
     angles, respectively.
 
-    TODO: 
+    TODO:
     -   wireframe=True doesn't work properly.
 
     """
@@ -367,7 +370,7 @@ def get_sphere_plotly(radius, colour='blue', n=50, lighting_args=None,
 def get_circle_shape_plotly(radius, origin=None, fill_colour=None,
                             line_args=None, text=''):
     """
-    Generate a trace and a dict which can be added to a Plotly 
+    Generate a trace and a dict which can be added to a Plotly
     `layout['shapes']` list to represent a circle with a text hover.
 
     Parameters
@@ -381,8 +384,8 @@ def get_circle_shape_plotly(radius, origin=None, fill_colour=None,
     Returns
     -------
     tuple of (dict, dict)
-        The first dict is the trace which holds the text information. The 
-        second is the shape dict which is to be added to the Plotly 
+        The first dict is the trace which holds the text information. The
+        second is the shape dict which is to be added to the Plotly
         `layout['shapes']` list.
 
     Notes

@@ -394,3 +394,14 @@ def get_vec_distances(vecs):
     dist = np.sqrt(np.sum((b[0] - b[1])**2, axis=1))
 
     return dist
+
+
+def rotate_2D(vec, angle):
+    """Rotate a 2D column vector."""
+
+    c = np.cos(angle)
+    s = np.sin(angle)
+    r = np.array([[c, -s], [s, c]])
+    vec_r = np.dot(r, vec)
+
+    return vec_r

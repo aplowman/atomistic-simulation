@@ -345,7 +345,11 @@ def prepare_series_update(series_spec, atomistic_structure):
         'cut_off_energy',
         'smearing_width',
         'gb_size',
-        'box_lat'
+        'box_lat',
+        'nextra_bands',
+        'geom_energy_tol',
+        'geom_stress_tol',
+        'relative_shift',
     ]
 
     if sn not in allowed_sn:
@@ -431,6 +435,36 @@ def prepare_series_update(series_spec, atomistic_structure):
                 'series_id': {'name': sn, 'val': v, 'path': '{:.2f}'.format(v)}
             })
 
+    elif sn == 'nextra_bands':
+
+        for v in vals:
+
+            v = int(v)  # TODO: parse data types in option file
+            out.append({
+                'castep': {'param': {sn: '{:d}'.format(v)}},
+                'series_id': {'name': sn, 'val': v, 'path': '{:d}'.format(v)}
+            })
+
+    elif sn == 'geom_energy_tol':
+
+        for v in vals:
+
+            v = float(v)  # TODO: parse data types in option file
+            out.append({
+                'castep': {'param': {sn: '{:.1e}'.format(v)}},
+                'series_id': {'name': sn, 'val': v, 'path': '{:.1e}'.format(v)}
+            })
+
+    elif sn == 'geom_stress_tol':
+
+        for v in vals:
+
+            v = float(v)  # TODO: parse data types in option file
+            out.append({
+                'castep': {'param': {sn: '{:.1e}'.format(v)}},
+                'series_id': {'name': sn, 'val': v, 'path': '{:.1e}'.format(v)}
+            })
+
     elif sn == 'gb_size':
 
         for v in vals:
@@ -449,6 +483,15 @@ def prepare_series_update(series_spec, atomistic_structure):
                 'series_id': {'name': sn, 'val': v,
                               'path': '{}_{}_{}-{}_{}_{}-{}_{}_{}'.format(
                                   *v.flatten())}
+            })
+
+    elif sn == 'relative_shift':
+
+        for v in vals:
+            out.append({
+                'base_structure': {'relative_shift_args': {'shift': v.flatten()}},
+                'series_id': {'name': sn, 'val': v,
+                              'path': '{}_{}'.format(*v.flatten())}
             })
 
     return out
@@ -678,8 +721,9 @@ def main():
         'cut_off_energy': False,
         'smearing_width': False,
         'gb_size': True,
-        'box_lat': True
-    }
+        'box_lat': True,
+        'nextra_bands': False,
+        'relative_shift': True,
     }
     log = []
 

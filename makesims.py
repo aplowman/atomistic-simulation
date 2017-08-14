@@ -781,7 +781,7 @@ def main():
     struct_opt = {}
     base_as_opt = opt['base_structure']
     for k, v in base_as_opt.items():
-        if k == 'type':
+        if k == 'type' or k == 'import':
             continue
         elif k == 'crystal_idx':
             if base_as_opt['type'] == 'CSLSurfaceCrystal':
@@ -791,13 +791,51 @@ def main():
         elif k == 'sigma':
             if base_as_opt['type'] in ['CSLBulkCrystal', 'CSLSurfaceCrystal']:
                 sig_idx = base_as_opt['crystal_idx']
-                struct_opt.update({'csl_vecs': csl_lookup[v][sig_idx]})
+                struct_opt.update({'csl_vecs': CSL_LOOKUP[v][sig_idx]})
             else:
-                struct_opt.update({'csl_vecs': csl_lookup[v]})
+                struct_opt.update({'csl_vecs': CSL_LOOKUP[v]})
         else:
             struct_opt.update({k: v})
 
     base_as = struct_lookup[base_as_opt['type']](**struct_opt)
+
+    in_struct = base_as_opt.get('import')
+    if in_struct is not None:
+
+        # Get atom sites/supercell from output of previous calculation
+
+        imp_sid = in_struct['sid']
+        imp_pick_pth = os.path.join(HOME_PATH, imp_sid, 'sims.pickle')
+        imp_pick = readwrite.read_pickle(imp_pick_pth)
+        imp_method = imp_pick['base_options']['method']
+        imp_sim = imp_pick['all_sims'][0]  # For now just the first sim
+        imp_rel_idx = in_struct['relax_idx']
+        imp_atom_basis = in_struct['atom_basis']
+
+        if imp_method == 'castep':
+            raise NotImplementedError('Have not sorted CASTEP import yet.')
+
+        elif imp_method == 'lammps':
+            imp_sup = imp_sim.results['supercell'][imp_rel_idx]
+            imp_atoms = imp_sim.results['atoms'][imp_rel_idx]
+            imp_atoms_frac = np.dot(np.linalg.inv(imp_sup), imp_atoms)
+
+        new_supercell = base_as.supercell
+        if imp_atom_basis == 'fractional':
+            # Import fractional atom coordinates into new supercell
+            new_atoms = np.dot(new_supercell, imp_atoms_frac)
+
+        elif imp_atom_basis == 'cart':
+            # Import atoms and supercell
+            new_supercell = imp_sup
+            new_atoms = imp_atoms
+
+        # For now, it's all Zr...
+        base_as = atomistic.AtomisticStructure(
+            new_atoms,
+            new_supercell,
+            all_species=['Zr'],
+            all_species_idx=np.zeros((new_atoms.shape[1],)))
 
     # Visualise base AtomisticStructure:
     save_args = {
@@ -859,7 +897,7 @@ def main():
         srs_struct_opt = {}
         srs_as_opt = srs_opt['base_structure']
         for k, v in srs_as_opt.items():
-            if k == 'type':
+            if k == 'type' or k == 'import':
                 continue
             elif k == 'crystal_idx':
                 if srs_as_opt['type'] == 'CSLSurfaceCrystal':
@@ -869,9 +907,9 @@ def main():
             elif k == 'sigma':
                 if srs_as_opt['type'] in ['CSLBulkCrystal', 'CSLSurfaceCrystal']:
                     sig_idx = srs_as_opt['crystal_idx']
-                    srs_struct_opt.update({'csl_vecs': csl_lookup[v][sig_idx]})
+                    srs_struct_opt.update({'csl_vecs': CSL_LOOKUP[v][sig_idx]})
                 else:
-                    srs_struct_opt.update({'csl_vecs': csl_lookup[v]})
+                    srs_struct_opt.update({'csl_vecs': CSL_LOOKUP[v]})
             else:
                 srs_struct_opt.update({k: v})
 

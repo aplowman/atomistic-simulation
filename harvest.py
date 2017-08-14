@@ -5,17 +5,19 @@ import os
 import numpy as np
 import utils
 import shutil
+from set_up.opt_results import RES_OPT
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
 SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
+HOME_PATH = r'C:\Users\{}\Dropbox (Research Group)\calcs'.format(os.getlogin())
 
 
-def collate_results(home_path, sid, skip_idx=None, query_all=False):
+def collate_results(sid, skip_idx=None, query_all=False):
     """
     """
 
-    sid_path = os.path.join(home_path, sid)
+    sid_path = os.path.join(HOME_PATH, sid)
     sims = read_pickle(os.path.join(sid_path, 'sims.pickle'))
     method = sims['base_options']['method']
 
@@ -27,8 +29,10 @@ def collate_results(home_path, sid, skip_idx=None, query_all=False):
 
         s_count += 1
         srs_paths = []
-        for srs_id in sim_i.options['series_id']:
-            srs_paths.append('_'.join([i['path'] for i in srs_id]))
+        srs_id = sim_i.options.get('series_id')
+        if srs_id is not None:
+            for srs_id in sim_i.options['series_id']:
+                srs_paths.append('_'.join([i['path'] for i in srs_id]))
 
         calc_path = os.path.join(sid_path, 'calcs', *srs_paths)
 
@@ -65,9 +69,9 @@ def compute_results(res_opt):
     """
 
     For combining a series of GB/Bulk/Surface calcs (e.g. size convergence),
-    first combine all session IDs to form a list of successful calcs for 
+    first combine all session IDs to form a list of successful calcs for
     each supercell type, then try to match series elements for the supercell
-    types neccessary for a computed quantity. E.g. GB energy requires GB and 
+    types neccessary for a computed quantity. E.g. GB energy requires GB and
     bulk(s). Surface energy requries surface and bulk.
 
     May also have to "broadcast" one supercell - need rules for when this is
@@ -94,7 +98,7 @@ def compute_results(res_opt):
         Parameters
         ----------
         forces : ndarray of shape (M, 3, N)
-            Array representing the force components on N atoms 
+            Array representing the force components on N atoms
             for M steps.
         """
         if len(forces) == 0:
@@ -117,6 +121,8 @@ def compute_results(res_opt):
     SINGLE_COMPUTES = {
         'time_fmt': (compute_time_fmt,),
         'final_energy_pa': (compute_per_atom_energies, 0),
+        'final_fenergy_pa': (compute_per_atom_energies, 1),
+        'final_zenergy_pa': (compute_per_atom_energies, 2),
         'forces_cons_rms':  (compute_rms_force, 0),
         'forces_uncons_rms':  (compute_rms_force, 1),
         'forces_cons_sym_rms':  (compute_rms_force, 2),
@@ -126,7 +132,6 @@ def compute_results(res_opt):
     MULTI_COMPUTES = {}
 
     # roughly same as in save_results - refactor.
-    home_path = res_opt['home_path']
     sids = res_opt['sid']
     skip_idx = res_opt.get('skip_idx')
     computes = res_opt.get('computes')
@@ -143,7 +148,7 @@ def compute_results(res_opt):
             skip_idx[i_idx][j_idx] = int(j)
 
     # Combine multiple sims series into one all_sims list
-    sim_paths = [os.path.join(home_path, s, 'sims.pickle') for s in sids]
+    sim_paths = [os.path.join(HOME_PATH, s, 'sims.pickle') for s in sids]
     all_sims = [read_pickle(p)['all_sims'] for p in sim_paths]
 
     # Remove sims according to `skip_idx` and flatten:
@@ -171,8 +176,7 @@ def compute_results(res_opt):
 
 
 def save_results(opt, computed_results):
-    # def save_results(home_path, sids, results, skip_idx=None):
-    """    
+    """
     TODO:
     -   Fix issue with different sims having output with different lengths,
         i.e. the header needs to print the maximum length.
@@ -180,7 +184,6 @@ def save_results(opt, computed_results):
 
     # TODO: only allow combining results if `series` dicts have identical names.
 
-    home_path = opt['home_path']
     sids = opt['sid']
     skip_idx = opt.get('skip_idx')
 
@@ -212,7 +215,7 @@ def save_results(opt, computed_results):
             'print_path': False,
         },
         'kpoint': {
-            'fmt': '{:.6f}',
+            'fmt': '{:.3f}',
             'print_path': False,
         },
         'smearing_width': {
@@ -222,11 +225,27 @@ def save_results(opt, computed_results):
         'box_lat': {
             'fmt': '{:.0f}',
             'print_path': False
+        },
+        'gb_size': {
+            'fmt': '{}',
+            'print_path': False,
+        },
+        'nextra_bands': {
+            'fmt': '{:d}',
+            'print_path': False,
+        },
+        'geom_energy_tol': {
+            'fmt': '{:.1e}',
+            'print_path': False
+        },
+        'geom_stress_tol': {
+            'fmt': '{:.1e}',
+            'print_path': False
         }
     }
 
     # Combine multiple sims series into one all_sims list
-    sim_paths = [os.path.join(home_path, s, 'sims.pickle') for s in sids]
+    sim_paths = [os.path.join(HOME_PATH, s, 'sims.pickle') for s in sids]
     all_sims = [read_pickle(p)['all_sims'] for p in sim_paths]
 
     # Remove sims according to `skip_idx` and flatten:
@@ -245,14 +264,16 @@ def save_results(opt, computed_results):
         itms = []
         srs_paths = []
         srs_vals = []
-        for sid in sim_i.options['series_id']:
-            srs_paths.extend([i['path'] for i in sid])
-            srs_vals.extend([i['val'] for i in sid])
+        srs_id = sim_i.options.get('series_id')
+        if srs_id is not None:
+            for sid in sim_i.options['series_id']:
+                srs_paths.extend([i['path'] for i in sid])
+                srs_vals.extend([i['val'] for i in sid])
 
-            for i in sid:
-                hdr_itm = series_id_formatting[i['name']]
-                hdr_itm.update({'name': i['name']})
-                itms.append(hdr_itm)
+                for i in sid:
+                    hdr_itm = series_id_formatting[i['name']]
+                    hdr_itm.update({'name': i['name']})
+                    itms.append(hdr_itm)
 
         itms = itms + results
         out = sim_i.results
@@ -265,10 +286,10 @@ def save_results(opt, computed_results):
             if itms[i_idx]['print_path']:
                 itms[i_idx].update({'path': srs_paths[i_idx]})
 
-        if len(sids) > 1:
-            sids_fmt = [
-                {'name': 'sid', 'fmt': '{}', 'val': sids[sids_idx[s_idx]]}]
-            itms = sids_fmt + itms
+        # if len(sids) > 1:
+        sids_fmt = [
+            {'name': 'sid', 'fmt': '{}', 'val': sids[sids_idx[s_idx]]}]
+        itms = sids_fmt + itms
 
         srs_ln = []
         for ri in itms:
@@ -338,7 +359,7 @@ def save_results(opt, computed_results):
 
         txt_lns.append(', '.join(srs_ln))
 
-    res_path = os.path.join(home_path, sids[0], 'results')
+    res_path = os.path.join(HOME_PATH, sids[0], 'results')
     res_fn = os.path.join(res_path, 'results.csv')
 
     overwrite = True
@@ -354,7 +375,7 @@ def save_results(opt, computed_results):
         # TODO: parse tuples in dict-parser! (the saved results options file
         # below has results `idx` keys as str representations of tuples, rather
         # than lists; so the written file couldn't be used as input again.)
-        opt_dst_path = os.path.join(home_path, sids[0], 'results')
+        opt_dst_path = os.path.join(HOME_PATH, sids[0], 'results')
         opt_dst_fn = os.path.join(opt_dst_path, 'opt_results.txt')
         with open(opt_dst_fn, 'w', encoding='utf-8', newline='') as opt_f:
             opt_f.write(format_dict(opt))
@@ -366,12 +387,9 @@ def save_results(opt, computed_results):
 
 def main():
 
-    opt_path = os.path.join(SU_PATH, 'opt_results.txt')
-    opt = dict_parser.parse_dict_file(opt_path)
-    sids = opt['sid']
-    skip_idx = opt['skip_idx']
-    home_path = opt['home_path']
-    computes = opt['computes']
+    sids = RES_OPT['sid']
+    skip_idx = RES_OPT['skip_idx']
+    computes = RES_OPT['computes']
 
     # TODO: parse list datatypes!
     for i_idx, i in enumerate(skip_idx):
@@ -379,11 +397,11 @@ def main():
             skip_idx[i_idx][j_idx] = int(j)
 
     for s_idx, s in enumerate(sids):
-        collate_results(home_path, s, skip_idx=skip_idx[s_idx])
+        collate_results(s, skip_idx=skip_idx[s_idx])
 
     # Compute additional properties
-    cmpt_res = compute_results(opt)
-    save_results(opt, cmpt_res)
+    cmpt_res = compute_results(RES_OPT)
+    save_results(RES_OPT, cmpt_res)
 
 
 if __name__ == '__main__':

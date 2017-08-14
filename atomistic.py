@@ -1038,7 +1038,7 @@ class AtomisticStructure(object):
         Parameters
         ----------
         tiles : tuple or list of length 3
-            Number of repeats in each supercell direction.        
+            Number of repeats in each supercell direction.
 
         Returns
         -------
@@ -1069,22 +1069,22 @@ class AtomisticStructure(object):
 
     def get_interatomic_dist(self, periodic=True):
         """
-        Find the distances between unique atom pairs across the whole 
+        Find the distances between unique atom pairs across the whole
         structure.
 
         Parameters
         ----------
         periodic : bool
             If True, the atom sites are first tiled in each supercell direction
-            to ensure that distances between periodic cells are considered. 
-            Currently, this is crude, and so produces interatomic distances 
+            to ensure that distances between periodic cells are considered.
+            Currently, this is crude, and so produces interatomic distances
             between like atoms (i.e. of one supercell vector length).
 
         Returns
         ------
         ndarray of shape (N,)
 
-        TODO: 
+        TODO:
         -   Improve consideration of periodicity. Maybe instead have a function
             `get_min_interatomic_dist` which gets the minimum distances of each
             atom and every other atom, given periodicity.
@@ -1217,7 +1217,7 @@ class CSLBicrystal(AtomisticStructure):
     reorient : bool, optional
         If True, after construction of the boundary, reorient_to_lammps() is
         invoked. Default is True.
-    boundary_vac_args : dict, optional 
+    boundary_vac_args : dict, optional
         If not None, after construction of the boundary, apply_boundary_vac()
         is invoked with this dict as keyword arguments. Default is None.
     relative_shift_args : dict, optional

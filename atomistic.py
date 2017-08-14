@@ -26,6 +26,7 @@ import mathsutils
 import readwrite
 from mendeleev import element
 import utils
+import spglib
 
 REF_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ref')
 
@@ -1641,11 +1642,15 @@ class CSLBicrystal(AtomisticStructure):
         """
 
         if self.maintain_inv_sym:
-            for cc_idx, cc in enumerate(self.crystal_centres):
-                if not geometry.check_centrosymmetry(
-                        self.atom_sites, cc, periodic_box=self.supercell):
-                    raise ValueError('The bicrystal does not have inversion '
-                                     'symmetry through the crystral centres.')
+
+            sym_ops = spglib.get_symmetry(self.spglib_cell)
+            sym_rots = sym_ops['rotations']
+            sym_trans = sym_ops['translations']
+            inv_sym_rot = -np.eye(3, dtype=int)
+            inv_sym = np.where(np.all(sym_rots == inv_sym_rot, axis=(1, 2)))[0]
+            if len(inv_sym) == 0:
+                raise ValueError('The bicrystal does not have inversion '
+                                 'symmetry.')
 
 
 class CSLBulkCrystal(CSLBicrystal):

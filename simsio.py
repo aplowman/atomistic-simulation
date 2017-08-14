@@ -378,8 +378,8 @@ def write_lammps_atoms(supercell, atom_sites, species, species_idx, path):
 
 def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
                         potential_path, potential_type, potential_species,
-                        atom_constraints=None, computes=None, thermos_dt=1,
-                        dump_dt=1):
+                        atom_constraints=None, cell_constraints=None,
+                        computes=None, thermos_dt=1, dump_dt=1):
     """
     Generate LAMMPS input files for energy minimisation of a 3D periodic
     supercell.
@@ -411,6 +411,20 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
             fix_xyz_idx : list or ndarray of dimension 1
                 The atom indices whose `x`, `y` and `z` coordinates
                 are to be fixed. By default, set to None.
+    cell_constraints : dict, optional
+        A dict with the following keys:
+            lengths_equal : str
+                Some combination of 'a', 'b' and 'c'. Represents which
+                supercell vectors are to remain equal to one another.
+            angles_equal : str
+                Some combination of 'a', 'b' and 'c'. Represents which
+                supercell angles are to remain equal to one another.
+            fix_lengths : str
+                Some combination of 'a', 'b' and 'c'. Represents which
+                supercell vectors are to remain fixed.
+            fix_angles : str
+                Some combination of 'a', 'b' and 'c'. Represents which
+                supercell angles are to remain fixed.
     computes : list of str, optional
         A list of quantities to compute during the simulation. If not
         specified, set to a list with elements: `pe/atom`, `displace/atom`,
@@ -476,7 +490,72 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
         'pair_coeff   * * "{}" {}'.format(potential_path, potential_species)
     ]
 
+    # Cell constraints (cell is fixed by default)
+    fix_lengths = cell_constraints.get('fix_lengths')
+    fix_angles = cell_constraints.get('fix_angles')
+    angles_eq = cell_constraints.get('angles_equal')
+    lengths_eq = cell_constraints.get('lengths_equal')
+
+    fix_count = 1
+
+    # Define arguments for the LAMMPS `fix box/relax` command:
+    relax_fp = ['fixedpoint 0.0 0.0 0.0']
+    relax_A = ['x 0.0']
+    relax_B = ['y 0.0', 'scalexy yes']
+    relax_C = ['z 0.0', 'scaleyz yes', 'scalexz yes']
+    relax_all = ['tri 0.0']
+    relax_couple_xy = ['couple xy']
+    relax_couple_xz = ['couple xz']
+    relax_couple_yz = ['couple yz']
+    relax_couple_xyz = ['couple xyz']
+
+    cell_cnst = []
+
+    if not (fix_angles == 'abc' and fix_lengths == 'abc'):
+
+        cell_cnst.append('fix {:d} all box/relax'.format(fix_count))
+        fix_count += 1
+
+        if fix_angles == 'abc':
+            if fix_lengths is None:
+                cell_cnst.extend(relax_A + relax_B + relax_C)
+            elif fix_lengths == 'bc':
+                cell_cnst.extend(relax_A)
+            elif fix_lengths == 'ac':
+                cell_cnst.extend(relax_B)
+            elif fix_lengths == 'ab':
+                cell_cnst.extend(relax_C)
+            elif fix_lengths == 'a':
+                cell_cnst.extend(relax_B + relax_C)
+            elif fix_lengths == 'b':
+                cell_cnst.extend(relax_A + relax_C)
+            elif fix_lengths == 'c':
+                cell_cnst.extend(relax_A + relax_B)
+
+        elif fix_angles is None:
+
+            if fix_lengths is None:
+                cell_cnst.extend(relax_all)
+
+            else:
+                raise NotImplementedError('Relaxing supercell angles and '
+                                          'fixing some or all supercell '
+                                          'lengths is not implemented in the '
+                                          'LAMMPS input file writer.')
+        else:
+            raise NotImplementedError('Fixing only some supercell angles is '
+                                      'not implemented in the LAMMPS input '
+                                      'file writer.')
+
+        cell_cnst += relax_fp
+
+    cell_cnst_str = ' '.join(cell_cnst)
+    print('cell_cnst_str: {}'.format(cell_cnst_str))
+
     fix_lns = []
+    if cell_cnst_str is not '':
+        fix_lns = [cell_cnst_str]
+
     # Atom constraints
     fix_xy_idx = atom_constraints.get('fix_xy_idx')
     fix_xyz_idx = atom_constraints.get('fix_xyz_idx')
@@ -492,7 +571,9 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
             fxy_grp_ln += ('{:d} ' * nfxy).format(*fix_xy_idx)
             fix_lns.append(fxy_grp_ln)
 
-        fix_lns.append('fix 1 {} setforce 0.0 0.0 NULL'.format(fxy_grp))
+        fix_lns.append('fix {:d} {} setforce 0.0 0.0 NULL'.format(fix_count,
+                                                                  fxy_grp))
+        fix_count += 1
 
     if fix_xyz_idx is not None:
 
@@ -505,7 +586,9 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
             fxyz_grp_ln += ('{:d} ' * nfxyz).format(*fix_xyz_idx)
             fix_lns.append(fxyz_grp_ln)
 
-        fix_lns.append('fix 2 {} setforce 0.0 0.0 0.0'.format(fxy_grp))
+        fix_lns.append('fix {:d} {} setforce 0.0 0.0 0.0'.format(fix_count,
+                                                                 fxy_grp))
+        fix_count += 1
 
     # computes are used in the dump files
     dmp_computes = ''
@@ -964,28 +1047,6 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
     species_idx = utils.parse_as_int_arr(species_idx)
     if species_idx.min() < 0 or species_idx.max() > (atom_sites.shape[1] - 1):
         raise IndexError('`species_idx` must index `atom_sites`'.format(k))
-
-    cell_cnst_def = {
-        'lengths_equal': '',
-        'angles_equal': '',
-        'fix_lengths': '',
-        'fix_angles': ''
-    }
-
-    atom_cnst_def = {
-        'fix_xy_idx': None,
-        'fix_xyz_idx': None
-    }
-
-    if cell_constraints is None:
-        cell_constraints = cell_cnst_def
-    else:
-        cell_constraints = {**cell_cnst_def, **cell_constraints}
-
-    if atom_constraints is None:
-        atom_constraints = atom_cnst_def
-    else:
-        atom_constraints = {**atom_cnst_def, **atom_constraints}
 
     for k, v in atom_constraints.items():
 

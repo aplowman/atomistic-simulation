@@ -610,10 +610,18 @@ def process_constraints(opt, structure):
     which write input files.
 
     For atom constraints, convert `none` to None, and convert `all` to an index
-    array of all atoms. 
+    array of all atoms.
 
     """
 
+    cll_cnst = opt['constraints']['cell']
+    cll_cnst_def = {
+        'fix_angles': 'none',
+        'fix_lengths': 'none',
+        'angles_equal': 'none',
+        'lengths_equal': 'none'
+    }
+    cll_cnst = {**cll_cnst_def, **cll_cnst}
     atm_cnst = opt['constraints']['atom']
     atm_cnst_def = {
         'fix_xy_idx': 'none',
@@ -627,11 +635,19 @@ def process_constraints(opt, structure):
         elif atm_cnst[fx] == 'all':
             atm_cnst[fx] = np.arange(structure.atom_sites.shape[1])
         else:
-            # atom constraints are parsed as 2D arrays (pending todo of
+            # atom constraints are parsed as 2D arrays (pending TODO of
             # dict-parser) (want 1D arrays)
             atm_cnst[fx] = atm_cnst[fx][:, 0]
 
     opt['constraints']['atom'] = atm_cnst
+
+    for fx in ['fix_angles', 'fix_lengths', 'angles_equal', 'lengths_equal']:
+        if cll_cnst[fx] == 'none':
+            cll_cnst[fx] = None
+        if cll_cnst[fx] == 'all':
+            cll_cnst[fx] = 'abc'
+
+    opt['constraints']['cell'] = cll_cnst
 
     if opt['method'] == 'castep':
 

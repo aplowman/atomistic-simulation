@@ -871,10 +871,28 @@ def read_lammps_dump(path):
                     mode = 'scan'
 
     # Form supercell edge vectors as column vectors:
+    box = np.array(box)
+    xlo_bnd = box[0, 0]
+    xhi_bnd = box[0, 1]
+    ylo_bnd = box[1, 0]
+    yhi_bnd = box[1, 1]
+    zlo_bnd = box[2, 0]
+    zhi_bnd = box[2, 1]
+    xy = box[0, 2]
+    xz = box[1, 2]
+    yz = box[2, 2]
+
+    xlo = xlo_bnd - np.min([0, xy, xz, xy + xz])
+    xhi = xhi_bnd - np.max([0, xy, xz, xy + xz])
+    ylo = ylo_bnd - np.min([0, yz])
+    yhi = yhi_bnd - np.max([0, yz])
+    zlo = zlo_bnd
+    zhi = zhi_bnd
+
     supercell = np.array([
-        [box[0][1] - box[0][0] - box[0][2] - box[1][2], box[0][2], box[1][2]],
-        [0, box[1][1] - box[1][0] - box[2][2], box[2][2]],
-        [0, 0, box[2][1] - box[2][0]]
+        [xhi - xlo, xy, xz],
+        [0, yhi - ylo, yz],
+        [0, 0, zhi - zlo],
     ])
 
     out = {
@@ -891,19 +909,6 @@ def read_lammps_dump(path):
         'vor_vols': vor_vols,
         'vor_faces': vor_faces
     }
-
-    # print('ts: \n{}\n'.format(ts))
-    # print('num_atoms: \n{}\n'.format(num_atoms))
-    # print('box_tilt: \n{}\n'.format(box_tilt))
-    # print('box_periodicity: \n{}\n'.format(box_periodicity))
-    # print('box: \n{}\n'.format(box))
-    # print('supercell: \n{}\n'.format(supercell))
-    # print('atom_sites: \n{}\n'.format(atom_sites))
-    # print('atom_pot: \n{}\n'.format(atom_pot))
-    # print('atom_types: \n{}\n'.format(atom_types))
-    # print('atom_disp: \n{}\n'.format(atom_disp))
-    # print('vor_vols: \n{}\n'.format(vor_vols))
-    # print('vor_faces: \n{}\n'.format(vor_faces))
 
     return out
 
@@ -1027,7 +1032,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                 supercell vectors are to remain fixed.
             fix_angles : str
                 Some combination of 'a', 'b' and 'c'. Represents which
-                supercell angles are to remain fixed.                
+                supercell angles are to remain fixed.
     atom_constraints : dict, optional
         A dict with the following keys:
             fix_xy_idx : list or ndarray of dimension 1

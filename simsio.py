@@ -550,7 +550,6 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
         cell_cnst += relax_fp
 
     cell_cnst_str = ' '.join(cell_cnst)
-    print('cell_cnst_str: {}'.format(cell_cnst_str))
 
     fix_lns = []
     if cell_cnst_str is not '':
@@ -622,7 +621,7 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
 
     dump_str = 'dump 1 all custom {} dump.*.txt id type x y z'.format(dump_dt)
     dump_str += dmp_computes
-    dump_mod = 'dump_modify 1 format "%5d %5d %20.10f %20.10f %20.10f'
+    dump_mod = 'dump_modify 1 format line "%5d %5d %20.10f %20.10f %20.10f'
     dump_mod += dmp_fmt + '"'
     dump_lns = [dump_str, dump_mod]
 

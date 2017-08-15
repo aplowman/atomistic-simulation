@@ -18,6 +18,7 @@ import ntpath
 import time
 import warnings
 from set_up.opt import OPT
+import geometry
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
@@ -279,17 +280,7 @@ def prepare_series_update(series_spec, atomistic_structure):
 
     """
 
-    # Convenience
-    ss = series_spec
-    sn = ss['name']
-    start = ss.get('start')
-    step = ss.get('step')
-    stop = ss.get('stop')
-    vals = ss.get('vals')
-    exclude = ss.get('exclude')
-
     # Validation
-
     allowed_sn = [
         'kpoint',
         'cut_off_energy',
@@ -300,10 +291,33 @@ def prepare_series_update(series_spec, atomistic_structure):
         'geom_energy_tol',
         'geom_stress_tol',
         'relative_shift',
+        'gamma_surface',
     ]
-
-    if sn not in allowed_sn:
+    if series_spec.get('name') not in allowed_sn:
         raise NotImplementedError('Series name: {} not understood.'.format(sn))
+
+    # Some series generate other series: e.g. gamma_surface should generate a
+    # relative_shift series.
+
+    if series_spec['name'] == 'gamma_surface':
+
+        edge_vecs = atomistic_structure.boundary_vecs
+        grid = geometry.Grid(edge_vecs, series_spec.get('grid_spec'))
+        rel_shifts = list(grid.get_grid_points()['points_frac'].T)
+
+        series_spec = {
+            'name': 'relative_shift',
+            'vals': rel_shifts,
+        }
+
+    # Convenience
+    ss = series_spec
+    sn = ss['name']
+    start = ss.get('start')
+    step = ss.get('step')
+    stop = ss.get('stop')
+    vals = ss.get('vals')
+    exclude = ss.get('exclude')
 
     params_none = [i is None for i in [start, step, stop]]
     if any(params_none) and not all(params_none):
@@ -316,7 +330,7 @@ def prepare_series_update(series_spec, atomistic_structure):
                              sn))
 
     # If start, step and stop are provided, generate a set of vals from these:
-    if vals is None:
+    if vals is None and start is not None:
         diff = start - stop if start > stop else stop - start
         num = int(np.round((diff + step) / step))
         vals = np.linspace(start, stop, num=num)

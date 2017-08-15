@@ -6,6 +6,7 @@ from bravais import BravaisLattice
 import geometry
 import vectors
 import readwrite
+import simsio
 
 REF_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ref')
 
@@ -337,6 +338,37 @@ class CrystalStructure(object):
     atom_sites_frac : ndarray of shape (3, M)
 
     """
+    @classmethod
+    def from_file(cls, lattice_system, path, filetype='.cell'):
+        """
+        Get bravais_lattice and motif from a file.
+
+        Parameters
+        ----------
+        lattice_system : string
+        path : string
+            Path to input file.
+        filetype : string
+            Type of file provided [default: .cell from castep]
+
+        Notes
+        -----
+        Only works for .cell files.
+
+        """
+        if filetype == '.cell':
+            latt_data = simsio.read_cell_file(path)
+        else:
+            raise NotImplementedError(
+                'File type "{}" is not supported.'.format(filetype))
+
+        params = dict(zip(['a', 'b', 'c', 'α', 'β', 'γ'], latt_data[0]))
+
+        bl = BravaisLattice(lattice_system, centring_type='P',
+                            **params, degrees=False)
+        motif = latt_data[1]
+
+        return cls(bl, motif)
 
     def __init__(self, bravais_lattice, motif):
         """

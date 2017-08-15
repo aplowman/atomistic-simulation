@@ -1,4 +1,5 @@
 import numpy as np
+import fractions
 import vectors
 
 
@@ -145,7 +146,7 @@ def get_box_xyz(box, origin=None, faces=False):
     faces : bool, optional
         If False, returns an array of shape (N, 3, 30) where the coordinates of
         a path tracing the edges of each of N parallelopipeds are returned as
-        column 30 vectors. 
+        column 30 vectors.
 
         If True, returns a dict where the coordinates for
         each face is a key value pair. Keys are like `face01a`, where the
@@ -367,7 +368,7 @@ class Grid(object):
                 points_frac_obj : list of list of Fraction
                 grid_idx_nested : list of lists
                 grid_idx_flat : ndarray
-                point_idx : ndarray        
+                point_idx : ndarray
 
         """
 

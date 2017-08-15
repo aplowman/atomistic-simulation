@@ -17,6 +17,7 @@ import posixpath
 import ntpath
 import time
 import warnings
+from set_up.opt import OPT
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
@@ -24,57 +25,6 @@ SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
 
 USERNAME = os.getlogin()
 HOME_PATH = r'C:\Users\{}\Dropbox (Research Group)\calcs'.format(USERNAME)
-
-CSL_LOOKUP = {
-    7: [
-        np.array([
-            [3, 2, 0],
-            [1, 3, 0],
-            [0, 0, 1]
-        ]),
-        np.array([
-            [2, 3, 0],
-            [-1, 2, 0],
-            [0, 0, 1]
-        ]),
-    ],
-    13: [
-        np.array([
-            [4, 3, 0],
-            [1, 4, 0],
-            [0, 0, 1]
-        ]),
-        np.array([
-            [3, 4, 0],
-            [-1, 3, 0],
-            [0, 0, 1]
-        ]),
-    ],
-    19: [
-        np.array([
-            [5, 2, 0],
-            [3, 5, 0],
-            [0, 0, 1]
-        ]),
-        np.array([
-            [5, 3, 0],
-            [2, 5, 0],
-            [0, 0, 1]
-        ]),
-    ],
-    31: [
-        np.array([
-            [6, -1, 0],
-            [1, 5, 0],
-            [0, 0, 1]
-        ]),
-        np.array([
-            [5, 1, 0],
-            [-1, 6, 0],
-            [0, 0, 1]
-        ]),
-    ],
-}
 
 
 class Archive(object):
@@ -593,9 +543,6 @@ def process_lammps_opt(lammps_opt, structure):
     # Set the potential species
     sp = structure.all_species
 
-    print('process_lammps_opt: sp: {}'.format(sp))
-    print('process_lammps_opt: type(sp): {}'.format(type(sp)))
-
     if len(sp) > 1:
         raise NotImplementedError('Writing the potential command in '
                                   'multi-species LAMMPS input files has not '
@@ -744,9 +691,7 @@ def main():
     log = []
 
     # Read the options file
-    log.append('Reading log file.')
-    opt_path = os.path.join(SU_PATH, 'opt.txt')
-    opt = dict_parser.parse_dict_file(opt_path)
+    opt = OPT
 
     # Convenience
     su = opt['set_up']
@@ -781,19 +726,13 @@ def main():
     struct_opt = {}
     base_as_opt = opt['base_structure']
     for k, v in base_as_opt.items():
-        if k == 'type' or k == 'import':
+        if k == 'type' or k == 'import' or k == 'sigma':
             continue
         elif k == 'crystal_idx':
             if base_as_opt['type'] == 'CSLSurfaceCrystal':
                 struct_opt.update({'surface_idx': v})
         elif k == 'cs_idx':
             struct_opt.update({'crystal_structure': cs[v]})
-        elif k == 'sigma':
-            if base_as_opt['type'] in ['CSLBulkCrystal', 'CSLSurfaceCrystal']:
-                sig_idx = base_as_opt['crystal_idx']
-                struct_opt.update({'csl_vecs': CSL_LOOKUP[v][sig_idx]})
-            else:
-                struct_opt.update({'csl_vecs': CSL_LOOKUP[v]})
         else:
             struct_opt.update({k: v})
 
@@ -842,11 +781,6 @@ def main():
         'filename': stage.get_path('base_structure.html'),
         'auto_open': False
     }
-
-    # Save original options file
-    opt_src_path = os.path.join(SU_PATH, 'opt.txt')
-    opt_dst_path = stage.get_path('opt_in.txt')
-    shutil.copy(opt_src_path, opt_dst_path)
 
     # Save current options dict
     opt_p_str_path = stage.get_path('opt_processed.txt')
@@ -897,19 +831,13 @@ def main():
         srs_struct_opt = {}
         srs_as_opt = srs_opt['base_structure']
         for k, v in srs_as_opt.items():
-            if k == 'type' or k == 'import':
+            if k == 'type' or k == 'import' or k == 'sigma':
                 continue
             elif k == 'crystal_idx':
                 if srs_as_opt['type'] == 'CSLSurfaceCrystal':
                     srs_struct_opt.update({'surface_idx': v})
             elif k == 'cs_idx':
                 srs_struct_opt.update({'crystal_structure': cs[v]})
-            elif k == 'sigma':
-                if srs_as_opt['type'] in ['CSLBulkCrystal', 'CSLSurfaceCrystal']:
-                    sig_idx = srs_as_opt['crystal_idx']
-                    srs_struct_opt.update({'csl_vecs': CSL_LOOKUP[v][sig_idx]})
-                else:
-                    srs_struct_opt.update({'csl_vecs': CSL_LOOKUP[v]})
             else:
                 srs_struct_opt.update({k: v})
 

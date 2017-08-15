@@ -103,13 +103,12 @@ class BravaisLattice(object):
         restrictions to be "any n parameters must be..." rather than "the first
         two parameters must be". E.g. monoclinic: "two of the angle parameters
         must be 90 deg" rather than "parameters 3 and 5 must be 90 deg".
-    -   Add option for angles in radians.
     -   Add align option ('ax' or 'cz').
 
     """
 
     def __init__(self, lattice_system, centring_type=None,
-                 a=None, b=None, c=None, α=None, β=None, γ=None):
+                 a=None, b=None, c=None, α=None, β=None, γ=None, degrees=True):
         """Constructor method for BravaisLattice object."""
 
         if centring_type is None:
@@ -200,6 +199,11 @@ class BravaisLattice(object):
             equal_groups = [[0, 1, 2], [3, 4, 5]]
             unique_groups = []
             defaults = {0: 1, 1: 1, 2: 1, 3: 90, 4: 90, 5: 90}
+
+        if not degrees:
+            α = np.degrees(α)
+            β = np.degrees(β)
+            γ = np.degrees(γ)
 
         a, b, c, α, β, γ = utils.validate_numeric_params(
             [a, b, c, α, β, γ],

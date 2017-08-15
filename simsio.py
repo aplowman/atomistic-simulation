@@ -2119,3 +2119,80 @@ def get_LAMMPS_compatible_box(box_cart):
         [a_x, a_y, a_z],
         [b_x, b_y, b_z],
         [c_x, c_y, c_z]]).T
+
+def read_cell_file(cellfile):
+    """
+    Read data from a castep .cell file.
+
+    Parameters
+    ----------
+    cellfile : string
+        The path and name of the .cell file to be read
+   
+    Returns
+    -------
+    latt_params : list
+        List containing the lattice parameters of the unit cell, 
+        [a, b, c, α, β, γ], where the units of angles are radians.
+    motif : dict
+        atom_sites : ndarray 
+            Array of shape (3, n), where the row vectors are the fractional 
+            coordinates of the atoms and n is the number of atoms.
+        species : list
+            List of length n associated with each atom in `atom_sites`.
+    
+    Notes
+    -----
+    Currently only reads lattice data - lattice parameters and motif. 
+    
+
+    """
+
+    st_i = 0
+    fin_i = 0
+    with open(cellfile) as f:
+        lines = f.readlines()
+        cell_vecs = np.zeros((3, 3))
+        pos_f_str = []
+        species_str = []
+
+        for ln_i, ln in enumerate(lines):
+            if '%BLOCK lattice_cart' in ln:
+                cell_vecs[0, :] = [float(x) for x in lines[ln_i + 2].split()]
+                cell_vecs[1, :] = [float(x) for x in lines[ln_i + 3].split()]
+                cell_vecs[2, :] = [float(x) for x in lines[ln_i + 4].split()]
+
+            if '%BLOCK positions_frac' in ln:
+                st_i = ln_i
+
+            if '%ENDBLOCK positions_frac' in ln:
+                end_i = ln_i
+                break
+
+        for ln in lines[st_i + 1:end_i]:
+            species_str.append(ln.split()[0])
+            pos_f_str.append(ln.split()[1:])
+        
+        # Fractional coordinates
+        pos_f = np.asarray(pos_f_str, dtype=float)
+
+        # Find lattice parameters
+        a = np.linalg.norm(cell_vecs[0, :])
+        b = np.linalg.norm(cell_vecs[1, :])
+        c = np.linalg.norm(cell_vecs[2, :])
+        α = np.arccos(np.dot(cell_vecs[1, :], cell_vecs[2, :]) / (
+            np.linalg.norm(cell_vecs[1, :]) * np.linalg.norm(cell_vecs[2, :])))
+        β = np.arccos(np.dot(cell_vecs[0, :], cell_vecs[2, :]) / (
+            np.linalg.norm(cell_vecs[0, :]) * np.linalg.norm(cell_vecs[2, :])))
+        γ = np.arccos(np.dot(cell_vecs[0, :], cell_vecs[1, :]) / (
+            np.linalg.norm(cell_vecs[0, :]) * np.linalg.norm(cell_vecs[1, :])))
+
+        latt_params = [a, b, c, α, β, γ]
+        
+        motif={}
+        motif['atom_sites'] = pos_f.T
+        motif['species'] = species_str
+
+        return latt_params, motif
+
+    

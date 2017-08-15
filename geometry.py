@@ -1,6 +1,9 @@
 import numpy as np
 import fractions
 import vectors
+import plotting
+from plotly import graph_objs as go
+from plotly.offline import plot, iplot, init_notebook_mode
 
 
 def check_centrosymmetry(points, centre, periodic_box=None):
@@ -411,8 +414,11 @@ class Grid(object):
         }
         return out
 
-    def plot(self):
+    def visualise(self, show_iplot=True, save=False, save_args=None):
         """Generate a plot showing grid points and lines."""
+
+        cols = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+                '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 
         data = []
 
@@ -464,6 +470,23 @@ class Grid(object):
         }
 
         fig = go.Figure(data=data, layout=layout)
+
+        if show_iplot:
+            init_notebook_mode()
+            iplot(fig)
+
+        if save:
+            save_args_def = {
+                'filename': 'grid.html',
+                'auto_open': False,
+            }
+            if save_args is None:
+                save_args = save_args_def
+            else:
+                save_args = {**save_args_def, **save_args}
+
+            plot(fig, **save_args)
+
         return fig
 
     def _remove_duplicate_points(self):

@@ -296,6 +296,8 @@ def prepare_series_update(series_spec, atomistic_structure):
     if series_spec.get('name') not in allowed_sn:
         raise NotImplementedError('Series name: {} not understood.'.format(sn))
 
+    common_series_info = {}
+
     # Some series generate other series: e.g. gamma_surface should generate a
     # relative_shift series.
 
@@ -304,7 +306,9 @@ def prepare_series_update(series_spec, atomistic_structure):
         edge_vecs = atomistic_structure.boundary_vecs
         grid = geometry.Grid(edge_vecs, series_spec.get('grid_spec'))
         rel_shifts = list(grid.get_grid_points()['points_frac'].T)
-
+        common_series_info.update({
+            'gamma_surface': grid,
+        })
         series_spec = {
             'name': 'relative_shift',
             'vals': rel_shifts,
@@ -458,7 +462,7 @@ def prepare_series_update(series_spec, atomistic_structure):
                               'path': '{}_{}'.format(*v.flatten())}
             })
 
-    return out
+    return out, common_series_info
 
 
 def prepare_all_series_updates(all_series_spec, atomistic_structure):
@@ -479,10 +483,15 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
     """
 
     # Replace each series dict with a list of update dicts:
+    common_series_info = {}
     srs_update = []
     for i in all_series_spec:
-        srs_update.append(
-            [prepare_series_update(j, atomistic_structure) for j in i])
+        upds = []
+        for j in i:
+            upd, csi = prepare_series_update(j, atomistic_structure)
+            upds.append(upd)
+            common_series_info.update(csi)
+        srs_update.append(upds)
 
     # Combine parallel series:
     for s_idx, s in enumerate(srs_update):
@@ -525,7 +534,7 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
         m['series_id'] = all_sids
         all_updates.append(m)
 
-    return all_updates
+    return all_updates, common_series_info
 
 
 def process_castep_opt(castep_opt):
@@ -831,7 +840,13 @@ def main():
     all_sims = []
 
     if is_srs:
-        all_upd = prepare_all_series_updates(srs_df, base_as)
+        all_upd, csi = prepare_all_series_updates(srs_df, base_as)
+
+        if 'gamma_surface' in csi:
+            # Plot gamma surface grid:
+            save_args = {'filename': stage.get_path('grid.html')}
+            csi['gamma_surface'].visualise(
+                show_iplot=False, save=True, save_args=save_args)
 
     # Generate simulation series:
     for upd_idx, upd in enumerate(all_upd):

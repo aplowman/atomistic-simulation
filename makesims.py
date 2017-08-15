@@ -19,6 +19,7 @@ import time
 import warnings
 from set_up.opt import OPT
 import geometry
+import fractions
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
@@ -312,6 +313,7 @@ def prepare_series_update(series_spec, atomistic_structure):
         series_spec = {
             'name': 'relative_shift',
             'vals': rel_shifts,
+            'as_fractions': True,
         }
 
     # Convenience
@@ -456,10 +458,18 @@ def prepare_series_update(series_spec, atomistic_structure):
     elif sn == 'relative_shift':
 
         for v in vals:
+
+            if ss.get('as_fractions') is True:
+                v_frac = [fractions.Fraction(i).limit_denominator() for i in v]
+                v_str = '_'.join(
+                    ['{}({})'.format(i.numerator, i.denominator) for i in v_frac])
+            else:
+                v_str = '{}_{}'.format(*v)
+
             out.append({
-                'base_structure': {'relative_shift_args': {'shift': v.flatten()}},
+                'base_structure': {'relative_shift_args': {'shift': v}},
                 'series_id': {'name': sn, 'val': v,
-                              'path': '{}_{}'.format(*v.flatten())}
+                              'path': v_str}
             })
 
     return out, common_series_info

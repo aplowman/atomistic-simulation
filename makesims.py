@@ -964,13 +964,16 @@ def main():
     print('Simulation series generated here: {}'.format(stage.path))
     if utils.confirm('Copy to scratch?'):
         stage.copy_to_scratch(scratch)
-        append_db(opt)
+        if su['append_db']:
+            print('Adding options to database.')
+            append_db(opt)
         if utils.confirm('Submit on scratch?'):
             stage.submit_on_scratch(scratch)
         else:
             print('Did not submit.')
-        print('Uploading plots to dropbox...')
-        stage.copy_to_archive(archive)
+        if su['upload_plots']:
+            print('Uploading plots to dropbox...')
+            stage.copy_to_archive(archive)
     else:
         print('Exiting.')
         return

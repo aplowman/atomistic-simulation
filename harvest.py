@@ -241,6 +241,10 @@ def save_results(opt, computed_results):
         'geom_stress_tol': {
             'fmt': '{:.1e}',
             'print_path': False
+        },
+        'relative_shift': {
+            'fmt': '{}',
+            'print_path': True,
         }
     }
 

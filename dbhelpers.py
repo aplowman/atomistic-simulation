@@ -80,7 +80,13 @@ def upload_dropbox_dir(dbx, local_path, dropbox_path, overwrite=False,
     if include is not None and exclude is not None:
         raise ValueError('Either specify `include` or `exclude` but not both.')
 
+    if not os.path.isdir(local_path):
+        raise ValueError(
+            'Specified `local_path` is not a directory: {}'.format(local_path))
+
     for root, dirs, files in os.walk(local_path):
+
+        print('root: {}'.format(root))
 
         for fn in files:
 
@@ -99,14 +105,14 @@ def upload_dropbox_dir(dbx, local_path, dropbox_path, overwrite=False,
 
             if up_file:
 
-                local_path_ps = posixpath.join(*local_path.split(os.path.sep))
-                db_path_ps = posixpath.join(
-                    *dropbox_path.split(os.path.sep))
+                # Source path
+                src_fn = os.path.join(root, fn)
 
-                root_ps = posixpath.join(*root.split(os.path.sep))
-                fn_local_path = posixpath.join(root_ps, fn)
-                rel_path = posixpath.relpath(fn_local_path, local_path_ps)
-                fn_db_path = '/' + posixpath.join(db_path_ps, rel_path)
+                # Destination path
+                rel_path = os.path.relpath(src_fn, local_path)
+                fn_db_path = os.path.join(dropbox_path, rel_path)
+                dst_fn = '/' + posixpath.join(*fn_db_path.split(os.path.sep))
 
-                upload_dropbox_file(dbx, fn_local_path, fn_db_path,
+                print('Uploading file: {} to {}'.format(src_fn, dst_fn))
+                upload_dropbox_file(dbx, src_fn, dst_fn,
                                     overwrite=overwrite, autorename=autorename)

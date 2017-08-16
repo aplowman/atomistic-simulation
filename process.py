@@ -6,9 +6,47 @@ from set_up.secret import DB_KEY
 from readwrite import read_pickle, write_pickle, find_files_in_dir_glob, factor_common_files
 import shutil
 import subprocess
+import simsio
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
+
+
+def check_errors(sms_path, src_path, skip_idx=None):
+    """Some basic checks for errors in sim series output files."""
+
+    # Open the sims pickle, get list of AtomisticSimulation objects:
+    sms = read_pickle(sms_path)
+    base_opt = sms['base_options']
+    all_sms = sms['all_sims']
+    method = base_opt['method']
+
+    error_paths = []
+    s_count = 0
+    for s_idx, sim_i in enumerate(all_sms):
+
+        if skip_idx is not None and s_idx in skip_idx:
+            continue
+
+        s_count += 1
+        srs_paths = []
+        srs_id = sim_i.options.get('series_id')
+        if srs_id is not None:
+            for srs_id_lst in srs_id:
+                srs_paths.append('_'.join([i['path'] for i in srs_id_lst]))
+
+        calc_path = os.path.join(src_path, 'calcs', *srs_paths)
+
+        if method == 'castep':
+            out = simsio.read_castep_output(calc_path)
+
+        elif method == 'lammps':
+            out = simsio.read_lammps_output(calc_path)
+
+        if len(out['errors']) > 0:
+            error_paths.extend(srs_paths)
+
+    return error_paths
 
 
 def modernise_pickle(sms_path):
@@ -101,11 +139,10 @@ def modernise_pickle(sms_path):
     write_pickle(sms, sms_path)
 
 
-def move_offline_files(s_id, offline_files):
+def move_offline_files(s_id, src_path, offline_files):
 
     arch_dir = offline_files['path']
     fl_types = offline_files['file_types']
-    src_path = os.path.join(SCRATCH_DIR, s_id)
 
     fls_paths = []
     for t in fl_types:
@@ -161,13 +198,17 @@ def main(s_id):
     print('src_path: {}'.format(src_path))
     print('dst_path: {}'.format(dst_path))
 
+    error_paths = check_errors(sms_path, src_path)
+    if len(error_paths) > 0:
+        raise ValueError('Errors found! Exiting process.py.')
+
     # Modernise sims.pickle:
     # Temporarily #
     if not os.path.isfile(os.path.join(src_path, 'sims.pickle_old')):
         modernise_pickle(sms_path)
 
     off_fls = base_opt['set_up']['scratch']['offline_files']
-    move_offline_files(s_id, off_fls)
+    move_offline_files(s_id, src_path, off_fls)
 
     com_fls = base_opt['set_up']['common_files']
     print('Factoring common files turned OFF due to BUG!')

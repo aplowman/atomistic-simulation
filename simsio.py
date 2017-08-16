@@ -1270,6 +1270,7 @@ def read_castep_file(cst_path):
     TODO:
     -   Test version 16.1.1
     -   Parse SCF warning lines like in: "\2017-04-01-2206_64626\calcs\0.360\"
+    -   Add error lines to `errors` list
 
     """
 
@@ -1349,6 +1350,7 @@ def read_castep_file(cst_path):
     cell_constraints = None
     cell_constraints_num = None
     finite_basis_correction = None
+    errors = []
 
     bfgs_iter_idx = 0
 
@@ -1840,6 +1842,7 @@ def read_castep_file(cst_path):
             'forces_constrained_sym':   all_constrained_symmetrised_forces,
             'species':                  species,
             'species_idx':              species_idx,
+            'errors':                   errors,
         }
 
         return out
@@ -2120,6 +2123,7 @@ def get_LAMMPS_compatible_box(box_cart):
         [b_x, b_y, b_z],
         [c_x, c_y, c_z]]).T
 
+
 def read_cell_file(cellfile):
     """
     Read data from a castep .cell file.
@@ -2128,7 +2132,7 @@ def read_cell_file(cellfile):
     ----------
     cellfile : string
         The path and name of the .cell file to be read
-   
+
     Returns
     -------
     latt_params : list
@@ -2140,11 +2144,11 @@ def read_cell_file(cellfile):
             coordinates of the atoms and n is the number of atoms.
         species : list
             List of length n associated with each atom in `atom_sites`.
-    
+
     Notes
     -----
     Currently only reads lattice data - lattice parameters and motif. 
-    
+
 
     """
 
@@ -2172,7 +2176,7 @@ def read_cell_file(cellfile):
         for ln in lines[st_i + 1:end_i]:
             species_str.append(ln.split()[0])
             pos_f_str.append(ln.split()[1:])
-        
+
         # Fractional coordinates
         pos_f = np.asarray(pos_f_str, dtype=float)
 
@@ -2188,11 +2192,9 @@ def read_cell_file(cellfile):
             np.linalg.norm(cell_vecs[0, :]) * np.linalg.norm(cell_vecs[1, :])))
 
         latt_params = [a, b, c, α, β, γ]
-        
-        motif={}
+
+        motif = {}
         motif['atom_sites'] = pos_f.T
         motif['species'] = species_str
 
         return latt_params, motif
-
-    

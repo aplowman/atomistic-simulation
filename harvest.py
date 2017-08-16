@@ -31,8 +31,8 @@ def collate_results(sid, skip_idx=None, query_all=False):
         srs_paths = []
         srs_id = sim_i.options.get('series_id')
         if srs_id is not None:
-            for srs_id in sim_i.options['series_id']:
-                srs_paths.append('_'.join([i['path'] for i in srs_id]))
+            for srs_id_lst in srs_id:
+                srs_paths.append('_'.join([i['path'] for i in srs_id_lst]))
 
         calc_path = os.path.join(sid_path, 'calcs', *srs_paths)
 
@@ -266,11 +266,12 @@ def save_results(opt, computed_results):
         srs_vals = []
         srs_id = sim_i.options.get('series_id')
         if srs_id is not None:
-            for sid in sim_i.options['series_id']:
-                srs_paths.extend([i['path'] for i in sid])
-                srs_vals.extend([i['val'] for i in sid])
 
-                for i in sid:
+            for srs_id_lst in srs_id:
+                srs_paths.extend([i['path'] for i in srs_id_lst])
+                srs_vals.extend([i['val'] for i in srs_id_lst])
+
+                for i in srs_id_lst:
                     hdr_itm = series_id_formatting[i['name']]
                     hdr_itm.update({'name': i['name']})
                     itms.append(hdr_itm)

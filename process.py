@@ -2,11 +2,13 @@ import dbhelpers as dbh
 import sys
 import os
 from copy import deepcopy
-import dbkey
+from set_up.secret import DB_KEY
+from readwrite import read_pickle, write_pickle, find_files_in_dir_glob, factor_common_files
+import shutil
+import subprocess
 
-SCRATCH_DIR = '/mnt/lustre/mbdxqap3/dated'
-ARCHIVE_DIR = '/calcs/'
-DB_KEY = dbkey.DB_KEY
+SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
+SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
 
 
 def modernise_pickle(sms_path):
@@ -34,7 +36,7 @@ def modernise_pickle(sms_path):
     # Strip single quotes from set_up->common_files
     cmn_fls = bo['set_up'].get('common_files')
     if cmn_fls is not None:
-        for cf_idx, cf in cmn_fls:
+        for cf_idx, cf in enumerate(cmn_fls):
             if "'" in cf:
                 print('Removing single quotes from `common_files`.')
                 bo['set_up']['common_files'][cf_idx] = cf.strip("'")
@@ -44,24 +46,27 @@ def modernise_pickle(sms_path):
             '*.param',
             '*.usp',
             '*-out.cell',
+            '*.bib'
         ]
         bo['set_up']['common_files'] = cmn_fls
 
     # Change series to a list of lists
     new_series = None
-    if len(bo['series']) == 1 and isinstance(bo['series'][0], dict):
-        print('Changing series to a list of lists in `base_options`.')
-        new_series = [
-            [bo['series'][0]]
-        ]
-        bo['series'] = new_series
+    if bo.get('series') is not None:
+        if len(bo['series']) == 1 and isinstance(bo['series'][0], dict):
+            print('Changing series to a list of lists in `base_options`.')
+            new_series = [
+                [bo['series'][0]]
+            ]
+            bo['series'] = new_series
 
-    del bo['series_id']
+        del bo['series_id']
     sms['base_options'] = bo
 
     # Change series_id
     sim_0_opt = sms['all_sims'][0].options
-    if isinstance(sim_0_opt['series_id'], dict):
+    sim_0_sid = sim_0_opt.get('series_id')
+    if sim_0_sid is not None and isinstance(sim_0_sid, dict):
 
         # For each sim, change series_id to a list of lists
         for s_idx, s in enumerate(sms['all_sims']):
@@ -96,30 +101,63 @@ def modernise_pickle(sms_path):
     write_pickle(sms, sms_path)
 
 
-def archive_files(s_id, offline_files):
+def move_offline_files(s_id, offline_files):
 
     arch_dir = offline_files['path']
     fl_types = offline_files['file_types']
-    print('Offline file path: {}'.format(arch_dir))
-    print('Offline file types: {}'.format(fl_types))
-
     src_path = os.path.join(SCRATCH_DIR, s_id)
 
     fls_paths = []
     for t in fl_types:
-        fls_paths.extend(find_files_in_dir_glob(src_path, recursive=True))
+        fls_paths.extend(find_files_in_dir_glob(src_path, t, recursive=True))
 
-    print('fls_paths: {}'.format(fls_paths))
+    if len(fls_paths) > 0:
+
+        # Generate the offline files directories
+        s_path = os.path.join(arch_dir, s_id)
+        os.makedirs(s_path, exist_ok=True)
+
+        for fp in fls_paths:
+            dr, fl = os.path.split(fp)
+            os.makedirs(os.path.join(s_path, dr), exist_ok=True)
+
+            # Move the offline files to the offline dirs
+            fl_src = os.path.join(src_path, fp)
+            fl_dst = os.path.join(s_path, fp)
+            print('Moving file from {} to {}'.format(fl_src, fl_dst))
+            shutil.move(fl_src, fl_dst)
+
+        print('{} offline files moved.'.format(len(fls_paths)))
+
+    else:
+        print('No offline files found.')
 
 
 def main(s_id):
 
-    src_path = os.path.join(SCRATCH_DIR, s_id)
-    dst_path = os.path.join(ARCHIVE_DIR, s_id)
+    # Download database file:
+    dbx = dbh.get_dropbox(DB_KEY)
+    tmp_db_path = os.path.join(SU_PATH, 'temp_db')
+    db_path = '/calcs/db.pickle'
+    db_exists = dbh.check_dropbox_file_exist(dbx, db_path)
+    if not db_exists:
+        raise ValueError('Cannot find database on Dropbox. Exiting.')
+    dbh.download_dropbox_file(dbx, db_path, tmp_db_path)
+
+    # Open database file:
+    db = read_pickle(tmp_db_path)
+
+    # Find the base options for this sid:
+    for k, v in db.items():
+        if v['set_up']['session_id'] == s_id:
+            base_opt = v
+            break
+
+    src_path = os.path.join(base_opt['set_up']['scratch']['path'], s_id)
+    dst_path = os.path.join(base_opt['set_up']['archive']['path'], s_id)
     sms_path = os.path.join(src_path, 'sims.pickle')
 
     print('s_id: {}'.format(s_id))
-    print('scratch_dir: {}'.format(SCRATCH_DIR))
     print('src_path: {}'.format(src_path))
     print('dst_path: {}'.format(dst_path))
 
@@ -128,25 +166,20 @@ def main(s_id):
     if not os.path.isfile(os.path.join(src_path, 'sims.pickle_old')):
         modernise_pickle(sms_path)
 
-    # Open up the base options
-    sms = read_pickle(sms_path)
-    base_opt = sms['base_options']
     off_fls = base_opt['set_up']['scratch']['offline_files']
+    move_offline_files(s_id, off_fls)
 
-    archive_files(s_id, off_fls)
+    com_fls = base_opt['set_up']['common_files']
+    print('Factoring common files turned OFF due to BUG!')
+    # print('Factoring common files: {}'.format(com_fls))
+    # factor_common_files(src_path, com_fls)
 
-    # dbx = dbh.get_dropbox(DB_KEY)
+    if not os.path.isdir(src_path):
+        raise ValueError('Source path is not a directory: {}'.format(src_path))
 
-    # if not os.path.isdir(src_path):
-    #     raise ValueError('Source path is not a directory: {}'.format(src_path))
-
-    # print('Uploading to dropbox...')
-    # dbh.upload_dropbox_dir(dbx, src_path, dst_path)
+    print('Uploading to dropbox...')
+    dbh.upload_dropbox_dir(dbx, src_path, dst_path)
 
 
 if __name__ == '__main__':
-    # main(sys.argv[1])
-    tst_pick = read_pickle(
-        '/mnt/lustre/mbdxqap3/dated/2017-07-18-0205_00775/sims.pickle')
-    print('tst_pick: {}'.format(tst_pick))
-    exit()
+    main(sys.argv[1])

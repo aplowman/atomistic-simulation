@@ -508,7 +508,8 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
 
         l = [len(i) for i in s]
         if len(set(l)) > 1:
-            raise ValueError('Length of parallel series must be identical.')
+            raise ValueError('Length of parallel series must be identical. '
+                             'Lengths are: {}'.format(l))
 
         s_t = utils.transpose_list(s)
         for i_idx, i in enumerate(s_t):

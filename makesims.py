@@ -741,7 +741,14 @@ def main():
     su['session_id'] = s_id
     su['scratch']['job_name'] = "j_" + s_num
 
-    stage = Stage(session_id=s_id, path=su['stage_path'])
+    stage_path = su['stage_path']
+    sub_dirs = su.get('sub_dirs')
+    if sub_dirs is not None:
+        stage_path = os.path.join(stage_path, *sub_dirs)
+        su['scratch']['path'] = os.path.join(su['scratch']['path'], *sub_dirs)
+        su['archive']['path'] = os.path.join(su['archive']['path'], *sub_dirs)
+
+    stage = Stage(session_id=s_id, path=stage_path)
     scratch = Scratch(session_id=s_id, **su['scratch'])
     archive = Archive(session_id=s_id, **su['archive'])
 

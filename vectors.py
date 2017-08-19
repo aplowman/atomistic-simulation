@@ -216,8 +216,8 @@ def get_equal_indices(arr, scale_factors=None):
 
     Parameters
     ----------
-    arr : ndarray
-        Array of any shape whose elements along its first dimension are
+    arr : ndarray or list
+        Array or list of any shape whose elements along its first dimension are
         compared for equality.
     scale_factors : list of float or list of int, optional
         Multiplicative factors to use when checking for equality between
@@ -257,6 +257,9 @@ def get_equal_indices(arr, scale_factors=None):
     ({0: [2]},)
 
     """
+
+    if not isinstance(arr, np.ndarray):
+        arr = np.array(arr)
 
     if scale_factors is None:
         scale_factors = [1]

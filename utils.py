@@ -462,3 +462,61 @@ def format_time(secs):
     time_fmt += '{:.0f} sec'.format(s)
 
     return time_fmt
+
+
+def trim_common_nones(a, b):
+    """
+    Trim two equal-length lists from both ends by removing common None values.
+
+    Parameters
+    ----------
+    a : list of length N
+    b : list of length N
+
+    """
+
+    if len(a) != len(b):
+        raise ValueError('Lengths of lists `a` ({}) and `b` ({}) must be '
+                         'equal.'.format(len(a), len(b)))
+
+    a_none_idx = [i_idx for i_idx, i in enumerate(a) if i is None]
+    b_none_idx = [i_idx for i_idx, i in enumerate(b) if i is None]
+
+    # Remove common `None`s from start of lists:
+    trim_idx = []
+
+    if len(a_none_idx) == 0 or len(b_none_idx) == 0:
+        return
+
+    a_n = a_none_idx[0]
+    b_n = b_none_idx[0]
+    left_idx = 0
+    c = 0
+    while a_n == b_n and a_n == left_idx:
+
+        trim_idx.append(a_n)
+        if c == len(a_none_idx) - 1 or c == len(b_none_idx) - 1:
+            break
+
+        c += 1
+        left_idx += 1
+        a_n = a_none_idx[c]
+        b_n = b_none_idx[c]
+
+    a_n = a_none_idx[-1]
+    b_n = b_none_idx[-1]
+    right_idx = len(a) - 1
+    c = 0
+    while a_n == b_n and a_n == right_idx:
+
+        trim_idx.append(a_n)
+        if c == len(a_none_idx) - 1 or c == len(b_none_idx) - 1:
+            break
+
+        c += 1
+        right_idx -= 1
+        a_n = a_none_idx[-1 - c]
+        b_n = b_none_idx[-1 - c]
+
+    a[:] = [i for i_idx, i in enumerate(a) if i_idx not in trim_idx]
+    b[:] = [i for i_idx, i in enumerate(b) if i_idx not in trim_idx]

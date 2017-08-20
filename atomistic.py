@@ -446,8 +446,9 @@ class AtomisticStructure(object):
                     'legendgroup': trace_name,
                 }
 
+                rad = element(sp).vdw_radius * 0.25 * 1e-2  # in Ang
+
                 if atoms_3d:
-                    rad = element(sp).vdw_radius * 0.25 * 1e-2  # in Ang
                     # Get sphere trace for each atom:
                     for i in atom_sites_sp.T:
                         sph_args = {
@@ -475,17 +476,34 @@ class AtomisticStructure(object):
 
                 if proj_2d:
                     for i in proj_2d_dirs:
-                        data_2d.append({
-                            'type': 'scatter',
-                            'x': atom_sites_sp[dirs_2d[i][0]],
-                            'y': atom_sites_sp[dirs_2d[i][1]],
-                            'xaxis': ax_lab_2d[i][0],
-                            'yaxis': ax_lab_2d[i][1],
-                            'name': trace_name,
-                            'legendgroup': trace_name,
-                            'showlegend': show_leg_2d[i],
-                            **atom_site_props
-                        })
+
+                        for x, y in zip(atom_sites_sp[dirs_2d[i][0]],
+                                        atom_sites_sp[dirs_2d[i][1]]):
+
+                            circ = plotting.get_circle_trace_plotly(
+                                rad, origin=[x, y])
+
+                            data_2d.append({
+                                **circ,
+                                'xaxis': ax_lab_2d[i][0],
+                                'yaxis': ax_lab_2d[i][1],
+                                'name': trace_name,
+                                'legendgroup': trace_name,
+                                'showlegend': show_leg_2d[i],
+                                **atom_site_props
+                            })
+
+                        # data_2d.append({
+                        #     'type': 'scatter',
+                        #     'x': atom_sites_sp[dirs_2d[i][0]],
+                        #     'y': atom_sites_sp[dirs_2d[i][1]],
+                        #     'xaxis': ax_lab_2d[i][0],
+                        #     'yaxis': ax_lab_2d[i][1],
+                        #     'name': trace_name,
+                        #     'legendgroup': trace_name,
+                        #     'showlegend': show_leg_2d[i],
+                        #     **atom_site_props
+                        # })
 
         else:
 
@@ -668,8 +686,8 @@ class AtomisticStructure(object):
                         'legendgroup': trace_name,
                     }
 
+                    rad = element(sp_i).vdw_radius * 0.25 * 1e-2  # in Ang
                     if atoms_3d:
-                        rad = element(sp_i).vdw_radius * 0.25 * 1e-2  # in Ang
                         # Get sphere trace for each atom:
                         for i in atom_sites_sp.T:
                             sph_args = {
@@ -696,15 +714,33 @@ class AtomisticStructure(object):
                         )
                     if proj_2d:
                         for i in proj_2d_dirs:
-                            data_2d.append({
-                                'type': 'scatter',
-                                'x': atom_sites_sp[dirs_2d[i][0]],
-                                'y': atom_sites_sp[dirs_2d[i][1]],
-                                'xaxis': ax_lab_2d[i][0],
-                                'yaxis': ax_lab_2d[i][1],
-                                'showlegend': show_leg_2d[i],
-                                **atom_site_props
-                            })
+
+                            for xy_idx, (x, y) in enumerate(zip(atom_sites_sp[dirs_2d[i][0]],
+                                                                atom_sites_sp[dirs_2d[i][1]])):
+
+                                circ = plotting.get_circle_trace_plotly(
+                                    rad, origin=[x, y], line_args={'width': 0}, fill_args={'fillcolor': sp_col})
+
+                                data_2d.append({
+                                    **circ,
+                                    'xaxis': ax_lab_2d[i][0],
+                                    'yaxis': ax_lab_2d[i][1],
+                                    'name': trace_name,
+                                    'legendgroup': trace_name,
+                                    'showlegend': show_leg_2d[i] if xy_idx == 0 else False,
+                                    'name': trace_name,
+                                    'legendgroup': trace_name,
+                                })
+
+                            # data_2d.append({
+                            #     'type': 'scatter',
+                            #     'x': atom_sites_sp[dirs_2d[i][0]],
+                            #     'y': atom_sites_sp[dirs_2d[i][1]],
+                            #     'xaxis': ax_lab_2d[i][0],
+                            #     'yaxis': ax_lab_2d[i][1],
+                            #     'showlegend': show_leg_2d[i],
+                            #     **atom_site_props
+                            # })
 
         layout = graph_objs.Layout(
             width=1000,
@@ -731,7 +767,7 @@ class AtomisticStructure(object):
             layout_2d = {
                 'height': 1000,
                 'width': 1000,
-
+                'hovermode': 'closest',
                 'xaxis': {
                     'domain': [0, x1_frac - hori_space / 2],
                     'anchor': 'y',

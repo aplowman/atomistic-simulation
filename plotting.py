@@ -493,8 +493,6 @@ def get_circle_trace_plotly(radius, origin=None, start_ang=0, stop_ang=360, degr
     x = radius * np.cos(θ) + origin[0]
     y = radius * np.sin(θ) + origin[1]
 
-    print(abs(start_ang - stop_ang))
-
     if not segment and not np.isclose([abs(start_ang - stop_ang)], [2 * np.pi]):
         x = np.hstack([[origin[0]], x, [origin[0]]])
         y = np.hstack([[origin[1]], y, [origin[1]]])
@@ -503,6 +501,8 @@ def get_circle_trace_plotly(radius, origin=None, start_ang=0, stop_ang=360, degr
         'type': 'scatter',
         'x': x,
         'y': y,
+        'hoveron': 'fills',
+        'text': '({:.3f}, {:.3f})'.format(origin[0], origin[1]),
         'line': line_args,
         **fill_args,
     }

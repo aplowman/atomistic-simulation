@@ -440,11 +440,16 @@ def get_circle_trace_plotly(radius, origin=None, start_ang=0, stop_ang=360, degr
     origin : list of length two, optional
         Position of the centre of the circle. Set to [0, 0] if not specified.
     start_ang : int or float, optional
-        Angle at which to start cicle sector, measured from positive x-axis. Specified in either degrees or radians depending on `degrees`. Set to 0 if not specified.
+        Angle at which to start cicle sector, measured from positive x-axis. 
+        Specified in either degrees or radians depending on `degrees`. Set to 0
+        if not specified.
     stop_ang : int or float, optional
-        Angle at which to stop cicle sector, measured from positive x-axis. Specified in either degrees or radians depending on `degrees`. Set to 360 if not specified.
+        Angle at which to stop cicle sector, measured from positive x-axis.
+        Specified in either degrees or radians depending on `degrees`. Set to
+        360 if not specified.
     degrees : bool, optional
-        If True, `start_ang` and `stop_ang` are expected in degrees, otherwise in radians. Set to True by default.
+        If True, `start_ang` and `stop_ang` are expected in degrees, otherwise
+        in radians. Set to True by default.
     line_args : dict
     fill_args : dict
         Dict with allowed keys:
@@ -452,7 +457,9 @@ def get_circle_trace_plotly(radius, origin=None, start_ang=0, stop_ang=360, degr
         fillcolor : str 
             For transparency set color string as "rgba(a, b, c, d)"
     segment : bool
-        If True, generate a circle segment instead of a sector. The outline of circle sector includes the origin, whereas the outline of a circle segment may not include the origin. Default is False.
+        If True, generate a circle segment instead of a sector. The outline of
+        circle sector includes the origin, whereas the outline of a circle
+        segment may not include the origin. Default is False.
 
     Returns
     -------

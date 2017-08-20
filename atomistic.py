@@ -1400,7 +1400,7 @@ class CSLBicrystal(AtomisticStructure):
 
         # Define the supercell:
         sup_std = np.copy(grn_a_std)
-        sup_std[:, NBI] *= 2
+        sup_std[:, NBI] = grn_a_std[:, NBI] - grn_b_rot_std[:, NBI]
 
         # Boundary normal vector:
         n = np.cross(sup_std[:, BI[0]], sup_std[:, BI[1]])[:, np.newaxis]

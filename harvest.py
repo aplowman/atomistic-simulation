@@ -15,7 +15,10 @@ import vectors
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
 SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
-HOME_PATH = r'C:\Users\{}\Dropbox (Research Group)\calcs'.format(os.getlogin())
+HOME_PATH = r'C:\Users\{}\Dropbox (Research Group)\calcs'.format(
+    os.getlogin())
+RES_PATH = r'C:\Users\{}\Dropbox (Research Group)\calcs_results'.format(
+    os.getlogin())
 
 
 def read_results(sid, skip_idx=None, query_all=False):
@@ -79,6 +82,9 @@ def collate_results(res_opt):
 
     """
 
+    rs_date, rs_num = utils.get_date_time_stamp(split=True)
+    rs_id = rs_date + '_' + rs_num
+
     def get_series_vals(series_id):
         srs_vals = []
         for srs_id_lst in series_id:
@@ -140,6 +146,12 @@ def collate_results(res_opt):
         r_copy.update({'vals': []})
         results.append(r_copy)
 
+    com_srs = []
+    for cs_idx, cs in enumerate(res_opt['common_series_info']):
+        cs_copy = copy.deepcopy(cs)
+        cs_copy.update({'vals': []})
+        com_srs.append(cs_copy)
+
     out = {
         'session_id': [],
         'idx': [],
@@ -149,6 +161,7 @@ def collate_results(res_opt):
         'computes': computes,
         'parameters': parameters,
         'results': results,
+        'common_series_info': com_srs,
     }
 
     # Loop through series IDs:
@@ -216,6 +229,19 @@ def collate_results(res_opt):
 
                 out['parameters'][p_idx]['vals'].append(v)
 
+        for cs_idx, cs in enumerate(out['common_series_info']):
+
+            v = pick['common_series_info'][cs['name']]
+            print('v: \n{}\n'.format(v))
+            all_sub_idx = cs.get('idx')
+            if all_sub_idx is not None:
+                for sub_idx in all_sub_idx:
+                    v = v[sub_idx]
+                    if isinstance(v, np.ndarray):
+                        v = v.tolist()
+
+            out['common_series_info'][cs_idx]['vals'].append(v)
+
     # Execute computes which require more than one simulation
     # GB compute:
     for c_idx, c in enumerate(out['computes']):
@@ -224,7 +250,7 @@ def collate_results(res_opt):
             c_props['func'](out)
 
     # Save the JSON file in the results directory of the first listed SID
-    res_dir = os.path.join(HOME_PATH, res_opt['sid'][0], 'results')
+    res_dir = os.path.join(RES_PATH, rs_id)
     os.makedirs(res_dir, exist_ok=True)
     json_path = os.path.join(res_dir, 'results.json')
 

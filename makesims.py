@@ -441,7 +441,7 @@ def prepare_series_update(series_spec, atomistic_structure):
 
             out.append({
                 'base_structure': {sn: v},
-                'series_id': {'name': sn, 'val': v, 'path': '{}_{}_{}'.format(*v[0])}
+                'series_id': {'name': sn, 'val': v, 'path': '{}_{}_{}'.format(*v)}
             })
 
     elif sn == 'box_lat':

@@ -1118,7 +1118,8 @@ class AtomisticStructure(object):
         """
         dist = self.get_interatomic_dist()
         if np.any(dist < tol):
-            raise ValueError('Found overlapping atoms.')
+            raise ValueError('Found overlapping atoms. Minimum separation: '
+                             '{:.3f}'.format(np.min(dist)))
 
     # def __str__(self):
     #     pass

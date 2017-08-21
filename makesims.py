@@ -759,8 +759,13 @@ def main():
     log.append('Generating CrystalStructure objects.')
     cs = []
     for cs_opt in opt['crystal_structures']:
-        brav_lat = BravaisLattice(**cs_opt['lattice'])
-        cs.append(CrystalStructure(brav_lat, cs_opt['motif']))
+        if 'from_file' in cs_opt:
+            path = cs_opt['from_file']['path']
+            cs.append(CrystalStructure.from_file(path,
+                                                 **cs_opt['from_file']['lattice']))
+        else:
+            brav_lat = BravaisLattice(**cs_opt['lattice'])
+            cs.append(CrystalStructure(brav_lat, cs_opt['motif']))
 
     # Generate base structure
     log.append('Generating base AtomisticStructure object.')

@@ -339,15 +339,25 @@ class CrystalStructure(object):
 
     """
     @classmethod
-    def from_file(cls, lattice_system, path, filetype='.cell'):
+    def from_file(cls, path, lattice_system, centring_type=None, filetype='.cell'):
         """
         Get bravais_lattice and motif from a file.
 
         Parameters
         ----------
-        lattice_system : string
         path : string
             Path to input file.
+        lattice_system : string
+            Lattice system is one of: cubic, rhombohedral, orthorhombic,
+            tetragonal, monoclinic, triclinic, hexagonal.
+        centring_type : str, optional
+            The centring type of the lattice, also known as the lattice type, is
+            one of P (primitive), B (base-centred), I (body-centred), F
+            (face-centred) or R (rhombohedrally-centred). Not all centring types
+            are compatible with all lattice systems. Default is None, in which case
+            the rhomboherally-centred centring type (for the rhombohedral lattice
+            system) or primitive centring type (for all other lattice systems) will
+            be chosen.
         filetype : string
             Type of file provided [default: .cell from castep]
 
@@ -364,7 +374,7 @@ class CrystalStructure(object):
 
         params = dict(zip(['a', 'b', 'c', 'α', 'β', 'γ'], latt_data[0]))
 
-        bl = BravaisLattice(lattice_system, centring_type='P',
+        bl = BravaisLattice(lattice_system, centring_type=centring_type,
                             **params, degrees=False)
         motif = latt_data[1]
 

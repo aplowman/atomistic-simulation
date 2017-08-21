@@ -2136,18 +2136,18 @@ def read_cell_file(cellfile):
     Returns
     -------
     latt_params : list
-        List containing the lattice parameters of the unit cell, 
+        List containing the lattice parameters of the unit cell,
         [a, b, c, α, β, γ], where the units of angles are radians.
     motif : dict
-        atom_sites : ndarray 
-            Array of shape (3, n), where the row vectors are the fractional 
+        atom_sites : ndarray
+            Array of shape (3, n), where the row vectors are the fractional
             coordinates of the atoms and n is the number of atoms.
         species : list
             List of length n associated with each atom in `atom_sites`.
 
     Notes
     -----
-    Currently only reads lattice data - lattice parameters and motif. 
+    Currently only reads lattice data - lattice parameters and motif.
 
 
     """

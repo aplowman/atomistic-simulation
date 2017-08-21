@@ -2,6 +2,7 @@ import numpy as np
 import fractions
 import vectors
 import plotting
+import copy
 from plotly import graph_objs as go
 from plotly.offline import plot, iplot, init_notebook_mode
 
@@ -318,45 +319,122 @@ class Grid(object):
 
     """
 
-    def __init__(self, edge_vecs, grid_spec):
+    def __init__(self, edge_vecs, grid_spec=None, grid_list=None):
 
-        # First form base grid parent grid spec:
+        # Validation
+        if ((grid_spec is None and grid_list is None) or
+                (grid_spec is not None and grid_list is not None)):
+            raise ValueError('Specify exactly one of `grid_spec` or '
+                             '`grid_list`')
 
-        A = edge_vecs[:, 0:1]
-        B = edge_vecs[:, 1:2]
-        θ = vectors.col_wise_angles(A, B)[0]
-        A_mag = np.linalg.norm(A)
-        B_mag = np.linalg.norm(B)
-        α = A_mag * np.array([[1, 0]]).T
-        β = B_mag * np.array([[1, 0]]).T
-        β = vectors.rotate_2D(β, θ)
-        edge_vecs = np.hstack([α, β])
+        if grid_list is not None:
 
-        parent_gs = {
-            'size': (1, 1),
-            'edge_vecs': edge_vecs,
-            'origin_std': np.zeros((2, 1)),
-            'origin_frac': np.zeros((2, 1)),
-            'start': (0, 0),
-            'step': (1, 1),
-            'stop': (1, 1),
-            'par_frac': np.array([[1], [1]]),
+            self.edge_vecs = edge_vecs
+            self.grids = grid_list
+
+        else:
+
+            # First form base grid parent grid spec:
+            A = edge_vecs[:, 0:1]
+            B = edge_vecs[:, 1:2]
+            θ = vectors.col_wise_angles(A, B)[0]
+            A_mag = np.linalg.norm(A)
+            B_mag = np.linalg.norm(B)
+            α = A_mag * np.array([[1, 0]]).T
+            β = B_mag * np.array([[1, 0]]).T
+            β = vectors.rotate_2D(β, θ)
+            edge_vecs = np.hstack([α, β])
+
+            parent_gs = {
+                'size': (1, 1),
+                'edge_vecs': edge_vecs,
+                'origin_std': np.zeros((2, 1)),
+                'origin_frac': np.zeros((2, 1)),
+                'start': (0, 0),
+                'step': (1, 1),
+                'stop': (1, 1),
+                'par_frac': np.array([[1], [1]]),
+            }
+
+            # We hard code parent_start/stop for the base grid.
+            if (grid_spec.get('parent_start') is not None
+                    or grid_spec.get('parent_stop') is not None):
+                raise ValueError(
+                    '`parent_start` and `parent_stop` are not allowed keys in the'
+                    ' base grid spec.')
+
+            grid_spec.update({
+                'parent_start': (0, 0),
+                'parent_stop': (1, 1),
+            })
+
+            self.edge_vecs = edge_vecs
+            self.grids = self._compute_grid_points(
+                edge_vecs, grid_spec, parent_gs)
+            self._remove_duplicate_points()
+
+    def to_json(self):
+        """
+        Generate a dict representation of the Grid object's attributes which
+        can be encoded as JSON with json.dump().
+
+        """
+        grids_list = copy.deepcopy(self.grids)
+        for gd_idx, gd in enumerate(grids_list):
+            for k, v in gd.items():
+                if isinstance(v, np.ndarray):
+                    grids_list[gd_idx][k] = v.tolist()
+
+        grid_json = {
+            'grids': grids_list,
+            'edge_vecs': self.edge_vecs.tolist()
         }
 
-        # We hard code parent_start/stop for the base grid.
-        if (grid_spec.get('parent_start') is not None
-                or grid_spec.get('parent_stop') is not None):
-            raise ValueError(
-                '`parent_start` and `parent_stop` are not allowed keys in the'
-                ' base grid spec.')
+        return grid_json
 
-        grid_spec.update({
-            'parent_start': (0, 0),
-            'parent_stop': (1, 1),
-        })
+    @classmethod
+    def from_json(cls, grid_json):
+        """
+        Generate a Grid object from a dict representation of the Grid object's
+        attributes which have been decoded from a JSON object.
 
-        self.grids = self._compute_grid_points(edge_vecs, grid_spec, parent_gs)
-        self._remove_duplicate_points()
+        """
+
+        ARR_ATT = [
+            'grid_points_frac',
+            'grid_points_std',
+            'origin_std',
+            'unit_cell',
+        ]
+
+        TUP_ATT = [
+            'parent_start',
+            'parent_stop',
+            'size',
+            'start',
+            'step',
+            'stop',
+        ]
+
+        grid_list = []
+        for gd_idx, gd in enumerate(grid_json['grids']):
+            grid_dict = {}
+            for k, v in gd.items():
+
+                if k in ARR_ATT:
+                    v = np.array(v)
+                if k in TUP_ATT:
+                    v = tuple(v)
+
+                grid_dict.update({k: v})
+
+            grid_list.append(grid_dict)
+
+        params = {
+            'edge_vecs': np.array(grid_json['edge_vecs']),
+            'grid_list': grid_list
+        }
+        return cls(**params)
 
     def get_grid_points(self):
         """

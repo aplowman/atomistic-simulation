@@ -373,7 +373,7 @@ class Grid(object):
                 edge_vecs, grid_spec, parent_gs)
             self._remove_duplicate_points()
 
-    def to_json(self):
+    def to_jsonable(self):
         """
         Generate a dict representation of the Grid object's attributes which
         can be encoded as JSON with json.dump().
@@ -393,7 +393,7 @@ class Grid(object):
         return grid_json
 
     @classmethod
-    def from_json(cls, grid_json):
+    def from_jsonable(cls, grid_json):
         """
         Generate a Grid object from a dict representation of the Grid object's
         attributes which have been decoded from a JSON object.

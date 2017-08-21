@@ -308,7 +308,7 @@ def prepare_series_update(series_spec, atomistic_structure):
         grid = geometry.Grid(edge_vecs, series_spec.get('grid_spec'))
         rel_shifts = list(grid.get_grid_points()['points_frac'].T)
         common_series_info.update({
-            'gamma_surface': grid,
+            'gamma_surface': grid.to_jsonable(),
         })
         series_spec = {
             'name': 'relative_shift',
@@ -856,7 +856,7 @@ def main():
         if 'gamma_surface' in csi:
             # Plot gamma surface grid:
             save_args = {'filename': stage.get_path('grid.html')}
-            csi['gamma_surface'].visualise(
+            geometry.Grid.from_jsonable(csi['gamma_surface']).visualise(
                 show_iplot=False, save=True, save_args=save_args)
 
     # Generate simulation series:
@@ -934,6 +934,7 @@ def main():
     pick = {
         'all_sims': all_sims,
         'base_options': opt,
+        'common_series_info': csi,
     }
     readwrite.write_pickle(pick, pick_path)
 

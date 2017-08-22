@@ -27,6 +27,7 @@ import readwrite
 from mendeleev import element
 import utils
 import spglib
+from ref.structures.cslbicrystals import construct_bicrystals
 
 REF_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ref')
 
@@ -1270,13 +1271,14 @@ class CSLBicrystal(AtomisticStructure):
         ])
     }
 
-    def __init__(self, crystal_structure, csl_vecs, box_csl=None,
-                 gb_type=None, gb_size=None, edge_conditions=None,
-                 maintain_inv_sym=False, reorient=True,
-                 boundary_vac_args=None, relative_shift_args=None,
-                 wrap=True, overlap_tol=1):
+    @classmethod
+    def from_parameters(cls, crystal_structure, csl_vecs, box_csl=None,
+                        gb_type=None, gb_size=None, edge_conditions=None,
+                        overlap_tol=1, maintain_inv_sym=False, reorient=True, 
+                        boundary_vac_args=None, relative_shift_args=None, wrap=True):
+        
         """Constructor method for CSLBicrystal object."""
-
+        
         if np.all(csl_vecs[0][:, 2] != csl_vecs[1][:, 2]):
             raise ValueError('Third vectors in `csl_vecs[0]` and csl_vecs[1] '
                              'represent the CSL rotation axis and must '
@@ -1301,6 +1303,7 @@ class CSLBicrystal(AtomisticStructure):
                         gb_type, list(CSLBicrystal.GB_TYPES.keys())))
 
             box_csl = CSLBicrystal.GB_TYPES.get(gb_type) * gb_size
+
 
         lat_vecs = crystal_structure.bravais_lattice.vecs
         rot_ax_std = np.dot(lat_vecs, csl_vecs[0][:, 2:3])
@@ -1402,20 +1405,6 @@ class CSLBicrystal(AtomisticStructure):
         sup_std = np.copy(grn_a_std)
         sup_std[:, NBI] *= 2
 
-        # Boundary normal vector:
-        n = np.cross(sup_std[:, BI[0]], sup_std[:, BI[1]])[:, np.newaxis]
-        n_unit = n / np.linalg.norm(n)
-
-        # Non-boundary supercell unit vector
-        u = sup_std[:, NBI:NBI + 1]
-        u_unit = u / np.linalg.norm(u)
-
-        # Set instance CSLBicrystal-specific attributes:
-        self.maintain_inv_sym = maintain_inv_sym
-        self.n_unit = n_unit
-        self.u_unit = u_unit
-        self.non_boundary_idx = NBI
-        self.boundary_idx = BI
 
         crystals = [
             {
@@ -1436,18 +1425,97 @@ class CSLBicrystal(AtomisticStructure):
 
         species_idx = np.hstack([crys_a.species_idx, crys_b.species_idx])
         motif_idx = np.hstack([crys_a.motif_idx, crys_b.motif_idx])
+        
+        # AtomisticStructure parameters
+        as_params = {
+                'atom_sites' : atom_sites,
+                'supercell' : sup_std,
+                'lattice_sites' : lattice_sites,
+                'crystals' : crystals,
+                'crystal_structures' : [crystal_structure],
+                'crystal_idx' : crystal_idx,
+                'lat_crystal_idx' : lat_crystal_idx,
+                'species_idx' : species_idx,
+                'motif_idx' : motif_idx,
+                'overlap_tol' : overlap_tol
+            }
+        
+
+        return cls(**as_params, maintain_inv_sym=maintain_inv_sym, reorient=reorient, 
+                   boundary_vac_args=boundary_vac_args, 
+                   relative_shift_args=relative_shift_args, wrap=wrap)
+  
+    @classmethod
+    def from_structure(cls, struct_params, 
+                       overlap_tol=1, maintain_inv_sym=False, reorient=False, 
+                       boundary_vac_args=None, relative_shift_args=None, wrap=True,
+                       **kwargs):
+        """
+        Create a CSLBicrystal from structure.
+        
+        Parameters
+        ----------
+        struct_params : dict of dict
+            `csl` : string
+                '[angle_axis_structure]' to be constructed using a method 
+                defined as 'construct_'in 'ref/structures/cslbicrystals/construct_bicrystals'.
+                (for example '180_001_mZrO2').
+            `csl_params` : dict of (str : string or ndarray or int)
+                Parameters needed to construct `csl`. Vary depending on method.
+        Notes
+        -----
+        `reorient`=True doesn't work since no lattice_sites are passed.
+        `crystals` not yet available.
+        
+        """
+
+        csl = struct_params['csl']
+        create_bound = getattr(construct_bicrystals, 'construct_' + csl)
+        bound_struct = create_bound(**struct_params['csl_params'])
+        
+        # AtomisticStructure parameters
+        as_params = {
+                    'atom_sites'  : bound_struct['atom_sites'],
+                    'supercell'   : bound_struct['supercell'],
+                    'all_species' : bound_struct['all_species'],
+                    'all_species_idx' : bound_struct['all_species_idx'],
+                    'overlap_tol' : overlap_tol
+                #     'crystals'    : bound_struct['crystals'],
+                #     'crystal_structures' : crystal_structures,
+                #     'crystal_idx' : bound_struct['crystals_idx'],
+                }
+        
+
+        return cls(**as_params, maintain_inv_sym=maintain_inv_sym, reorient=reorient, 
+                   boundary_vac_args=boundary_vac_args, 
+                   relative_shift_args=relative_shift_args, wrap=wrap)
+        
+        
+    def __init__(self, maintain_inv_sym=False, reorient=True,
+                 boundary_vac_args=None, relative_shift_args=None,
+                 wrap=True, **kwargs):
 
         # Call parent constructor
-        super().__init__(atom_sites, sup_std,
-                         lattice_sites=lattice_sites,
-                         crystals=crystals,
-                         crystal_structures=[crystal_structure],
-                         crystal_idx=crystal_idx,
-                         lat_crystal_idx=lat_crystal_idx,
-                         species_idx=species_idx,
-                         motif_idx=motif_idx,
-                         overlap_tol=overlap_tol)
+        super().__init__(**kwargs)
+        
+        # Non-boundary (column) index of `box_csl` and grain arrays
+        NBI = 2
+        BI = [0, 1]
 
+        # Boundary normal vector:
+        n = np.cross(self.supercell[:, BI[0]], self.supercell[:, BI[1]])[:, np.newaxis]
+        n_unit = n / np.linalg.norm(n)
+
+        # Non-boundary supercell unit vector
+        u = self.supercell[:, NBI:NBI + 1]
+        u_unit = u / np.linalg.norm(u)
+        
+        # Set instance CSLBicrystal-specific attributes:
+        self.maintain_inv_sym = maintain_inv_sym
+        self.n_unit = n_unit
+        self.u_unit = u_unit
+        self.non_boundary_idx = NBI
+        self.boundary_idx = BI
         self.check_inv_symmetry()
 
         # Invoke additional methods:
@@ -1462,6 +1530,7 @@ class CSLBicrystal(AtomisticStructure):
 
         if wrap:
             self.wrap_atoms_to_supercell()
+
 
     @property
     def bicrystal_thickness(self):

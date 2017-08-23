@@ -563,130 +563,178 @@ class AtomisticStructure(object):
                         })
 
                 # Get CrystalStructure associated with this crystal:
-                cs = self.crystal_structures[c['cs_idx']]
+                has_cs = False
+                if c.get('cs_idx') is not None:
+                    has_cs = True
+
+                if has_cs:
+                    cs = self.crystal_structures[c['cs_idx']]
 
                 # Lattice unit cell, need to rotate by given orientation
-                unit_cell = np.dot(c['cs_orientation'],
-                                   cs.bravais_lattice.vecs)
+                if ((c.get('cs_orientation') is not None) and 
+                    (c.get('cs_origin') is not None)):
+                
+                    unit_cell = np.dot(c['cs_orientation'],
+                                    cs.bravais_lattice.vecs)
 
-                cs_origin = np.dot(unit_cell, c['cs_origin'])
-                uc_origin = c['origin'] + cs_origin[:, np.newaxis]
-                uc_xyz = geometry.get_box_xyz(unit_cell, origin=uc_origin)[0]
+                    cs_origin = np.dot(unit_cell, c['cs_origin'])
+                    uc_origin = c['origin'] + cs_origin[:, np.newaxis]
+                    uc_xyz = geometry.get_box_xyz(unit_cell, origin=uc_origin)[0]
 
-                uc_trace_name = 'Unit cell (crystal #{})'.format(c_idx + 1)
-                uc_props = {
-                    'mode': 'lines',
-                    'line': {
-                        'color': 'gray'
-                    },
-                    'name': uc_trace_name,
-                    'legendgroup': uc_trace_name,
-                    'visible': 'legendonly'
-                }
-                data.append(
-                    graph_objs.Scatter3d(
-                        x=uc_xyz[0],
-                        y=uc_xyz[1],
-                        z=uc_xyz[2],
-                        **uc_props
-                    )
-                )
-                if proj_2d:
-                    for i in proj_2d_dirs:
-                        data_2d.append({
-                            'type': 'scatter',
-                            'x': uc_xyz[dirs_2d[i][0]],
-                            'y': uc_xyz[dirs_2d[i][1]],
-                            'xaxis': ax_lab_2d[i][0],
-                            'yaxis': ax_lab_2d[i][1],
-                            'name': uc_trace_name,
-                            'legendgroup': uc_trace_name,
-                            'showlegend': show_leg_2d[i],
+                    uc_trace_name = 'Unit cell (crystal #{})'.format(c_idx + 1)
+                    uc_props = {
+                        'mode': 'lines',
+                        'line': {
+                            'color': 'gray'
+                        },
+                        'name': uc_trace_name,
+                        'legendgroup': uc_trace_name,
+                        'visible': 'legendonly'
+                    }
+                    data.append(
+                        graph_objs.Scatter3d(
+                            x=uc_xyz[0],
+                            y=uc_xyz[1],
+                            z=uc_xyz[2],
                             **uc_props
-                        })
+                        )
+                    )
+                    if proj_2d:
+                        for i in proj_2d_dirs:
+                            data_2d.append({
+                                'type': 'scatter',
+                                'x': uc_xyz[dirs_2d[i][0]],
+                                'y': uc_xyz[dirs_2d[i][1]],
+                                'xaxis': ax_lab_2d[i][0],
+                                'yaxis': ax_lab_2d[i][1],
+                                'name': uc_trace_name,
+                                'legendgroup': uc_trace_name,
+                                'showlegend': show_leg_2d[i],
+                                **uc_props
+                            })
 
                 # Lattice sites
-                ls_idx = np.where(self.lat_crystal_idx == c_idx)[0]
-                ls = self.lattice_sites[:, ls_idx]
-                ls_trace_name = 'Lattice sites (crystal #{})'.format(c_idx + 1)
-                lat_site_props = {
-                    'mode': 'markers',
-                    'marker': {
-                        'symbol': 'x',
-                        'size': 5,
-                        'color': crystal_cols[c_idx]
-                    },
-                    'name': ls_trace_name,
-                    'legendgroup': ls_trace_name,
-                    'visible': 'legendonly',
-                }
-                data.append(
-                    graph_objs.Scatter3d(
-                        x=ls[0],
-                        y=ls[1],
-                        z=ls[2],
-                        **lat_site_props
-                    )
-                )
-                if proj_2d:
-                    for i in proj_2d_dirs:
-                        data_2d.append({
-                            'type': 'scatter',
-                            'x': ls[dirs_2d[i][0]],
-                            'y': ls[dirs_2d[i][1]],
-                            'xaxis': ax_lab_2d[i][0],
-                            'yaxis': ax_lab_2d[i][1],
-                            'showlegend': show_leg_2d[i],
+                if self.lattice_sites is not None:
+                    ls_idx = np.where(self.lat_crystal_idx == c_idx)[0]
+                    ls = self.lattice_sites[:, ls_idx]
+                    ls_trace_name = 'Lattice sites (crystal #{})'.format(c_idx + 1)
+                    lat_site_props = {
+                        'mode': 'markers',
+                        'marker': {
+                            'symbol': 'x',
+                            'size': 5,
+                            'color': crystal_cols[c_idx]
+                        },
+                        'name': ls_trace_name,
+                        'legendgroup': ls_trace_name,
+                        'visible': 'legendonly',
+                    }
+                    data.append(
+                        graph_objs.Scatter3d(
+                            x=ls[0],
+                            y=ls[1],
+                            z=ls[2],
                             **lat_site_props
-                        })
-
-                # Get motif associated with this crystal:
-                sp_motif = cs.species_motif
+                        )
+                    )
+                    if proj_2d:
+                        for i in proj_2d_dirs:
+                            data_2d.append({
+                                'type': 'scatter',
+                                'x': ls[dirs_2d[i][0]],
+                                'y': ls[dirs_2d[i][1]],
+                                'xaxis': ax_lab_2d[i][0],
+                                'yaxis': ax_lab_2d[i][1],
+                                'showlegend': show_leg_2d[i],
+                                **lat_site_props
+                            })
 
                 # Get indices of atoms in this crystal
                 crys_atm_idx = np.where(self.crystal_idx == c_idx)[0]
 
-                # Atoms by species
-                # TODO: Add traces for atom numbers
-                for sp_idx, sp_name in enumerate(sp_motif):
+                if has_cs:
+                    # Get motif associated with this crystal:
+                    sp_motif = cs.species_motif
 
-                    atom_idx = np.where(
-                        self.motif_idx[crys_atm_idx] == sp_idx)[0]
-                    atom_sites_sp = self.atom_sites[:, crys_atm_idx[atom_idx]]
-                    sp_i = cs.motif['species'][sp_idx]
-                    sp_col = 'rgb' + str(atom_cols[sp_i])
+                    # Atoms by species
+                    # TODO: Add traces for atom numbers
+                    for sp_idx, sp_name in enumerate(sp_motif):
 
-                    trace_name = sp_name + ' (crystal #{})'.format(c_idx + 1)
+                        atom_idx = np.where(
+                            self.motif_idx[crys_atm_idx] == sp_idx)[0]
+                        atom_sites_sp = self.atom_sites[:, crys_atm_idx[atom_idx]]
+                        sp_i = cs.motif['species'][sp_idx]
+                        sp_col = 'rgb' + str(atom_cols[sp_i])
 
-                    atom_site_props = {
-                        'mode': 'markers',
-                        'marker': {
-                            'symbol': 'o',
-                            'size': 7,
-                            'color': sp_col
-                        },
-                        'name': trace_name,
-                        'legendgroup': trace_name,
-                    }
+                        trace_name = sp_name + ' (crystal #{})'.format(c_idx + 1)
 
-                    if atoms_3d:
-                        rad = element(sp_i).vdw_radius * 0.25 * 1e-2  # in Ang
-                        # Get sphere trace for each atom:
-                        for i in atom_sites_sp.T:
-                            sph_args = {
-                                'radius': rad,
-                                'colour': sp_col,
-                                'origin': i[:, np.newaxis],
-                                'n': 10
-                            }
-                            sph = plotting.get_sphere_plotly(**sph_args)
-                            sph[0].update({
-                                'name': trace_name,
-                                'legendgroup': trace_name,
-                            })
-                            data.append(sph[0])
+                        atom_site_props = {
+                            'mode': 'markers',
+                            'marker': {
+                                'symbol': 'o',
+                                'size': 7,
+                                'color': sp_col
+                            },
+                            'name': trace_name,
+                            'legendgroup': trace_name,
+                        }
 
-                    else:
+                        if atoms_3d:
+                            rad = element(sp_i).vdw_radius * 0.25 * 1e-2  # in Ang
+                            # Get sphere trace for each atom:
+                            for i in atom_sites_sp.T:
+                                sph_args = {
+                                    'radius': rad,
+                                    'colour': sp_col,
+                                    'origin': i[:, np.newaxis],
+                                    'n': 10
+                                }
+                                sph = plotting.get_sphere_plotly(**sph_args)
+                                sph[0].update({
+                                    'name': trace_name,
+                                    'legendgroup': trace_name,
+                                })
+                                data.append(sph[0])
+
+                        else:
+                            data.append(
+                                graph_objs.Scatter3d(
+                                    x=atom_sites_sp[0],
+                                    y=atom_sites_sp[1],
+                                    z=atom_sites_sp[2],
+                                    **atom_site_props
+                                )
+                            )
+                        if proj_2d:
+                            for i in proj_2d_dirs:
+                                data_2d.append({
+                                    'type': 'scatter',
+                                    'x': atom_sites_sp[dirs_2d[i][0]],
+                                    'y': atom_sites_sp[dirs_2d[i][1]],
+                                    'xaxis': ax_lab_2d[i][0],
+                                    'yaxis': ax_lab_2d[i][1],
+                                    'showlegend': show_leg_2d[i],
+                                    **atom_site_props
+                                })
+                else:
+                    # crystals but no crystal structure
+                    for sp_idx, sp in enumerate(self.all_species):
+
+                        atom_idx = np.where(self.all_species_idx[crys_atm_idx] == sp_idx)[0]
+                        atom_sites_sp = self.atom_sites[:, crys_atm_idx[atom_idx]]
+                        sp_col = str(atom_cols[sp])
+                        trace_name = sp + ' (Crystal #{})'.format(c_idx + 1)
+
+                        atom_site_props = {
+                            'mode': 'markers',
+                            'marker': {
+                                'symbol': 'o',
+                                'size': 7,
+                                'color': 'rgb' + sp_col
+                            },
+                            'name': trace_name,
+                            'legendgroup': trace_name,
+                        }
                         data.append(
                             graph_objs.Scatter3d(
                                 x=atom_sites_sp[0],
@@ -694,18 +742,19 @@ class AtomisticStructure(object):
                                 z=atom_sites_sp[2],
                                 **atom_site_props
                             )
-                        )
-                    if proj_2d:
-                        for i in proj_2d_dirs:
-                            data_2d.append({
-                                'type': 'scatter',
-                                'x': atom_sites_sp[dirs_2d[i][0]],
-                                'y': atom_sites_sp[dirs_2d[i][1]],
-                                'xaxis': ax_lab_2d[i][0],
-                                'yaxis': ax_lab_2d[i][1],
-                                'showlegend': show_leg_2d[i],
-                                **atom_site_props
-                            })
+                        )   
+                        if proj_2d:
+                            for i in proj_2d_dirs:
+                                data_2d.append({
+                                    'type': 'scatter',
+                                    'x': atom_sites_sp[dirs_2d[i][0]],
+                                    'y': atom_sites_sp[dirs_2d[i][1]],
+                                    'xaxis': ax_lab_2d[i][0],
+                                    'yaxis': ax_lab_2d[i][1],
+                                    'showlegend': show_leg_2d[i],
+                                    **atom_site_props
+                                })                                                    
+
 
         layout = graph_objs.Layout(
             width=1000,
@@ -805,7 +854,8 @@ class AtomisticStructure(object):
         self.atom_sites = np.dot(R, self.atom_sites)
 
         # Reorient lattice sites
-        self.lattice_sites = np.dot(R, self.lattice_sites)
+        if self.lattice_sites is not None:
+            self.lattice_sites = np.dot(R, self.lattice_sites)
 
         # Reorient CrystalStructure lattice objects
         for c_idx in range(len(self.crystals)):
@@ -813,7 +863,9 @@ class AtomisticStructure(object):
             c = self.crystals[c_idx]
             c['crystal'] = np.dot(R, c['crystal'])
             c['origin'] = np.dot(R, c['origin'])
-            c['cs_orientation'] = np.dot(R, c['cs_orientation'])
+            cs_orient = c.get('cs_orientation')
+            if cs_orient is not None:
+                c['cs_orientation'] = np.dot(R, c['cs_orientation'])
 
         return R
 
@@ -1447,7 +1499,7 @@ class CSLBicrystal(AtomisticStructure):
   
     @classmethod
     def from_structure(cls, struct_params, 
-                       overlap_tol=1, maintain_inv_sym=False, reorient=False, 
+                       overlap_tol=1, maintain_inv_sym=False, reorient=True, 
                        boundary_vac_args=None, relative_shift_args=None, wrap=True,
                        **kwargs):
         """
@@ -1479,10 +1531,10 @@ class CSLBicrystal(AtomisticStructure):
                     'supercell'   : bound_struct['supercell'],
                     'all_species' : bound_struct['all_species'],
                     'all_species_idx' : bound_struct['all_species_idx'],
-                    'overlap_tol' : overlap_tol
-                #     'crystals'    : bound_struct['crystals'],
+                    'overlap_tol' : overlap_tol,
+                    'crystals'    : bound_struct['crystals'],
                 #     'crystal_structures' : crystal_structures,
-                #     'crystal_idx' : bound_struct['crystals_idx'],
+                    'crystal_idx' : bound_struct['crystals_idx'],
                 }
         
 
@@ -1491,7 +1543,7 @@ class CSLBicrystal(AtomisticStructure):
                    relative_shift_args=relative_shift_args, wrap=wrap)
         
         
-    def __init__(self, maintain_inv_sym=False, reorient=True,
+    def __init__(self, maintain_inv_sym=False, reorient=False,
                  boundary_vac_args=None, relative_shift_args=None,
                  wrap=True, **kwargs):
 

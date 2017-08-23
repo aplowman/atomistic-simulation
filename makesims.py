@@ -26,6 +26,7 @@ SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
 SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
 
+
 class Archive(object):
     """
     Class to represent the area on a machine where simulations are archived.
@@ -37,11 +38,35 @@ class Archive(object):
 
     """
 
-    def __init__(self, session_id, path, dropbox, key):
+    def __init__(self, session_id, path, dropbox=False, dropbox_key=None, scratch=None):
 
         self.dropbox = dropbox
-        self.key = key
-        self.path = posixpath.join(path, session_id)
+        self.dropbox_key = dropbox_key
+
+        # If Archive is not on dropbox, assume it is on the scratch machine
+        # (i.e. instantiate Archive with scratch.os_name)
+        if dropbox:
+            self.remote = True
+            self.host = None
+            self.os_name = 'posix'
+
+        else:
+            if scratch.remote:
+                self.remote = True
+                self.host = scratch.host
+                self.os_name = scratch.os_name
+
+            else:
+                self.remote = False
+                self.host = None
+                self.os_name = os.name
+
+        if self.os_name == 'nt':
+            path_mod = ntpath
+        elif self.os_name == 'posix':
+            path_mod = posixpath
+
+        self.path = path_mod.join(path, session_id)
 
 
 class Stage(object):
@@ -147,11 +172,42 @@ class Stage(object):
     def copy_to_archive(self, archive):
         """
         """
-        dbx = dbhelpers.get_dropbox(archive.key)
-        db_path = archive.path
-        # Only copy plots:
-        db_inc = ['*.html']
-        dbhelpers.upload_dropbox_dir(dbx, self.path, db_path, include=db_inc)
+
+        archive_dir_exists = 'Directory already exists on archive. Aborting.'
+        copy_msg = 'Copying plots to {}{} archive.'.format(
+            'remote' if archive.remote else 'local',
+            ' (Dropbox)' if archive.dropbox else ''
+        )
+        if archive.remote:
+
+            # Only copy plots:
+            inc_filter = ['*.html']
+
+            if archive.dropbox:
+
+                dbx = dbhelpers.get_dropbox(archive.dropbox_key)
+                db_path = archive.path
+                print(copy_msg)
+                dbhelpers.upload_dropbox_dir(dbx, self.path, db_path,
+                                             include=inc_filter)
+
+            else:
+
+                # Connect to remote archive host for copying stuff
+                if utils.dir_exists_remote(archive.host, archive.path):
+                    raise ValueError(archive_dir_exists)
+
+                print(copy_msg)
+                bash_path = self.get_bash_path(end_path_sep=True)
+                utils.rsync_remote(bash_path, archive.host, archive.path,
+                                   include=inc_filter)
+
+        else:
+
+            pass
+            # Don't need to pre-copy stuff to Archive since everything
+            # went to scratch in this case and will thus be copied to
+            # Archive when process.py is run.
 
     def submit_on_scratch(self, scratch):
         """
@@ -654,7 +710,7 @@ def append_db(opt):
 
             # Download database file:
             tmp_db_path = os.path.join(SU_PATH, 'temp_db')
-            dpbx_path = '/calcs/db.pickle'
+            dpbx_path = su['database']['path']
 
             # Check if db file exists, if not prompt to create:
             db_exists = dbhelpers.check_dropbox_file_exist(dbx, dpbx_path)
@@ -678,6 +734,30 @@ def append_db(opt):
                 readwrite.write_pickle(db_file, tmp_db_path)
                 dbhelpers.upload_dropbox_file(dbx, tmp_db_path, dpbx_path,
                                               overwrite=True)
+
+    else:
+
+        db_path = su['database']['path']
+        db_exists = os.path.isfile(db_path)
+
+        if db_exists:
+            db = readwrite.read_pickle(db_path)
+        else:
+            db_dir, db_fname = os.path.split(db_path)
+            os.makedirs(db_dir, exist_ok=True)
+            db_create = utils.confirm('Database file does not exist. '
+                                      'Create it?')
+            if db_create:
+                db = {}
+            else:
+                warnings.warn('This simulaton has not been added to a '
+                              'database')
+
+        if db_exists or db_create:
+
+            # Modify database file:
+            db.update({su['time_stamp']: opt})
+            readwrite.write_pickle(db, db_path)
 
 
 def main():
@@ -747,7 +827,24 @@ def main():
 
     stage = Stage(session_id=s_id, path=stage_path)
     scratch = Scratch(session_id=s_id, **su['scratch'])
-    archive = Archive(session_id=s_id, **su['archive'])
+    archive_opts = su['archive']
+    database_opts = su['database']
+
+    is_dropbox = [i.get('dropbox') for i in [archive_opts, database_opts]]
+    if any(is_dropbox):
+        try:
+            db_key = su['dropbox_key']
+            if is_dropbox[0]:
+                archive_opts.update({'dropbox_key': db_key})
+            if is_dropbox[1]:
+                database_opts.update({'dropbox_key': db_key})
+
+        except:
+            print('To use dropbox for Archive or database location, a dropbox '
+                  'key must be specified as opiton: `dropbox_key`.')
+
+    archive = Archive(session_id=s_id, scratch=scratch, **archive_opts)
+    su['database'] = database_opts
 
     # log.append('Making stage directory at: {}.'.format(stage_path))
     os.makedirs(stage.path, exist_ok=False)
@@ -982,7 +1079,6 @@ def main():
         else:
             print('Did not submit.')
         if su['upload_plots']:
-            print('Uploading plots to dropbox...')
             stage.copy_to_archive(archive)
     else:
         print('Exiting.')

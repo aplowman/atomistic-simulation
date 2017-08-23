@@ -306,7 +306,12 @@ def prepare_series_update(series_spec, atomistic_structure):
 
         edge_vecs = atomistic_structure.boundary_vecs
         grid = geometry.Grid(edge_vecs, series_spec.get('grid_spec'))
-        rel_shifts = list(grid.get_grid_points()['points_frac'].T)
+        ggp = grid.get_grid_points()
+        rel_shifts = ggp['points_frac'].T
+        grid_idx = ggp['grid_idx_flat']
+        row_idx = ggp['row_idx']
+        col_idx = ggp['col_idx']
+        point_idx = ggp['point_idx']
         common_series_info.update({
             'gamma_surface': grid.to_jsonable(),
         })
@@ -314,6 +319,12 @@ def prepare_series_update(series_spec, atomistic_structure):
             'name': 'relative_shift',
             'vals': rel_shifts,
             'as_fractions': True,
+            'extra_update': {
+                'grid_idx': grid_idx,
+                'row_idx': row_idx,
+                'col_idx': col_idx,
+                'point_idx': point_idx,
+            }
         }
 
     # Convenience
@@ -471,6 +482,14 @@ def prepare_series_update(series_spec, atomistic_structure):
                 'series_id': {'name': sn, 'val': v,
                               'path': v_str}
             })
+
+    extra_update = ss.get('extra_update')
+    if extra_update is not None:
+        for up_idx, up in enumerate(out):
+            eu = {}
+            for k, v in extra_update.items():
+                eu.update({k: np.asscalar(v[up_idx])})
+            out[up_idx]['series_id'].update(eu)
 
     return out, common_series_info
 

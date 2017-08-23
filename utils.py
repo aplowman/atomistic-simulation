@@ -255,7 +255,7 @@ def nest_lists(my_list):
     """
         `a` is a list of `N` sublists.
 
-        E.g. 
+        E.g.
         my_list = [
             [1,2],
             [3,4,5],
@@ -353,7 +353,7 @@ def parse_as_int_arr(arr):
 
 
 def confirm(prompt=None, resp=False):
-    """    
+    """
     Prompts for yes or no response from the user, returning True for yes and
     False for no.
 
@@ -520,3 +520,59 @@ def trim_common_nones(a, b):
 
     a[:] = [i for i_idx, i in enumerate(a) if i_idx not in trim_idx]
     b[:] = [i for i_idx, i in enumerate(b) if i_idx not in trim_idx]
+
+
+def dict_from_list(lst, conditions, false_keys=None, ret_index=False):
+    """
+    Get the first dict from a list of dict given one or more matching
+    key-values.
+
+    Parameters
+    ----------
+    lst : list
+    conditions : dict
+        To return a dict from the list, keys and values specified here must
+        exist in the list dict.
+    false_keys : list, optional
+        Dicts which have keys listed here will not be returned.
+    ret_index : bool, optional
+        If True, return a tuple (element_index, element) else return element.
+        Default is False.
+
+    """
+
+    if false_keys is None:
+        false_keys = []
+
+    for el_idx, el in enumerate(lst):
+
+        condition_match = False
+        for cnd_key, cnd_val in conditions.items():
+
+            v = el.get(cnd_key)
+
+            if v is not None and v == cnd_val:
+                condition_match = True
+            else:
+                condition_match = False
+                break
+
+        if condition_match:
+
+            skip = False
+            for fkey in false_keys:
+                if fkey in el:
+                    skip = True
+                    break
+            if skip:
+                break
+
+            if ret_index:
+                return (el_idx, el)
+            else:
+                return el
+
+    if ret_index:
+        return (None, None)
+    else:
+        return None

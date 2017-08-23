@@ -140,103 +140,104 @@ SINGLE_COMPUTES = {
     'gb_thickness': (compute_gb_thickness, )
 }
 
-# Computed quantities which are dependent on more than one simulation:
-
-
-def get_energy(energy_type):
-    energy = {
-        'display_name': 'Final Energy',
-        'id': 'opt_energy',
-        'fmt': '{:15.10f}',
-        'idx': (-1,),
-        'name': 'final_energy',
-        'unit': 'eV',
-    }
-    if energy_type == 'final_zenergy':
-        energy.update({
-            'name': 'final_zenergy',
-            'display_name': 'Final 0K Energy',
-        })
-    elif energy_type == 'final_fenergy':
-        energy.update({
-            'name': 'final_fenergy',
-            'display_name': 'Final Free Energy',
-        })
-    return energy
-
-
-sup_type = {
-    'display_name': 'Supercell type',
-    'fmt': '{}',
-    'idx': ('type',),
-    'name': 'base_structure',
-}
-num_ions = {
-    'display_name': '#Atoms',
-    'fmt': '{:d}',
-    'name': 'num_ions',
-}
-gb_area = {
-    'name': 'gb_area',
-    'display_name': 'GB Area',
-    'unit': 'Ang^2'
-}
-
-MULTI_COMPUTES = {
-    'gb_energy': {
-        'requires': {
-            'computes': [gb_area],
-            'parameters': [sup_type],
-            'results': [get_energy, num_ions],
-        },
-        'func': compute_gb_energy,
+# Variables which do not need to be parameterised:
+PREDEFINED_VARS = {
+    'num_ions': {
+        'type': 'result',
+        'name': 'num_ions',
+        'id': 'num_ions2',
+        'vals': [],
     },
-    'surface_energy': {
-        'requires': {
-            'computes': [gb_area],
-            'parameters': [sup_type],
-            'results': [get_energy, num_ions]
+    'gb_area': {
+        'type': 'compute',
+        'name': 'gb_area',
+        'id': 'gb_area',
+        'vals': [],
+    },
+    'sup_type': {
+        'type': 'parameter',
+        'name': 'base_structure',
+        'idx': ('type',),
+        'id': 'supercell_type',
+        'vals': [],
+    },
+    'gamma_row_idx': {
+        'type': 'parameter',
+        'name': 'series_id',
+        'idx': (0, 0, 'row_idx', ),
+        'id': 'gamma_row_idx',
+        'vals': [],
+    },
+    'gamma_col_idx': {
+        'type': 'parameter',
+        'name': 'series_id',
+        'idx': (0, 0, 'col_idx', ),
+        'id': 'gamma_col_idx',
+        'vals': [],
+    },
+    'gamma_surface_shape': {
+        'type': 'common_series_info',
+        'name': 'gamma_surface',
+        'idx': ('grids', 0, 'shape'),
+        'id': 'gamma_surface_shape',
+        'vals': [],
+    },
+    'gamma_surface_xy': {
+        'type': 'common_series_info',
+        'name': 'gamma_surface',
+        'idx': ('grids', 0, 'grid_points_std'),
+        'id': 'gamma_surface_xy',
+        'vals': [],
+    },
+}
+
+
+def get_required_defn(var_name, **kwargs):
+    print('get_required_defn: var_name: {}'.format(var_name))
+    out = []
+    if var_name == 'gb_energy':
+        out += get_required_defn('energy',
+                                 energy_src=kwargs['energy_src'],
+                                 opt_step=kwargs['opt_step'])
+        out += [
+            PREDEFINED_VARS['num_ions'],
+            PREDEFINED_VARS['gb_area'],
+            PREDEFINED_VARS['sup_type'],
+        ]
+
+    elif var_name == 'gamma_energy':
+        out += get_required_defn('energy',
+                                 energy_src=kwargs['energy_src'],
+                                 opt_step=kwargs['opt_step'])
+        out += [
+            PREDEFINED_VARS['gamma_row_idx'],
+            PREDEFINED_VARS['gamma_col_idx'],
+            PREDEFINED_VARS['gamma_surface_shape'],
+            PREDEFINED_VARS['gamma_surface_xy'],
+        ]
+
+    elif var_name == 'energy':
+        d = {
+            'type': 'result',
+            'name': kwargs['energy_src'],
+            'id': kwargs['energy_src'],
+            'vals': [],
         }
-    },
-    'cohesive_energy': {
-        'requires': {
-            'computes': [gb_area],
-            'parameters': [sup_type],
-            'results': [get_energy, num_ions]
-        }
-    },
-}
+        opt_step = kwargs.get('opt_step')
+        if opt_step is not None:
+            d.update({
+                'idx': (opt_step,),
+            })
+        out += [d]
 
+    elif var_name == 'energy_pa':
+        out += get_required_defn('energy',
+                                 energy_src=kwargs['energy_src'],
+                                 opt_step=kwargs['opt_step'])
+        out += [
+            PREDEFINED_VARS['num_ions']
+        ]
 
-def dict_from_list(lst, ret_index=False, **conditions):
-    """
-    Get the first dict from a list of dict given one or more matching
-    key-values.
+    print('get_required_defn: out: {}'.format(format_list(out)))
 
-    Parameters
-    ----------
-    lst : list
-    conditions : dict
-    index : bool
-        If True, return a tuple (element_index, element) else return element
-
-    """
-
-    for el_idx, el in enumerate(lst):
-
-        condition_match = False
-        for cnd_key, cnd_val in conditions.items():
-
-            v = el.get(cnd_key)
-
-            if v is not None and v == cnd_val:
-                condition_match = True
-            else:
-                condition_match = False
-                break
-
-        if condition_match:
-            if ret_index:
-                return (el_idx, el)
-            else:
-                return el
+    return out

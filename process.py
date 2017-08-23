@@ -56,7 +56,8 @@ def modernise_pickle(sms_path):
     [1] http://mywiki.wooledge.org/glob
 
     """
-    print('Modernising `sims.pickle`.')
+
+    modernise = False
 
     # Copy the first sims options into a top level 'base_options':
     sms = read_pickle(sms_path)
@@ -68,6 +69,7 @@ def modernise_pickle(sms_path):
         off_fls_types = off_fls['file_types']
         for ft_idx, ft in enumerate(off_fls_types):
             if '*' not in ft:
+                modernise = True
                 print('Adding wildcard to offline file types.')
                 off_fls_types[ft_idx] = '*' + ft
 
@@ -76,6 +78,7 @@ def modernise_pickle(sms_path):
     if cmn_fls is not None:
         for cf_idx, cf in enumerate(cmn_fls):
             if "'" in cf:
+                modernise = True
                 print('Removing single quotes from `common_files`.')
                 bo['set_up']['common_files'][cf_idx] = cf.strip("'")
     else:
@@ -87,19 +90,25 @@ def modernise_pickle(sms_path):
             '*.bib'
         ]
         bo['set_up']['common_files'] = cmn_fls
+        modernise = True
 
     # Change series to a list of lists
     new_series = None
     if bo.get('series') is not None and len(bo.get('series')) > 0:
-        print('series is non-None: {}, len: {}'.format(bo.get('series'), len(bo.get('series'))))
+        print('series is non-None: {}, len: {}'.format(bo.get('series'),
+                                                       len(bo.get('series'))))
         if len(bo['series']) == 1 and isinstance(bo['series'][0], dict):
             print('Changing series to a list of lists in `base_options`.')
             new_series = [
                 [bo['series'][0]]
             ]
+            modernise = True
             bo['series'] = new_series
 
-        del bo['series_id']
+        if bo.get('series_id') is not None:
+            modernise = True
+            del bo['series_id']
+
     sms['base_options'] = bo
 
     # Change series_id
@@ -107,6 +116,7 @@ def modernise_pickle(sms_path):
     sim_0_sid = sim_0_opt.get('series_id')
     if sim_0_sid is not None and isinstance(sim_0_sid, dict):
 
+        modernise = True
         # For each sim, change series_id to a list of lists
         for s_idx, s in enumerate(sms['all_sims']):
 
@@ -129,15 +139,20 @@ def modernise_pickle(sms_path):
                     ])
                 sms['all_sims'][s_idx].options['series_id'] = new_series_id
 
-    # Rename original sims.pickle:
-    print('Renaming old `sims.pickle`.')
-    home_path, sms_fn = os.path.split(sms_path)
-    sms_path_old = os.path.join(home_path, sms_fn + '_old')
-    os.rename(sms_path, sms_path_old)
+    if modernise:
+        print('Modernising `sims.pickle`.')
+        # Rename original sims.pickle:
+        print('Renaming old `sims.pickle`.')
+        home_path, sms_fn = os.path.split(sms_path)
+        sms_path_old = os.path.join(home_path, sms_fn + '_old')
+        os.rename(sms_path, sms_path_old)
 
-    # Write the modernised sims.pickle back to disk:
-    print('Writing new `sims.pickle`.')
-    write_pickle(sms, sms_path)
+        # Write the modernised sims.pickle back to disk:
+        print('Writing new `sims.pickle`.')
+        write_pickle(sms, sms_path)
+
+    else:
+        print('Modernisation of `sims.pickle` is not neccessary.')
 
 
 def move_offline_files(s_id, src_path, offline_files):

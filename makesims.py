@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import shutil
-import dict_parser
 import utils
 import dbhelpers
 import readwrite
@@ -769,18 +768,8 @@ def main():
         -   check all ints in cs_idx resolve in crystal_structures
     -   Allow datatype parsing on list elements so specifying crystal structure
         index when forming struct_opt is cleaner.
-    -   Allow dict_parser to parse other files so don't need csl_lookup (can
-        have a file in /ref: csl_hex_[0001].txt, which can provide csl_vecs for
-        a given sigma value.)
-    -   Also allow dict_parser to have variables so crystal structure can be
-        reference as a variable instead of an index: instead of in opt.txt:
-        base_structure --> cs_idx = [0] we could have base_structure
-        --> crystal_structure = <crystal_structures>[0] where
-        crystal_structures is also defined in the opt.txt
     -   Move more code into separate functions (e.g. dropbox database stuff)
     -   Can possible update database without writing a temp file.
-    -   Form session id from timestamp instead of separate function
-    -   Store dropbox key in separate file to options.
 
     """
 
@@ -925,7 +914,7 @@ def main():
     # Save current options dict
     opt_p_str_path = stage.get_path('opt_processed.txt')
     with open(opt_p_str_path, mode='w', encoding='utf-8') as f:
-        f.write(dict_parser.formatting.format_dict(opt))
+        f.write(readwrite.format_dict(opt))
 
     # Get series definitions:
     srs_df = opt.get('series')

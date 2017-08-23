@@ -90,7 +90,8 @@ def modernise_pickle(sms_path):
 
     # Change series to a list of lists
     new_series = None
-    if bo.get('series') is not None:
+    if bo.get('series') is not None and len(bo.get('series')) > 0:
+        print('series is non-None: {}, len: {}'.format(bo.get('series'), len(bo.get('series'))))
         if len(bo['series']) == 1 and isinstance(bo['series'][0], dict):
             print('Changing series to a list of lists in `base_options`.')
             new_series = [

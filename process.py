@@ -148,6 +148,15 @@ def move_offline_files(s_id, src_path, offline_files):
     for t in fl_types:
         fls_paths.extend(find_files_in_dir_glob(src_path, t, recursive=True))
 
+    print('Offline files dir: {}'.format(arch_dir))
+    print('Offline files types: {}'.format(fl_types))
+
+    fls_paths = []
+    for t in fl_types:
+        fls_paths.extend(find_files_in_dir_glob(src_path, t, recursive=True))
+
+    print('Offline files paths: {}'.format(fls_paths))
+
     if len(fls_paths) > 0:
 
         # Generate the offline files directories
@@ -207,6 +216,9 @@ def main(s_id):
     if not os.path.isfile(os.path.join(src_path, 'sims.pickle_old')):
         modernise_pickle(sms_path)
 
+    # Get base options from the modernised pickle:
+    sms = read_pickle(sms_path)
+    base_opt = sms['base_options']
     off_fls = base_opt['set_up']['scratch']['offline_files']
     move_offline_files(s_id, src_path, off_fls)
 

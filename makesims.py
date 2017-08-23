@@ -18,16 +18,13 @@ import ntpath
 import time
 import warnings
 from set_up.opt import OPT
+from set_up.setup_profiles import HOME_PATH
 import geometry
 import fractions
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
 SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
-
-USERNAME = os.getlogin()
-HOME_PATH = r'C:\Users\{}\Dropbox (Research Group)\calcs'.format(USERNAME)
-
 
 class Archive(object):
     """
@@ -441,7 +438,7 @@ def prepare_series_update(series_spec, atomistic_structure):
 
             out.append({
                 'base_structure': {sn: v},
-                'series_id': {'name': sn, 'val': v, 'path': '{}_{}_{}'.format(*v[0])}
+                'series_id': {'name': sn, 'val': v, 'path': '{}_{}_{}'.format(*v)}
             })
 
     elif sn == 'box_lat':
@@ -759,8 +756,13 @@ def main():
     log.append('Generating CrystalStructure objects.')
     cs = []
     for cs_opt in opt['crystal_structures']:
-        brav_lat = BravaisLattice(**cs_opt['lattice'])
-        cs.append(CrystalStructure(brav_lat, cs_opt['motif']))
+        if 'from_file' in cs_opt:
+            path = cs_opt['from_file']['path']
+            cs.append(CrystalStructure.from_file(path,
+                                                 **cs_opt['from_file']['lattice']))
+        else:
+            brav_lat = BravaisLattice(**cs_opt['lattice'])
+            cs.append(CrystalStructure(brav_lat, cs_opt['motif']))
 
     # Generate base structure
     log.append('Generating base AtomisticStructure object.')

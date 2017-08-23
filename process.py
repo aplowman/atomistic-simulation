@@ -7,6 +7,7 @@ from readwrite import read_pickle, write_pickle, find_files_in_dir_glob, factor_
 import shutil
 import subprocess
 import simsio
+from distutils.dir_util import copy_tree
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
@@ -246,8 +247,19 @@ def main(s_id):
     if not os.path.isdir(src_path):
         raise ValueError('Source path is not a directory: {}'.format(src_path))
 
-    print('Uploading to dropbox...')
-    dbh.upload_dropbox_dir(dbx, src_path, dst_path)
+    arch_opt = base_opt['set_up']['archive']
+    is_dropbox = arch_opt.get('dropbox')
+
+    if is_dropbox is True:
+        print('Uploading completed sims to dropbox...')
+        dbh.upload_dropbox_dir(dbx, src_path, dst_path)
+    else:
+        # If Archive is not on Dropbox, assume it is on the scratch machine
+        # i.e. the one from which this script (process.py) is run.
+        print('Copying completed sims to archive...')
+        print('From path: {}'.format(src_path))
+        print('To path: {}'.format(dst_path))
+        copy_tree(src_path, dst_path)
 
 
 if __name__ == '__main__':

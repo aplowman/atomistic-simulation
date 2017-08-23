@@ -8,6 +8,7 @@ import dropbox
 import fnmatch
 import os
 import posixpath
+import ntpath
 
 """
 TODO:
@@ -255,7 +256,7 @@ def nest_lists(my_list):
     """
         `a` is a list of `N` sublists.
 
-        E.g. 
+        E.g.
         my_list = [
             [1,2],
             [3,4,5],
@@ -353,7 +354,7 @@ def parse_as_int_arr(arr):
 
 
 def confirm(prompt=None, resp=False):
-    """    
+    """
     Prompts for yes or no response from the user, returning True for yes and
     False for no.
 
@@ -480,3 +481,29 @@ def format_time(secs):
     time_fmt += '{:.0f} sec'.format(s)
 
     return time_fmt
+
+
+def get_bash_path(path, end_path_sep=False):
+    """Get the path in a posix style, e.g. for using with bash commands in
+    Windows Subsystem for Linux.
+
+    This replaces drives letters specified like "C:\foo" with
+    "/mnt/c/foo".
+
+    Parameters
+    ----------
+    end_path_sep : bool, optional
+        Specifies whether the returned path should end in path separator.
+        Default is False.
+
+    """
+
+    drv, pst_drv = os.path.splitdrive(path)
+    path_bash = posixpath.sep.join(
+        [posixpath.sep + 'mnt', drv[0].lower()] +
+        pst_drv.strip(ntpath.sep).split(ntpath.sep))
+
+    if end_path_sep:
+        path_bash += posixpath.sep
+
+    return path_bash

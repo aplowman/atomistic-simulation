@@ -18,16 +18,13 @@ import ntpath
 import time
 import warnings
 from set_up.opt import OPT
+from set_up.setup_profiles import HOME_PATH
 import geometry
 import fractions
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
 SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
-
-USERNAME = os.getlogin()
-HOME_PATH = r'C:\Users\{}\Dropbox (Research Group)\calcs'.format(USERNAME)
-
 
 class Archive(object):
     """

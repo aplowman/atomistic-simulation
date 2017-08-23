@@ -209,9 +209,9 @@ class AtomisticStructure(object):
 
         if all_species_idx is not None:
             if len(all_species_idx) != atom_sites.shape[1]:
-                raise ValueError('Length of `all_species_idx` must match '
+                raise ValueError('Length of `all_species_idx` ({}) must match '
                                  'number of atoms specified as column vectors '
-                                 'in `atom_sites`.')
+                                 'in `atom_sites` ({}).'.format(len(all_species_idx), atom_sites.shape[1]))
 
         # Set attributes
         # --------------

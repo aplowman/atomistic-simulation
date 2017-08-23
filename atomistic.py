@@ -27,7 +27,7 @@ import readwrite
 from mendeleev import element
 import utils
 import spglib
-from ref.structures.cslbicrystals import construct_bicrystals
+import gbhelper
 
 REF_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ref')
 
@@ -1458,7 +1458,7 @@ class CSLBicrystal(AtomisticStructure):
         struct_params : dict of dict
             `csl` : string
                 '[angle_axis_structure]' to be constructed using a method 
-                defined as 'construct_'in 'ref/structures/cslbicrystals/construct_bicrystals'.
+                defined as 'construct_'in gbhelper.py.
                 (for example '180_001_mZrO2').
             `csl_params` : dict of (str : string or ndarray or int)
                 Parameters needed to construct `csl`. Vary depending on method.
@@ -1470,7 +1470,7 @@ class CSLBicrystal(AtomisticStructure):
         """
 
         csl = struct_params['csl']
-        create_bound = getattr(construct_bicrystals, 'construct_' + csl)
+        create_bound = getattr(gbhelper, 'construct_' + csl)
         bound_struct = create_bound(**struct_params['csl_params'])
         
         # AtomisticStructure parameters

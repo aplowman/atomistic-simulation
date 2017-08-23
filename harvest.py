@@ -219,7 +219,7 @@ def collate_results(res_opt, debug=False):
         pick = read_pickle(pick_path)
         sims = pick['all_sims']
         base_opt = pick['base_options']
-        csi = pick['common_series_info']
+        csi = pick.get('common_series_info')
 
         for vr_idx, vr in enumerate(out['variables']):
 
@@ -227,6 +227,9 @@ def collate_results(res_opt, debug=False):
             vr_type = vr['type']
 
             if vr_type == 'common_series_info':
+
+                if csi is None:
+                    raise ValueError('No common series info was saved.')
 
                 val = csi[vr_name]
                 all_sub_idx = vr.get('idx')
@@ -249,9 +252,10 @@ def collate_results(res_opt, debug=False):
             out['session_id'].append(sid)
             out['idx'].append(sm_idx)
 
-            srs_id = sm.options['series_id']
-            out['series_id_path'].append(get_series_paths(srs_id))
-            out['series_id_val'].append(get_series_vals(srs_id))
+            srs_id = sm.options.get('series_id')
+            if srs_id is not None:
+                out['series_id_path'].append(get_series_paths(srs_id))
+                out['series_id_val'].append(get_series_vals(srs_id))
 
             for vr_idx, vr in enumerate(out['variables']):
 
@@ -439,8 +443,8 @@ def main():
     if skip_idx is None or len(skip_idx) == 0:
         skip_idx = [[] for _ in range(len(sids))]
 
-    # for s_idx, s in enumerate(sids):
-    #     read_results(s, skip_idx=skip_idx[s_idx])
+    for s_idx, s in enumerate(sids):
+        read_results(s, skip_idx=skip_idx[s_idx])
 
     # Compute additional properties
     collate_results(RES_OPT, debug=True)

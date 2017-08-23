@@ -408,17 +408,35 @@ def dir_exists_remote(host, dir_path):
         return False
 
 
-def rsync_remote(src, host, dst, exclude=None):
+def rsync_remote(src, host, dst, exclude=None, include=None):
     """
+    Execute an rsync command to a remote host.
+
+    Parameters
+    ----------
     exclude : list
-        List of strings to pass to --exclude option
+        List of strings to pass to --exclude option. Cannot be used with
+        `include`.
+    include : list
+        List of strings to pass to --include option. If this is specified,
+        only matching paths with by copied and all subdirectories will be
+        traversed. Cannot be used with `exclude`.
     """
+
+    # Validation
+    if exclude is not None and include is not None:
+        raise ValueError('Cannot specify both `include` and `exclude`.')
+
+    in_ex_str = ''
     if exclude is not None:
-        ex_str = ''.join([' --exclude={}'.format(i) for i in exclude])
-    else:
-        ex_str = ''
+        in_ex_str = ''.join([' --exclude="{}"'.format(i) for i in exclude])
+
+    elif include is not None:
+        in_ex_str = ''.join([' --include="{}"'.format(i) for i in include])
+        in_ex_str += ' --include="*/" --exclude="*"'
+
     rsync_cmd = ('rsync -az --chmod=Du=rwx,Dgo=rx,Fu=rw,Fog=r{}'
-                 ' {} {}:{}').format(ex_str, src, host, dst)
+                 ' "{}" {}:{}').format(in_ex_str, src, host, dst)
     subprocess.run(['bash', '-c', rsync_cmd])
 
 

@@ -2135,15 +2135,20 @@ def read_cell_file(cellfile):
 
     Returns
     -------
-    latt_params : list
-        List containing the lattice parameters of the unit cell,
-        [a, b, c, α, β, γ], where the units of angles are radians.
-    motif : dict
-        atom_sites : ndarray
-            Array of shape (3, n), where the row vectors are the fractional
-            coordinates of the atoms and n is the number of atoms.
-        species : list
-            List of length n associated with each atom in `atom_sites`.
+    lattice_data : dict of (str : ndarray or list or dict) 
+        `cell_vecs` : ndarray
+            Array of shape (3, 3), where the row vectors are the three lattice 
+            vectors.
+        `latt_params` : list
+            List containing the lattice parameters of the unit cell,
+            [a, b, c, α, β, γ], where the units of angles are radians.
+        `motif` : dict
+            `atom_sites` : ndarray
+                Array of shape (3, n), where the column vectors are the fractional
+                coordinates of the atoms and n is the number of atoms.
+            `species` : list
+                List of length n associated with each atom in `atom_sites`.
+    
 
     Notes
     -----
@@ -2197,4 +2202,10 @@ def read_cell_file(cellfile):
         motif['atom_sites'] = pos_f.T
         motif['species'] = species_str
 
-        return latt_params, motif
+        lattice_data = {
+            'cell_vecs'   : cell_vecs,
+            'latt_params' : latt_params,
+            'motif'       : motif
+        }
+
+        return lattice_data

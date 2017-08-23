@@ -372,11 +372,11 @@ class CrystalStructure(object):
             raise NotImplementedError(
                 'File type "{}" is not supported.'.format(filetype))
 
-        params = dict(zip(['a', 'b', 'c', 'α', 'β', 'γ'], latt_data[0]))
+        params = dict(zip(['a', 'b', 'c', 'α', 'β', 'γ'], latt_data['latt_params']))
 
         bl = BravaisLattice(lattice_system, centring_type=centring_type,
                             **params, degrees=False)
-        motif = latt_data[1]
+        motif = latt_data['motif']
 
         return cls(bl, motif)
 

@@ -537,3 +537,84 @@ def contour_plot_mpl(traces, filename):
         plt.axis('equal')
 
     plt.savefig(filename)
+
+
+def get_circle_trace_plotly(radius, origin=None, start_ang=0, stop_ang=360, degrees=True, line_args=None, fill_args=None, segment=False):
+    """
+
+    Get a Plotly trace representing a cicle (sector, segment).
+
+    Parameters
+    ----------
+    radius : int of float
+    origin : list of length two, optional
+        Position of the centre of the circle. Set to [0, 0] if not specified.
+    start_ang : int or float, optional
+        Angle at which to start cicle sector, measured from positive x-axis. 
+        Specified in either degrees or radians depending on `degrees`. Set to 0
+        if not specified.
+    stop_ang : int or float, optional
+        Angle at which to stop cicle sector, measured from positive x-axis.
+        Specified in either degrees or radians depending on `degrees`. Set to
+        360 if not specified.
+    degrees : bool, optional
+        If True, `start_ang` and `stop_ang` are expected in degrees, otherwise
+        in radians. Set to True by default.
+    line_args : dict
+    fill_args : dict
+        Dict with allowed keys:
+        fill : str ("none" | "toself")
+        fillcolor : str 
+            For transparency set color string as "rgba(a, b, c, d)"
+    segment : bool
+        If True, generate a circle segment instead of a sector. The outline of
+        circle sector includes the origin, whereas the outline of a circle
+        segment may not include the origin. Default is False.
+
+    Returns
+    -------
+    dict
+        Representing a Plotly trace
+
+    """
+
+    if origin is None:
+        origin = [0, 0]
+
+    if degrees:
+        start_ang = np.deg2rad(start_ang)
+        stop_ang = np.deg2rad(stop_ang)
+
+    line_args_def = {}
+    if line_args is None:
+        line_args = line_args_def
+    else:
+        line_args = {**line_args_def, **line_args}
+
+    fill_args_def = {
+        'fill': 'tozerox',
+    }
+    if fill_args is None:
+        fill_args = fill_args_def
+    else:
+        fill_args = {**fill_args_def, **fill_args}
+
+    θ = np.linspace(start_ang, stop_ang, 100)
+    x = radius * np.cos(θ) + origin[0]
+    y = radius * np.sin(θ) + origin[1]
+
+    if not segment and not np.isclose([abs(start_ang - stop_ang)], [2 * np.pi]):
+        x = np.hstack([[origin[0]], x, [origin[0]]])
+        y = np.hstack([[origin[1]], y, [origin[1]]])
+
+    out = {
+        'type': 'scatter',
+        'x': x,
+        'y': y,
+        'hoveron': 'fills',
+        'text': '({:.3f}, {:.3f})'.format(origin[0], origin[1]),
+        'line': line_args,
+        **fill_args,
+    }
+
+    return out

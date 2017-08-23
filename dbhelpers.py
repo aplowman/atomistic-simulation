@@ -67,7 +67,7 @@ def upload_dropbox_dir(dbx, local_path, dropbox_path, overwrite=False,
         only matched file names will be uploaded. Either specify `include` or
         `exclude` but not both.
     exclude : list, optional
-        List of file names to exclude, matched with `fnmatch`. Either specify 
+        List of file names to exclude, matched with `fnmatch`. Either specify
         `include` or `exclude` but not both.
 
     Notes
@@ -86,7 +86,7 @@ def upload_dropbox_dir(dbx, local_path, dropbox_path, overwrite=False,
 
     for root, dirs, files in os.walk(local_path):
 
-        print('root: {}'.format(root))
+        print('Uploading from root directory: {}'.format(root))
 
         for fn in files:
 
@@ -111,7 +111,9 @@ def upload_dropbox_dir(dbx, local_path, dropbox_path, overwrite=False,
                 # Destination path
                 rel_path = os.path.relpath(src_fn, local_path)
                 fn_db_path = os.path.join(dropbox_path, rel_path)
-                dst_fn = '/' + posixpath.join(*fn_db_path.split(os.path.sep))
+                dst_fn = posixpath.join(*fn_db_path.split(os.path.sep))
+                if not dst_fn.startswith('/'):
+                    dst_fn = '/' + dst_fn
 
                 print('Uploading file: {} to {}'.format(src_fn, dst_fn))
                 upload_dropbox_file(dbx, src_fn, dst_fn,

@@ -209,9 +209,9 @@ class AtomisticStructure(object):
 
         if all_species_idx is not None:
             if len(all_species_idx) != atom_sites.shape[1]:
-                raise ValueError('Length of `all_species_idx` must match '
+                raise ValueError('Length of `all_species_idx` ({}) must match '
                                  'number of atoms specified as column vectors '
-                                 'in `atom_sites`.')
+                                 'in `atom_sites` ({}).'.format(len(all_species_idx), atom_sites.shape[1]))
 
         # Set attributes
         # --------------
@@ -1401,7 +1401,7 @@ class CSLBicrystal(AtomisticStructure):
 
         # Define the supercell:
         sup_std = np.copy(grn_a_std)
-        sup_std[:, NBI] *= 2
+        sup_std[:, NBI] = grn_a_std[:, NBI] - grn_b_rot_std[:, NBI]
 
         # Boundary normal vector:
         n = np.cross(sup_std[:, BI[0]], sup_std[:, BI[1]])[:, np.newaxis]

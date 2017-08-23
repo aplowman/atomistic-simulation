@@ -101,5 +101,8 @@ ENV/
 set_up/
 !set_up/jobscript_templates
 ref/potentials
+ref/structures
 test.py
 dbkey.py
+notebooks
+process_output

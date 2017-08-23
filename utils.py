@@ -8,6 +8,7 @@ import dropbox
 import fnmatch
 import os
 import posixpath
+import ntpath
 
 """
 TODO:
@@ -408,17 +409,35 @@ def dir_exists_remote(host, dir_path):
         return False
 
 
-def rsync_remote(src, host, dst, exclude=None):
+def rsync_remote(src, host, dst, exclude=None, include=None):
     """
+    Execute an rsync command to a remote host.
+
+    Parameters
+    ----------
     exclude : list
-        List of strings to pass to --exclude option
+        List of strings to pass to --exclude option. Cannot be used with
+        `include`.
+    include : list
+        List of strings to pass to --include option. If this is specified,
+        only matching paths with by copied and all subdirectories will be
+        traversed. Cannot be used with `exclude`.
     """
+
+    # Validation
+    if exclude is not None and include is not None:
+        raise ValueError('Cannot specify both `include` and `exclude`.')
+
+    in_ex_str = ''
     if exclude is not None:
-        ex_str = ''.join([' --exclude={}'.format(i) for i in exclude])
-    else:
-        ex_str = ''
+        in_ex_str = ''.join([' --exclude="{}"'.format(i) for i in exclude])
+
+    elif include is not None:
+        in_ex_str = ''.join([' --include="{}"'.format(i) for i in include])
+        in_ex_str += ' --include="*/" --exclude="*"'
+
     rsync_cmd = ('rsync -az --chmod=Du=rwx,Dgo=rx,Fu=rw,Fog=r{}'
-                 ' {} {}:{}').format(ex_str, src, host, dst)
+                 ' "{}" {}:{}').format(in_ex_str, src, host, dst)
     subprocess.run(['bash', '-c', rsync_cmd])
 
 
@@ -537,7 +556,6 @@ def dict_from_list(lst, conditions, false_keys=None, ret_index=False):
         Dicts which have keys listed here will not be returned.
     ret_index : bool, optional
         If True, return a tuple (element_index, element) else return element.
-        Default is False.
 
     """
 
@@ -576,3 +594,29 @@ def dict_from_list(lst, conditions, false_keys=None, ret_index=False):
         return (None, None)
     else:
         return None
+
+
+def get_bash_path(path, end_path_sep=False):
+    """Get the path in a posix style, e.g. for using with bash commands in
+    Windows Subsystem for Linux.
+
+    This replaces drives letters specified like "C:\foo" with
+    "/mnt/c/foo".
+
+    Parameters
+    ----------
+    end_path_sep : bool, optional
+        Specifies whether the returned path should end in path separator.
+
+        Default is False.
+    """
+
+    drv, pst_drv = os.path.splitdrive(path)
+    path_bash = posixpath.sep.join(
+        [posixpath.sep + 'mnt', drv[0].lower()] +
+        pst_drv.strip(ntpath.sep).split(ntpath.sep))
+
+    if end_path_sep:
+        path_bash += posixpath.sep
+
+    return path_bash

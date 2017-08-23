@@ -353,7 +353,7 @@ class Grid(object):
                 'start': (0, 0),
                 'step': (1, 1),
                 'stop': (1, 1),
-                'par_frac': np.array([[1], [1]]),
+                'par_frac': np.array([1, 1]),
             }
 
             # We hard code parent_start/stop for the base grid.
@@ -458,6 +458,8 @@ class Grid(object):
         grid_idx_nested = []
         grid_idx_flat = []
         point_idx = []
+        row_idx = []
+        col_idx = []
 
         for gd_idx, gd in enumerate(self.grids):
 
@@ -473,6 +475,10 @@ class Grid(object):
                 grid_idx_flat.extend([gd_idx] * num_pnts)
                 point_idx.extend(range(num_pnts))
 
+                row_idx.extend(gd['row_idx'])
+                col_idx.extend(gd['col_idx'])
+
+        points_std = np.hstack(points_std)
         points_frac = np.hstack(points_frac)
 
         points_frac_obj = []
@@ -483,12 +489,14 @@ class Grid(object):
             points_frac_obj.append(sublist)
 
         out = {
-            'points_std': np.hstack(points_std),
+            'points_std': points_std,
             'points_frac': points_frac,
             'points_frac_obj': points_frac_obj,
             'grid_idx_nested': grid_idx_nested,
             'grid_idx_flat': np.array(grid_idx_flat),
             'point_idx': np.array(point_idx),
+            'row_idx': row_idx,
+            'col_idx': col_idx,
         }
         return out
 
@@ -603,6 +611,8 @@ class Grid(object):
 
             pnts_std = gd['grid_points_std']
             pnts_frac = gd['grid_points_frac']
+            row_idx = gd['row_idx']
+            col_idx = gd['col_idx']
             num_pnts = pnts_std.shape[1]
 
             msk = np.ones(num_pnts, dtype=int)
@@ -611,9 +621,13 @@ class Grid(object):
             w = np.where(msk)[0]
             unique_pnts_std = pnts_std[:, w]
             unique_pnts_frac = pnts_frac[:, w]
+            unique_ri = row_idx[w]
+            unique_ci = col_idx[w]
 
             self.grids[gd_idx]['grid_points_std'] = unique_pnts_std
             self.grids[gd_idx]['grid_points_frac'] = unique_pnts_frac
+            self.grids[gd_idx]['row_idx'] = unique_ri
+            self.grids[gd_idx]['col_idx'] = unique_ci
 
     def _compute_grid_points(self, global_edge_vecs, grid_spec,
                              parent_grid_spec, depth=0, idx=[0]):
@@ -669,7 +683,9 @@ class Grid(object):
 
         # Get grid origin:
         origin_frac = (np.array(par_start) / np.array(pg_sz)).reshape((2, 1))
-        origin_frac += pg_origin + (pg_start / pg_sz).reshape((2, 1)) * pg_pf
+        origin_frac += pg_origin
+        origin_frac += (pg_start / pg_sz).reshape((2, 1)) * \
+            pg_pf.reshape((2, 1))
         origin_std = np.dot(global_edge_vecs, origin_frac)
 
         # Get grid points:
@@ -697,10 +713,22 @@ class Grid(object):
         gs_msh = [m[:, x_slice] for m in gs_msh]
         gs_msh = [m[y_slice] for m in gs_msh]
 
+        gs_msh_frac = np.array([gm / s for gm, s in zip(gs_msh, gs['size'])])
+        gs_msh_frac *= pg_pf.reshape((2, 1, 1)) * par_frac.reshape((2, 1, 1))
+        gs_msh_frac += origin_frac.reshape((2, 1, 1))
+        gs_msh_std = np.einsum('ij,jkm->ikm', global_edge_vecs, gs_msh_frac)
+
+        nrows = gs_msh[0].shape[0]
+        ncols = gs_msh[0].shape[1]
+        grd_shape = (nrows, ncols)
+        col_idx, row_idx = np.meshgrid(np.arange(ncols), np.arange(nrows))
+        row_idx = row_idx.reshape((-1))
+        col_idx = col_idx.reshape((-1))
+
         gs_points_num = np.vstack(gs_msh).reshape(2, -1)
         gs_points_den = np.array(gs['size']).reshape((2, 1))
         gs_points_frac = (gs_points_num / gs_points_den) * \
-            pg_pf * par_frac.reshape((2, 1)) + origin_frac
+            pg_pf.reshape((2, 1)) * par_frac.reshape((2, 1)) + origin_frac
         gs_points_std = np.dot(global_edge_vecs, gs_points_frac)
 
         unit_cell = edge_vecs / gs_sz
@@ -710,8 +738,8 @@ class Grid(object):
             'unit_cell': unit_cell,
             'origin_std': origin_std,
             'origin_frac': origin_frac,
-            'grid_points': gs_points_std,
-            'par_frac': par_frac.reshape((2, 1)),
+            'grid_points': gs_msh_std,
+            'par_frac': par_frac,
         })
 
         all_grids = [
@@ -721,9 +749,12 @@ class Grid(object):
                 'grid_points_std': gs_points_std,
                 'grid_points_frac': gs_points_frac,
                 'size': gs_sz,
+                'row_idx': row_idx,
+                'col_idx': col_idx,
                 'start': gs['start'],
                 'step': gs['step'],
                 'stop': gs['stop'],
+                'shape': grd_shape,
                 'parent_start': par_start,
                 'parent_stop': par_stop,
                 'idx': idx,

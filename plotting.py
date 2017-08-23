@@ -525,3 +525,15 @@ def basic_plot_bokeh(x, y, filename):
     p = bok_plot.figure()
     p.line(x, y)
     bok_plot.save(p)
+
+
+def contour_plot_mpl(traces, filename):
+
+    for k, v in traces.items():
+        x, y, z = v['x'], v['y'], v['z']
+        x_flat, y_flat = [np.array(i).flatten() for i in [x, y]]
+        plt.contourf(x, y, z)
+        plt.scatter(x_flat, y_flat, color='red')
+        plt.axis('equal')
+
+    plt.savefig(filename)

@@ -60,29 +60,107 @@ def compute_gb_thickness(sim):
         return None
 
 
-def compute_gb_energy(results):
+def compute_gamma_energy(out, energy_src, opt_step):
+    gamma_xy_cnd = {
+        'type': 'common_series_info',
+        'name': 'gamma_surface',
+        'idx': ('grids', 0, 'grid_points_std'),
+    }
+    gamma_shape_cnd = {
+        'type': 'common_series_info',
+        'name': 'gamma_surface',
+        'idx': ('grids', 0, 'shape'),
+    }
+    energy_cnd = {
+        'type': 'result',
+        'name': energy_src,
+        'idx': (opt_step, ),
+    }
+    gamma_row_idx_cnd = {
+        'type': 'parameter',
+        'name': 'series_id',
+        'idx': (0, 0, 'row_idx', ),
+    }
+    gamma_col_idx_cnd = {
+        'type': 'parameter',
+        'name': 'series_id',
+        'idx': (0, 0, 'col_idx', ),
+    }
+    this_cmpt_cnd = {
+        'type': 'compute',
+        'name': 'gamma_energy',
+    }
 
-    # Get idx of results which are `CSLBicrystal` types
-    params = results['parameters']
-    res = results['results']
-    comp = results['computes']
+    variables = out['variables']
+    this_cmpt = dict_from_list(variables, this_cmpt_cnd)
 
-    ths_idx, ths_comp = dict_from_list(comp, name='gb_energy', ret_index=True)
-    type_param = dict_from_list(
-        params, name='base_structure', idx=('type',))['vals']
-    num_ions = dict_from_list(res, name='num_ions')['vals']
+    # Required parameters/results:
+    gamma_xy = dict_from_list(variables, gamma_xy_cnd)['vals']
+    gamma_shape = dict_from_list(variables, gamma_shape_cnd)['vals']
+    energy = dict_from_list(variables, energy_cnd)['vals']
+    gamma_row_idx = dict_from_list(variables, gamma_row_idx_cnd)['vals']
+    gamma_col_idx = dict_from_list(variables, gamma_col_idx_cnd)['vals']
 
-    energy = dict_from_list(res, id='opt_energy')['vals']
-    areas = dict_from_list(comp, name='gb_area')['vals']
-    num_vals = len(type_param)
+    gamma_X = np.array(gamma_xy[0]).reshape(gamma_shape).tolist()
+    gamma_Y = np.array(gamma_xy[1]).reshape(gamma_shape).tolist()
 
-    srs_id_defn = ths_comp.get('series_id')
-    if srs_id_defn is not None:
-        all_d = params + res + comp
+    # Form a 2D energy array:
+    print('gamma_shape: {}'.format(gamma_shape))
+    E = np.zeros(tuple(gamma_shape))
+
+    for en_idx, en in enumerate(energy):
+        ri = gamma_row_idx[en_idx]
+        ci = gamma_col_idx[en_idx]
+        E[ri, ci] = en
+
+    this_cmpt['vals'] = [gamma_X, gamma_Y, E.tolist()]
+
+
+def compute_gb_energy(out, series_id, bulk_src, energy_src, opt_step, unit):
+
+    type_cnd = {
+        'type': 'parameter',
+        'name': 'base_structure',
+        'idx': ('type', ),
+    }
+    num_ions_cnd = {
+        'type': 'result',
+        'name': 'num_ions',
+    }
+    energy_cnd = {
+        'type': 'result',
+        'name': energy_src,
+        'idx': (opt_step, ),
+    }
+    areas_cnd = {
+        'type': 'compute',
+        'name': 'gb_area',
+    }
+    this_cmpt_cnd = {
+        'type': 'compute',
+        'name': 'gb_energy',
+    }
+
+    variables = out['variables']
+    this_cmpt = dict_from_list(variables, this_cmpt_cnd)
+
+    # Required parameters/results:
+    type_param = dict_from_list(variables, type_cnd)['vals']
+    num_ions = dict_from_list(variables, num_ions_cnd)['vals']
+    energy = dict_from_list(variables, energy_cnd)['vals']
+    num_vals = len(energy)
+
+    # Required computes (if multi-computes, may not be computed yet)
+    areas = dict_from_list(variables, areas_cnd)['vals']
+
+    if series_id is not None:
         gb_srs = []
-        for s in srs_id_defn:
-            gb_srs.append(dict_from_list(all_d, id=s)['vals'])
-        print('gb_srs: {}'.format(gb_srs))
+        for s in series_id:
+            srs_var = dict_from_list(variables, {'id': s})
+            if srs_var is None:
+                raise ValueError('Variable with `id` "{}" cannot be'
+                                 ' found.'.format(s))
+            gb_srs.append(srs_var['vals'])
 
     gb_idx = []
     bulk_idx = []
@@ -92,11 +170,8 @@ def compute_gb_energy(results):
         elif i == 'CSLBulkCrystal':
             bulk_idx.append(i_idx)
 
-    # print('gb_idx: {}'.format(gb_idx))
-    # print('bulk_idx: {}'.format(bulk_idx))
-
     # Get series_id_val of each GB, bulk supercell
-    srs_id_val = results['series_id_val']
+    srs_id_val = out['series_id_val']
 
     # For each GB supercell, find a bulk supercell whose series val matches
     # (Broadcasting logic would go here)
@@ -106,7 +181,7 @@ def compute_gb_energy(results):
             if srs_id_val[gb_i] == srs_id_val[bulk_i]:
 
                 calc_gb = True
-                if srs_id_defn is not None:
+                if series_id is not None:
                     for s in gb_srs:
                         if s[gb_i] != s[bulk_i]:
                             calc_gb = False
@@ -119,13 +194,16 @@ def compute_gb_energy(results):
                     E_gb = (energy[gb_i] - bulk_frac *
                             energy[bulk_i]) / (2 * areas[gb_i])
 
-                    # print('area: {:.20f}'.format(areas[gb_i]))
-
-        if ths_comp['unit'] == 'J/m^2':
+        if unit == 'J/m^2':
             E_gb *= 16.02176565
         all_E_gb[gb_i] = E_gb
-    results['computes'][ths_idx]['vals'] = all_E_gb
+    this_cmpt['vals'] = all_E_gb
 
+
+MULTICOMPUTE_LOOKUP = {
+    'gb_energy': compute_gb_energy,
+    'gamma_energy': compute_gamma_energy,
+}
 
 # Computed quantities which are dependent on exactly one simulation:
 SINGLE_COMPUTES = {

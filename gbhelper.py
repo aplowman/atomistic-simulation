@@ -156,7 +156,8 @@ def construct_180_001_mZrO2(cellfile, repeats=[3, 1, 1], bound_vac=0.2,
         #         item.update( {'cs_idx': 0})
         #         item.update( {'cs_orientation': R})
         #         item.update( {'cs_origin': [0.0,0.0]})
-        # #     crystals[1]['origin'] = 0.5 * supercell[0]
+    
+    crystals[1]['origin'] = 0.5 * supercell[:, 0:1]
 
 
 

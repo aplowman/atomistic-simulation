@@ -573,8 +573,6 @@ class Grid(object):
 
             plot(fig, **save_args)
 
-        return fig
-
     def _remove_duplicate_points(self):
         """
         Remove duplicate grid points, keeping points which are more-nested.
@@ -650,6 +648,7 @@ class Grid(object):
 
         valid_specs = [
             'size',
+            'max_sep',
             'start',
             'step',
             'stop',
@@ -689,7 +688,15 @@ class Grid(object):
         origin_std = np.dot(global_edge_vecs, origin_frac)
 
         # Get grid points:
-        gs_sz = gs['size']
+        gs_sz = gs.get('size')
+        gs_ms = gs.get('max_sep')
+
+        if (gs_sz is not None and gs_ms is not None) or (gs_sz is None and gs_ms is None):
+            raise ValueError('Specify exactly one of `size` and `max_sep`.')
+
+        if gs_ms is not None:
+            gs_sz = (int(np.ceil(edge_vecs[0][0] / gs_ms[0])),
+                     int(np.ceil(edge_vecs[1][1] / gs_ms[1])))
 
         # Add defaults:
         if gs.get('step') is None:
@@ -702,7 +709,7 @@ class Grid(object):
             gs['stop'] = gs_sz
 
         # Validation:
-        if any([sp > sz for sp, sz in zip(gs.get('stop'), gs.get('size'))]):
+        if any([sp > sz for sp, sz in zip(gs.get('stop'), gs_sz)]):
             raise ValueError('Stop value cannot be larger than size value.')
 
         gs_msh = np.meshgrid(*tuple(np.arange(g + 1) for g in gs_sz))
@@ -713,7 +720,7 @@ class Grid(object):
         gs_msh = [m[:, x_slice] for m in gs_msh]
         gs_msh = [m[y_slice] for m in gs_msh]
 
-        gs_msh_frac = np.array([gm / s for gm, s in zip(gs_msh, gs['size'])])
+        gs_msh_frac = np.array([gm / s for gm, s in zip(gs_msh, gs_sz)])
         gs_msh_frac *= pg_pf.reshape((2, 1, 1)) * par_frac.reshape((2, 1, 1))
         gs_msh_frac += origin_frac.reshape((2, 1, 1))
         gs_msh_std = np.einsum('ij,jkm->ikm', global_edge_vecs, gs_msh_frac)
@@ -726,7 +733,7 @@ class Grid(object):
         col_idx = col_idx.reshape((-1))
 
         gs_points_num = np.vstack(gs_msh).reshape(2, -1)
-        gs_points_den = np.array(gs['size']).reshape((2, 1))
+        gs_points_den = np.array(gs_sz).reshape((2, 1))
         gs_points_frac = (gs_points_num / gs_points_den) * \
             pg_pf.reshape((2, 1)) * par_frac.reshape((2, 1)) + origin_frac
         gs_points_std = np.dot(global_edge_vecs, gs_points_frac)
@@ -741,6 +748,11 @@ class Grid(object):
             'grid_points': gs_msh_std,
             'par_frac': par_frac,
         })
+
+        if gs_ms is not None:
+            grid_spec.update({
+                'size': gs_sz
+            })
 
         all_grids = [
             {

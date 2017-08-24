@@ -1607,7 +1607,7 @@ class CSLBicrystal(AtomisticStructure):
                 shift = shift[0]
         else:
             shift = np.array(shift)
-        if np.any(shift <= -1) or np.any(shift >= 1):
+        if np.any(shift < -1) or np.any(shift > 1):
             raise ValueError('Elements of `shift` should be between -1 and 1.')
 
         # Convenience:

@@ -620,3 +620,8 @@ def get_bash_path(path, end_path_sep=False):
         path_bash += posixpath.sep
 
     return path_bash
+
+
+def get_col(a, col_idx):
+    """Return a column in a list of lists"""
+    return [row[col_idx] for row in a]

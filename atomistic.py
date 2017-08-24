@@ -1683,13 +1683,13 @@ class CSLBulkCrystal(CSLBicrystal):
 
     def __init__(self, crystal_structure, csl_vecs, box_csl=None,
                  gb_type=None, gb_size=None, edge_conditions=None,
-                 reorient=True):
+                 reorient=True, overlap_tol=1):
         """Constructor method for CSLBulkCrystal object."""
 
         super().__init__(crystal_structure, [csl_vecs, csl_vecs],
                          box_csl=box_csl, gb_type=gb_type, gb_size=gb_size,
                          edge_conditions=edge_conditions, reorient=reorient,
-                         wrap=False)
+                         wrap=False, overlap_tol=overlap_tol)
 
     def apply_boundary_vac(self, *args, **kwargs):
 
@@ -1720,7 +1720,7 @@ class CSLSurfaceCrystal(CSLBicrystal):
     def __init__(self, crystal_structure, csl_vecs, box_csl=None,
                  gb_type=None, gb_size=None, edge_conditions=None,
                  maintain_inv_sym=False, reorient=True, boundary_vac_args=None,
-                 relative_shift_args=None, wrap=True, surface_idx=0):
+                 relative_shift_args=None, wrap=True, surface_idx=0, overlap_top=1):
         """Constructor method for CSLSurfaceCrystal object."""
 
         super().__init__(crystal_structure, [csl_vecs, csl_vecs],
@@ -1730,7 +1730,9 @@ class CSLSurfaceCrystal(CSLBicrystal):
                          reorient=reorient,
                          boundary_vac_args=boundary_vac_args,
                          relative_shift_args=relative_shift_args,
-                         wrap=wrap)
+                         wrap=wrap,
+                         overlap_tol=overlap_top,
+                         )
 
         # Remove atoms from removed crystal
         atoms_keep = np.where(self.crystal_idx == surface_idx)[0]

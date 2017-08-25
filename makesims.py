@@ -345,6 +345,7 @@ def prepare_series_update(series_spec, atomistic_structure):
         'geom_stress_tol',
         'relative_shift',
         'gamma_surface',
+        'boundary_vac',
     ]
     if series_spec.get('name') not in allowed_sn:
         raise NotImplementedError('Series name: {} not understood.'.format(sn))
@@ -360,6 +361,7 @@ def prepare_series_update(series_spec, atomistic_structure):
         grid = geometry.Grid(edge_vecs, series_spec.get('grid_spec'))
         ggp = grid.get_grid_points()
         rel_shifts = ggp['points_frac'].T
+        rel_shifts_tup = ggp['points_tup']
         grid_idx = ggp['grid_idx_flat']
         row_idx = ggp['row_idx']
         col_idx = ggp['col_idx']
@@ -370,6 +372,7 @@ def prepare_series_update(series_spec, atomistic_structure):
         series_spec = {
             'name': 'relative_shift',
             'vals': rel_shifts,
+            'vals_tup': rel_shifts_tup,
             'as_fractions': True,
             'extra_update': {
                 'grid_idx': grid_idx,
@@ -520,19 +523,32 @@ def prepare_series_update(series_spec, atomistic_structure):
 
     elif sn == 'relative_shift':
 
-        for v in vals:
+        num_digts = len(str(len(vals)))
+        pad_fmt = '{{:0{}d}}'.format(num_digts)
+        v_tup = ss.get('vals_tup')
+        for v_idx, v in enumerate(vals):
 
             if ss.get('as_fractions') is True:
-                v_frac = [fractions.Fraction(i).limit_denominator() for i in v]
-                v_str = '_'.join(
-                    ['{}({})'.format(i.numerator, i.denominator) for i in v_frac])
+                v_t = v_tup[v_idx]
+                v_str = '_'.join(['{}({})'.format(i[0], i[1]) for i in v_t])
+
             else:
                 v_str = '{}_{}'.format(*v)
 
             out.append({
                 'base_structure': {'relative_shift_args': {'shift': v}},
                 'series_id': {'name': sn, 'val': v,
-                              'path': v_str}
+                              'path': (pad_fmt + '__').format(v_idx) + v_str}
+            })
+
+    elif sn == 'boundary_vac':
+
+        for v in vals:
+
+            out.append({
+                'base_structure': {'boundary_vac_args': {'vac_thickness': v}},
+                'series_id': {'name': sn, 'val': v,
+                              'path': '{:.2f}'.format(v)}
             })
 
     extra_update = ss.get('extra_update')
@@ -963,7 +979,7 @@ def main():
     all_upd = [{}]
     all_scratch_paths = []
     all_sims = []
-
+    csi = {}
     if is_srs:
         all_upd, csi = prepare_all_series_updates(srs_df, base_as)
 

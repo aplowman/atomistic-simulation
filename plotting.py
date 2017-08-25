@@ -529,12 +529,31 @@ def basic_plot_bokeh(x, y, filename):
 
 def contour_plot_mpl(traces, filename):
 
+    DPI = 96
+    fig = plt.figure(figsize=(500 / DPI, 500 / DPI), dpi=DPI)
+    ax = fig.gca()
+
     for k, v in traces.items():
         x, y, z = v['x'], v['y'], v['z']
         x_flat, y_flat = [np.array(i).flatten() for i in [x, y]]
-        plt.contourf(x, y, z)
-        plt.scatter(x_flat, y_flat, color='red')
-        plt.axis('equal')
+        cset = ax.contourf(x, y, z, cmap=plt.get_cmap('rainbow'))
+        ax.scatter(x_flat, y_flat, color='red', s=1)
+
+        x_minmax = [np.min(x_flat), np.max(x_flat)]
+        y_minmax = [np.min(y_flat), np.max(y_flat)]
+
+        if v.get('xlabel'):
+            ax.set_xlabel(v.get('xlabel'))
+        if v.get('ylabel'):
+            ax.set_ylabel(v.get('ylabel'))
+
+        ax.set_xlim(x_minmax)
+        ax.set_ylim(y_minmax)
+        ax.set_aspect('equal')
+        cbar = plt.colorbar(cset)
+
+        if v.get('zlabel'):
+            cbar.set_label(v.get('zlabel'))
 
     plt.savefig(filename)
 

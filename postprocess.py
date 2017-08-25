@@ -63,7 +63,7 @@ def compute_gb_thickness(sim):
         return None
 
 
-def compute_gamma_energy(out, energy_src, opt_step):
+def compute_gamma_energy(out, energy_src, opt_step, series=None):
     gamma_xy_cnd = {
         'type': 'common_series_info',
         'name': 'gamma_surface',
@@ -79,44 +79,93 @@ def compute_gamma_energy(out, energy_src, opt_step):
         'name': energy_src,
         'idx': (opt_step, ),
     }
-    gamma_row_idx_cnd = {
-        'type': 'parameter',
-        'name': 'series_id',
-        'idx': (0, 0, 'row_idx', ),
-    }
-    gamma_col_idx_cnd = {
-        'type': 'parameter',
-        'name': 'series_id',
-        'idx': (0, 0, 'col_idx', ),
+    gb_energy_cnd = {
+        'type': 'compute',
+        'name': 'gb_energy',
     }
     this_cmpt_cnd = {
         'type': 'compute',
         'name': 'gamma_energy',
+    }
+    type_cnd = {
+        'type': 'parameter',
+        'name': 'base_structure',
+        'idx': ('type', ),
     }
 
     variables = out['variables']
     this_cmpt = dict_from_list(variables, this_cmpt_cnd)
 
     # Required parameters/results:
+    type_param = dict_from_list(variables, type_cnd)['vals']
     gamma_xy = dict_from_list(variables, gamma_xy_cnd)['vals']
     gamma_shape = dict_from_list(variables, gamma_shape_cnd)['vals']
-    energy = dict_from_list(variables, energy_cnd)['vals']
-    gamma_row_idx = dict_from_list(variables, gamma_row_idx_cnd)['vals']
-    gamma_col_idx = dict_from_list(variables, gamma_col_idx_cnd)['vals']
+    # energy = dict_from_list(variables, energy_cnd)['vals']
+    gb_energy = dict_from_list(variables, gb_energy_cnd)['vals']
+
+    all_series_name = out['series_name']
+    rel_shift_idx = all_series_name.index('relative_shift')
+    series_idx = all_series_name.index(series)
+
+    gamma_row_idx = utils.get_col(out['series_id']['row_idx'], rel_shift_idx)
+    gamma_col_idx = utils.get_col(out['series_id']['col_idx'], rel_shift_idx)
+    series_vals = utils.get_col(out['series_id']['val'], series_idx)
+
+    all_E = {}
+    for en_idx, en in enumerate(gb_energy):
+
+        if type_param[en_idx] != 'CSLBicrystal':
+            continue
+
+        ri = gamma_row_idx[en_idx]
+        ci = gamma_col_idx[en_idx]
+        srs_v = series_vals[en_idx]
+
+        if all_E.get(srs_v) is None:
+            all_E.update({srs_v: np.zeros(tuple(gamma_shape))})
+        all_E[srs_v][ri, ci] = en
+
+    for k, v in all_E.items():
+        all_E[k] = v.tolist()
+
+    # Fitting
+    nrows = gamma_shape[0]
+    ncols = gamma_shape[1]
+    fit_grid_E = [[[] for i in range(ncols)] for _ in range(nrows)]
+    fit_grid_vac = [[[] for i in range(ncols)] for _ in range(nrows)]
+
+    fitted_E = np.ones((nrows, ncols), dtype=float) * np.nan
+    fitted_vac = np.ones((nrows, ncols), dtype=float) * np.nan
+
+    for ri in range(nrows):
+        for ci in range(ncols):
+            for k, v in sorted(all_E.items()):
+                fit_grid_E[ri][ci].append(v[ri][ci])
+                fit_grid_vac[ri][ci].append(k)
+
+            x = fit_grid_vac[ri][ci]
+            y = fit_grid_E[ri][ci]
+
+            if len(x) > 2:
+                z = np.polyfit(x, y, 2)
+                p1d = np.poly1d(z)
+                dpdx = np.polyder(p1d)
+                min_x = -dpdx[0] / dpdx[1]
+                min_y = p1d(min_x)
+
+                fitted_vac[ri, ci] = min_x
+                fitted_E[ri, ci] = min_y
 
     gamma_X = np.array(gamma_xy[0]).reshape(gamma_shape).tolist()
     gamma_Y = np.array(gamma_xy[1]).reshape(gamma_shape).tolist()
 
-    # Form a 2D energy array:
-    print('gamma_shape: {}'.format(gamma_shape))
-    E = np.zeros(tuple(gamma_shape))
-
-    for en_idx, en in enumerate(energy):
-        ri = gamma_row_idx[en_idx]
-        ci = gamma_col_idx[en_idx]
-        E[ri, ci] = en
-
-    this_cmpt['vals'] = [gamma_X, gamma_Y, E.tolist()]
+    this_cmpt['vals'] = {
+        'X': gamma_X,
+        'Y': gamma_Y,
+        'E': all_E,
+        'E_min': fitted_E.tolist(),
+        'vac_min': fitted_vac.tolist(),
+    }
 
 
 def compute_gb_energy(out, series_id, bulk_src, energy_src, opt_step, unit):
@@ -126,9 +175,15 @@ def compute_gb_energy(out, series_id, bulk_src, energy_src, opt_step, unit):
         'name': 'base_structure',
         'idx': ('type', ),
     }
+    # csatep:
+    # num_ions_cnd = {
+    #     'type': 'result',
+    #     'name': 'num_ions',
+    # }
     num_ions_cnd = {
         'type': 'result',
-        'name': 'num_ions',
+        'name': 'dumps',
+        'idx': (0, 'num_atoms',),
     }
     energy_cnd = {
         'type': 'result',
@@ -173,24 +228,34 @@ def compute_gb_energy(out, series_id, bulk_src, energy_src, opt_step, unit):
         elif i == 'CSLBulkCrystal':
             bulk_idx.append(i_idx)
 
+    print('gb_idx: {}'.format(gb_idx))
+    print('bulk_idx: {}'.format(bulk_idx))
+
     # Get series_id_val of each GB, bulk supercell
-    srs_id_val = out['series_id_val']
+    srs_id_val = out['series_id']['val']
+    print('srs_id_val: \n{}\n'.format(srs_id_val))
+    print('series_id: {}'.format(series_id))
 
     # For each GB supercell, find a bulk supercell whose series val matches
     # (Broadcasting logic would go here)
     all_E_gb = [None, ] * num_vals
     for gb_i in gb_idx:
         for bulk_i in bulk_idx:
-            if srs_id_val[gb_i] == srs_id_val[bulk_i]:
+
+            print('bulk_i: {}'.format(bulk_i))
+            print("srs_id_val[bulk_i]: {}".format(srs_id_val[bulk_i]))
+            if srs_id_val[bulk_i] == [None, None] or srs_id_val[gb_i] == srs_id_val[bulk_i]:
 
                 calc_gb = True
-                if series_id is not None:
+                if series_id is not None or len(series_id) > 0:
+                    print('series_id found')
                     for s in gb_srs:
                         if s[gb_i] != s[bulk_i]:
                             calc_gb = False
                             break
 
                 if calc_gb:
+                    print('calc_gb')
                     gb_num = num_ions[gb_i]
                     bulk_num = num_ions[bulk_i]
                     bulk_frac = gb_num / bulk_num
@@ -223,10 +288,19 @@ SINGLE_COMPUTES = {
 
 # Variables which do not need to be parameterised:
 PREDEFINED_VARS = {
+    # castep:
+    # 'num_ions': {
+    #     'type': 'result',
+    #     'name': 'num_ions',
+    #     'id': 'num_ions',
+    #     'vals': [],
+    # },
+    # lammps:
     'num_ions': {
         'type': 'result',
-        'name': 'num_ions',
-        'id': 'num_ions2',
+        'name': 'dumps',
+        'idx': (0, 'num_atoms'),
+        'id': 'num_ions',
         'vals': [],
     },
     'gb_area': {
@@ -274,7 +348,7 @@ PREDEFINED_VARS = {
 
 
 def get_required_defn(var_name, **kwargs):
-    print('get_required_defn: var_name: {}'.format(var_name))
+    # print('get_required_defn: var_name: {}'.format(var_name))
     out = []
     if var_name == 'gb_energy':
         out += get_required_defn('energy',
@@ -287,14 +361,14 @@ def get_required_defn(var_name, **kwargs):
         ]
 
     elif var_name == 'gamma_energy':
+
         out += get_required_defn('energy',
                                  energy_src=kwargs['energy_src'],
                                  opt_step=kwargs['opt_step'])
         out += [
-            PREDEFINED_VARS['gamma_row_idx'],
-            PREDEFINED_VARS['gamma_col_idx'],
             PREDEFINED_VARS['gamma_surface_shape'],
             PREDEFINED_VARS['gamma_surface_xy'],
+            PREDEFINED_VARS['sup_type'],
         ]
 
     elif var_name == 'energy':
@@ -319,6 +393,6 @@ def get_required_defn(var_name, **kwargs):
             PREDEFINED_VARS['num_ions']
         ]
 
-    print('get_required_defn: out: {}'.format(format_list(out)))
+    # print('get_required_defn: out: {}'.format(format_list(out)))
 
     return out

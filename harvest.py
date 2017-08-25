@@ -15,8 +15,9 @@ import vectors
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
 SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
-HOME_PATH = r'C:\Users\{}\Dropbox (Research Group)\calcs'.format(
-    os.getlogin())
+# HOME_PATH = r'C:\Users\{}\Dropbox (Research Group)\calcs'.format(
+# os.getlogin())
+HOME_PATH = r'C:\calcs_archive'.format(os.getlogin())
 RES_PATH = r'C:\Users\{}\Dropbox (Research Group)\calcs_results'.format(
     os.getlogin())
 
@@ -88,6 +89,67 @@ def collate_results(res_opt, debug=False):
     # TEMP:
     if debug:
         rs_id = '0000-00-00-0000_00000'
+
+    def get_series_items(series_id):
+        out = {
+            'path': []
+        }
+        idx = 0
+        for i in series_id:
+            path = []
+            for j in i:
+                for k, v in j.items():
+                    if k == 'path':
+                        path.append(v)
+                        continue
+                    if k not in out:
+                        out.update({k: [None] * idx})
+                    out[k].append(v)
+                for k, v in out.items():
+                    if k not in j and k != 'path':
+                        out[k].append(None)
+                idx += 1
+            path_join = '_'.join([str(i) for i in path])
+            out['path'].append(path_join)
+
+        return out
+
+    def append_series_items(series_items, series_id, num_series, sim_idx, srs_names):
+
+        out = {
+            'path': []
+        }
+        for i in series_id:
+            path = []
+            for j in i:
+                srs_idx = srs_names.index(j['name'])
+                for k, v in j.items():
+
+                    if k == 'path':
+                        path.append(v)
+                        continue
+                    if k not in out:
+                        out.update({k: [None] * num_series})
+                    if isinstance(v, np.ndarray):
+                        v = v.tolist()
+                    out[k][srs_idx] = v
+
+            path_join = '_'.join([str(i) for i in path])
+            out['path'].append(path_join)
+
+        for k, v in out.items():
+            if k in series_items:
+                series_items[k].extend([v])
+            else:
+                blank = [None] * num_series
+                series_items.update({k: [blank] * sm_idx + [v]})
+
+        for k, v in series_items.items():
+            if k not in out:
+                blank = [None] * num_series
+                series_items[k].append(blank)
+
+        return series_items
 
     def get_series_vals(series_id):
         srs_vals = []
@@ -202,16 +264,38 @@ def collate_results(res_opt, debug=False):
         'session_id': [],
         'idx': [],
         'series_name': [],
-        'series_id_val': [],
-        'series_id_path': [],
         'variables': variables + computes,
     }
 
-    print('variables: '.format(out['variables']))
+    # print('variables: '.format(out['variables']))
+
+    all_srs_name = []
+    sids = res_opt['sid']
+    for sid in sids:
+
+        path = os.path.join(HOME_PATH, sid)
+        pick_path = os.path.join(path, 'sims.pickle')
+        pick = read_pickle(pick_path)
+        sims = pick['all_sims']
+        base_opt = pick['base_options']
+
+        # Get a flat list of series names for this sim series
+        srs_name = []
+        for series_list in base_opt['series']:
+            for series_sublist in series_list:
+                srs_name.append(series_sublist['name'])
+        all_srs_name.extend(srs_name)
+
+    all_srs_name[all_srs_name.index('gamma_surface')] = 'relative_shift'
+    out['series_name'] = all_srs_name
+
+    # print('all_srs_names: {}'.format(all_srs_name))
+    # print('variables: '.format(out['variables']))
 
     # Loop through series IDs and sims to append values to `result` and
     # `parameter` variable types:
-    sids = res_opt['sid']
+    all_ids = {}
+    all_sim_idx = 0
     for sid in sids:
 
         path = os.path.join(HOME_PATH, sid)
@@ -221,31 +305,32 @@ def collate_results(res_opt, debug=False):
         base_opt = pick['base_options']
         csi = pick.get('common_series_info')
 
+        print('csi: {}'.format(csi))
+
         for vr_idx, vr in enumerate(out['variables']):
 
             vr_name = vr['name']
             vr_type = vr['type']
+
+            print('vr_name: {}'.format(vr_name))
 
             if vr_type == 'common_series_info':
 
                 if csi is None:
                     raise ValueError('No common series info was saved.')
 
-                val = csi[vr_name]
-                all_sub_idx = vr.get('idx')
-                if all_sub_idx is not None:
-                    for sub_idx in all_sub_idx:
-                        val = val[sub_idx]
-                if isinstance(val, np.ndarray):
-                    val = val.tolist()
-                out['variables'][vr_idx]['vals'] = val
+                try:
+                    val = csi[vr_name]
+                    all_sub_idx = vr.get('idx')
+                    if all_sub_idx is not None:
+                        for sub_idx in all_sub_idx:
+                            val = val[sub_idx]
+                    if isinstance(val, np.ndarray):
+                        val = val.tolist()
+                    out['variables'][vr_idx]['vals'] = val
 
-        # Get a flat list of series names for this sim series
-        srs_name = []
-        for series_list in base_opt['series']:
-            for series_sublist in series_list:
-                srs_name.append(series_sublist['name'])
-        out['series_name'] = srs_name
+                except:
+                    val = None
 
         for sm_idx, sm in enumerate(sims):
 
@@ -253,14 +338,18 @@ def collate_results(res_opt, debug=False):
             out['idx'].append(sm_idx)
 
             srs_id = sm.options.get('series_id')
-            if srs_id is not None:
-                out['series_id_path'].append(get_series_paths(srs_id))
-                out['series_id_val'].append(get_series_vals(srs_id))
+            if srs_id is None:
+                srs_id = [[]]
+
+            all_ids = append_series_items(
+                all_ids, srs_id, len(all_srs_name), all_sim_idx + sm_idx, all_srs_name)
 
             for vr_idx, vr in enumerate(out['variables']):
 
                 vr_name = vr['name']
                 vr_type = vr['type']
+
+                # print('vr_name: {}'.format(vr_name))
 
                 val = None
                 if vr_type == 'result':
@@ -278,15 +367,22 @@ def collate_results(res_opt, debug=False):
                 all_sub_idx = vr.get('idx')
                 if all_sub_idx is not None:
                     for sub_idx in all_sub_idx:
+                        # print('val: {}'.format(val))
                         val = val[sub_idx]
                 if isinstance(val, np.ndarray):
                     val = val.tolist()
 
-                print('val ({}): {} ({})'.format(vr_name, val, type(val)))
+                # print('val ({}): {} ({})'.format(vr_name, val, type(val)))
 
                 out['variables'][vr_idx]['vals'].append(val)
 
+        all_sim_idx += sm_idx
+
+    all_ids = {k: v for k, v in all_ids.items() if k != 'name'}
+    out['series_id'] = all_ids
     print('out[vars]: \n{}\n'.format(format_list(out['variables'])))
+
+    # exit()
 
     # Now calculate multi `compute`s:
     for vr_idx, vr in enumerate(out['variables']):
@@ -335,14 +431,14 @@ def collate_results(res_opt, debug=False):
         if all_x_subidx is not None:
             for x_subidx in all_x_subidx:
                 x_data = x_data[x_subidx]
-        print('x_data: \n{}\n'.format(x_data))
+        # print('x_data: \n{}\n'.format(x_data))
 
         y_data = dict_from_list(out['variables'], {'id': y_id})['vals']
         all_y_subidx = pl['y'].get('idx')
         if all_y_subidx is not None:
             for y_subidx in all_y_subidx:
                 y_data = y_data[y_subidx]
-        print('y_data: \n{}\n'.format(y_data))
+        # print('y_data: \n{}\n'.format(y_data))
 
         if z is not None:
             z_data = dict_from_list(out['variables'], {'id': z_id})['vals']
@@ -350,7 +446,7 @@ def collate_results(res_opt, debug=False):
             if all_z_subidx is not None:
                 for z_subidx in all_z_subidx:
                     z_data = z_data[z_subidx]
-            print('z_data: \n{}\n'.format(z_data))
+            # print('z_data: \n{}\n'.format(z_data))
 
         pl_srs_id = pl.get('series_id')
         if pl_srs_id is not None:
@@ -358,11 +454,12 @@ def collate_results(res_opt, debug=False):
             for pid in pl_srs_id:
                 pl_srs.append(dict_from_list(all_d, id=pid)['vals'])
 
-        plot_name = '{}_{}'.format(x_label, y_label)
-        if z is not None:
-            plot_name += '_{}'.format(z_label)
+        # plot_name = '{}_{}'.format(x_label, y_label)
+        plot_name = pl['filename']
+        # if z is not None:
+        #     plot_name += '_{}'.format(z_label)
         plot_path = os.path.join(res_dir, plot_name)
-        print('plt_path: {}'.format(plot_path))
+        # print('plt_path: {}'.format(plot_path))
 
         if pl_srs_id is None:
             if z is None:
@@ -370,6 +467,8 @@ def collate_results(res_opt, debug=False):
                     y_label: {
                         'x': x_data,
                         'y': y_data,
+                        'xlabel': x_label,
+                        'ylabel': y_label,
                     }
                 }
             else:
@@ -378,6 +477,9 @@ def collate_results(res_opt, debug=False):
                         'x': x_data,
                         'y': y_data,
                         'z': z_data,
+                        'xlabel': x_label,
+                        'ylabel': y_label,
+                        'zlabel': z_label,
                     }
                 }
         else:
@@ -396,15 +498,19 @@ def collate_results(res_opt, debug=False):
                     traces.update({
                         trace_id_str: {
                             'x': [x],
-                            'y': [y_data[x_idx]]
+                            'y': [y_data[x_idx]],
                         }
                     })
+                traces[trace_id_str].update({
+                    'xlabel': x_label,
+                    'ylabel': y_label,
+                })
 
         for k, v in traces.items():
             utils.trim_common_nones(v['x'], v['y'])
 
         all_traces = [traces]
-        print('all_traces: {}'.format(all_traces))
+        # print('all_traces: {}'.format(all_traces))
 
         if pl.get('plot_sequential_diff') is True:
 

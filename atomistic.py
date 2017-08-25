@@ -1515,8 +1515,6 @@ class CSLBicrystal(AtomisticStructure):
         """
 
         vt = vac_thickness
-        if vt < 0:
-            raise NotImplementedError('`vt` must be a positive number.')
 
         # For convenience:
         grn_a = self.crystals[0]

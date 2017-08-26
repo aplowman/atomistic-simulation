@@ -2148,7 +2148,7 @@ def read_cell_file(cellfile):
                 coordinates of the atoms and n is the number of atoms.
             `species` : list
                 List of length n associated with each atom in `atom_sites`.
-    
+
 
     Notes
     -----
@@ -2203,9 +2203,9 @@ def read_cell_file(cellfile):
         motif['species'] = species_str
 
         lattice_data = {
-            'cell_vecs'   : cell_vecs,
-            'latt_params' : latt_params,
-            'motif'       : motif
+            'cell_vecs': cell_vecs,
+            'latt_params': latt_params,
+            'motif': motif
         }
 
         return lattice_data

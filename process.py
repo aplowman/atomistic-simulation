@@ -26,6 +26,8 @@ def check_errors(sms_path, src_path, skip_idx=None):
     s_count = 0
     for s_idx, sim_i in enumerate(all_sms):
 
+        print('s_idx: {}'.format(s_idx))
+
         if skip_idx is not None and s_idx in skip_idx:
             continue
 
@@ -46,6 +48,8 @@ def check_errors(sms_path, src_path, skip_idx=None):
 
         if len(out['errors']) > 0:
             error_paths.extend(srs_paths)
+
+        exit()
 
     return error_paths
 
@@ -224,14 +228,14 @@ def main(s_id):
     print('src_path: {}'.format(src_path))
     print('dst_path: {}'.format(dst_path))
 
-    error_paths = check_errors(sms_path, src_path)
-    if len(error_paths) > 0:
-        raise ValueError('Errors found! Exiting process.py.')
-
     # Modernise sims.pickle:
     # Temporarily #
     if not os.path.isfile(os.path.join(src_path, 'sims.pickle_old')):
         modernise_pickle(sms_path)
+
+    error_paths = check_errors(sms_path, src_path)
+    if len(error_paths) > 0:
+        raise ValueError('Errors found! Exiting process.py.')
 
     # Get base options from the modernised pickle:
     sms = read_pickle(sms_path)

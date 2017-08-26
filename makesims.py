@@ -367,7 +367,10 @@ def prepare_series_update(series_spec, atomistic_structure):
         col_idx = ggp['col_idx']
         point_idx = ggp['point_idx']
         common_series_info.update({
-            'gamma_surface': grid.to_jsonable(),
+            'gamma_surface': {
+                **grid.to_jsonable(),
+                'preview': series_spec['preview']
+            },
         })
         series_spec = {
             'name': 'relative_shift',
@@ -1013,7 +1016,13 @@ def main():
             geometry.Grid.from_jsonable(csi['gamma_surface']).visualise(
                 show_iplot=False, save=True, save_args=save_args)
 
-    # Generate simulation series:
+            if csi['gamma_surface'].get('preview'):
+                if not utils.confirm('Check gamma surface grid now. '
+                                     'Continue?'):
+                    print('Exiting.')
+                    return
+
+                    # Generate simulation series:
     for upd_idx, upd in enumerate(all_upd):
 
         # Update options:

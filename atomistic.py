@@ -59,8 +59,10 @@ class AtomisticSimulation(object):
                 'seedname': cst_opt['seedname'],
                 'cell': cst_opt['cell'],
                 'param': cst_opt['param'],
+                'sym_ops': cst_opt['sym_ops'],
                 **common_params
             }
+
             simsio.write_castep_inputs(**cst_in_params)
 
         elif self.options['method'] == 'lammps':
@@ -1163,6 +1165,9 @@ class AtomisticStructure(object):
         if np.any(dist < tol):
             raise ValueError('Found overlapping atoms. Minimum separation: '
                              '{:.3f}'.format(np.min(dist)))
+
+    def get_sym_ops(self):
+        return spglib.get_symmetry(self.spglib_cell)
 
     # def __str__(self):
     #     pass

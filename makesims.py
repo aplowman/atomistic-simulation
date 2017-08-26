@@ -635,7 +635,7 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
     return all_updates, common_series_info
 
 
-def process_castep_opt(castep_opt):
+def process_castep_opt(castep_opt, sym_ops=None):
     """
 
     """
@@ -650,6 +650,30 @@ def process_castep_opt(castep_opt):
 
     castep_opt.pop('backup_interval', None)
     castep_opt.pop('checkpoint', None)
+
+    castep_opt['sym_ops'] = None
+    if castep_opt['find_inv_sym']:
+
+        if castep_opt['cell'].get('symmetry_generate') is True:
+            raise ValueError('Cannot find inversion symmetry if '
+                             '`symmetry_generate` is `True`.')
+
+        sym_rots = sym_ops['rotations']
+        sym_trans = sym_ops['translations']
+        inv_sym_rot = -np.eye(3, dtype=int)
+        inv_sym_idx = np.where(np.all(sym_rots == inv_sym_rot, axis=(1, 2)))[0]
+
+        if len(inv_sym_idx) == 0:
+            raise ValueError('The bicrystal does not have inversion symmetry.')
+        if len(inv_sym_idx) > 1:
+            raise ValueError('Multiple inversion sym ops found!.')
+
+        inv_sym_trans = sym_trans[inv_sym_idx[0]]
+
+        castep_opt['sym_ops'] = [
+            np.vstack([np.eye(3), np.zeros((3,))]),
+            np.vstack([inv_sym_rot, inv_sym_trans])
+        ]
 
 
 def process_lammps_opt(lammps_opt, structure):
@@ -1049,7 +1073,10 @@ def main():
 
         # Process CASTEP options
         if srs_opt['method'] == 'castep':
-            process_castep_opt(srs_opt['castep'])
+            sym_ops = None
+            if srs_opt['castep']['find_inv_sym']:
+                sym_ops = srs_as.get_sym_ops()
+            process_castep_opt(srs_opt['castep'], sym_ops=sym_ops)
 
         elif srs_opt['method'] == 'lammps':
             process_lammps_opt(srs_opt['lammps'], srs_as)

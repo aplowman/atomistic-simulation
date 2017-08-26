@@ -49,8 +49,6 @@ def check_errors(sms_path, src_path, skip_idx=None):
         if len(out['errors']) > 0:
             error_paths.extend(srs_paths)
 
-        exit()
-
     return error_paths
 
 

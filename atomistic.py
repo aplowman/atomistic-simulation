@@ -310,7 +310,12 @@ class AtomisticStructure(object):
                 atom_sites_sym = np.dot(self.supercell, as_sym_frac)
 
             sym_atom_site_props = {
-                'mode': 'markers',
+                'mode': 'text+markers',
+                'text': np.arange(self.num_atoms),
+                'textposition': 'bottom center',
+                'textfont': {
+                    'color': 'purple',
+                },
                 'marker': {
                     'symbol': 'x',
                     'size': 5,
@@ -328,6 +333,22 @@ class AtomisticStructure(object):
                     **sym_atom_site_props
                 )
             )
+
+            # Add lines mapping symmetrically connected atoms:
+            for a_idx, a in enumerate(atom_sites_sym.T):
+                data.append({
+                    'type': 'scatter3d',
+                    'x': [a[0], self.atom_sites.T[a_idx][0]],
+                    'y': [a[1], self.atom_sites.T[a_idx][1]],
+                    'z': [a[2], self.atom_sites.T[a_idx][2]],
+                    'mode': 'lines',
+                    'name': 'Sym op',
+                    'legendgroup': 'Sym op',
+                    'showlegend': False,
+                    'line': {
+                        'color': 'purple',
+                    },
+                })
 
         # Supercell box
         sup_xyz = geometry.get_box_xyz(self.supercell)[0]
@@ -581,7 +602,7 @@ class AtomisticStructure(object):
                     },
                     'name': uc_trace_name,
                     'legendgroup': uc_trace_name,
-                    'visible': 'legendonly'
+                    'visible': 'legendonly',
                 }
                 data.append(
                     graph_objs.Scatter3d(

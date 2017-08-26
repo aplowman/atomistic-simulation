@@ -27,6 +27,7 @@ import readwrite
 from mendeleev import element
 import utils
 import spglib
+import warnings
 
 REF_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ref')
 
@@ -1459,6 +1460,8 @@ class CSLBicrystal(AtomisticStructure):
         self.u_unit = u_unit
         self.non_boundary_idx = NBI
         self.boundary_idx = BI
+        self.boundary_vac = 0
+        self.relative_shift = [0, 0]
 
         crystals = [
             {
@@ -1614,6 +1617,12 @@ class CSLBicrystal(AtomisticStructure):
         self.atoms_gb_dist_old = self.atoms_gb_dist
         self.atoms_gb_dist_δ = as_dx
 
+        if self.boundary_vac != 0:
+            warnings.warn('`boundary_vac` is already non-zero. Resetting to '
+                          'new value.')
+
+        self.boundary_vac = vac_thickness
+
         # Update attributes:
         self.atom_sites = as_vac
         self.supercell = sup_vac
@@ -1671,6 +1680,12 @@ class CSLBicrystal(AtomisticStructure):
         self.crystals[0].update({
             'origin': grn_a_org_shift
         })
+
+        if self.relative_shift != [0, 0]:
+            warnings.warn('`relative_shift` is already non-zero. Resetting to '
+                          'new value.')
+        self.relative_shift = [i + j for i,
+                               j in zip(shift.tolist(), self.relative_shift)]
 
         if self.maintain_inv_sym:
             # Modify out-of-boundary supercell vector

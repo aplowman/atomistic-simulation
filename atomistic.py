@@ -493,6 +493,7 @@ class AtomisticStructure(object):
 
             # Plot atoms by crystal and motif
             # Crystal boxes and atoms
+            c_prev_num = 0  # Number of atoms in previous crystal
             for c_idx, c in enumerate(self.crystals):
 
                 # Crystal centres
@@ -656,6 +657,8 @@ class AtomisticStructure(object):
                     sp_col = 'rgb' + str(atom_cols[sp_i])
 
                     trace_name = sp_name + ' (crystal #{})'.format(c_idx + 1)
+                    num_trace_name = 'Atom index (crystal #{})'.format(
+                        c_idx + 1)
 
                     atom_site_props = {
                         'mode': 'markers',
@@ -667,6 +670,21 @@ class AtomisticStructure(object):
                         'name': trace_name,
                         'legendgroup': trace_name,
                     }
+
+                    # Add traces for atom numbers
+                    data.append(
+                        graph_objs.Scatter3d({
+                            'x': atom_sites_sp[0],
+                            'y': atom_sites_sp[1],
+                            'z': atom_sites_sp[2],
+                            'mode': 'text',
+                            'text': [str(i + c_prev_num) for i in atom_idx],
+                            'name': num_trace_name,
+                            'legendgroup': num_trace_name,
+                            'showlegend': True if sp_idx == 0 else False,
+                            'visible': 'legendonly',
+                        })
+                    )
 
                     if atoms_3d:
                         rad = element(sp_i).vdw_radius * 0.25 * 1e-2  # in Ang
@@ -706,6 +724,8 @@ class AtomisticStructure(object):
                                 **atom_site_props
                             })
 
+                c_prev_num = len(crys_atm_idx)
+
         layout = graph_objs.Layout(
             width=1000,
             height=800,
@@ -714,6 +734,7 @@ class AtomisticStructure(object):
             }
         )
 
+        fig_2d = None
         if proj_2d:
             # Get approximate ratio of y1 : y3
             sup_z_rn = np.max(sup_xyz[2]) - np.min(sup_xyz[2])
@@ -780,7 +801,7 @@ class AtomisticStructure(object):
                 plt_file.write(html_all)
 
         if ret_fig:
-            return fig
+            return (fig, fig_2d)
 
     def reorient_to_lammps(self):
         """

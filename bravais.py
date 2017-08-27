@@ -108,7 +108,7 @@ class BravaisLattice(object):
     """
 
     def __init__(self, lattice_system, centring_type=None,
-                 a=None, b=None, c=None, α=None, β=None, γ=None, degrees=True):
+                 a=None, b=None, c=None, α=None, β=None, γ=None, degrees=True, align='ax'):
         """Constructor method for BravaisLattice object."""
 
         if centring_type is None:
@@ -229,19 +229,34 @@ class BravaisLattice(object):
         β_rad = np.deg2rad(β)
         γ_rad = np.deg2rad(γ)
 
-        a_x = self.a
-        b_x = self.b * np.cos(γ_rad)
-        b_y = self.b * np.sin(γ_rad)
-        c_x = self.c * np.cos(β_rad)
-        c_y = (abs(self.c) * abs(self.b) * np.cos(α_rad) - b_x * c_x) / b_y
-        c_z = np.sqrt(c**2 - c_x**2 - c_y**2)
+        if align == 'ax':
+            a_x = self.a
+            b_x = self.b * np.cos(γ_rad)
+            b_y = self.b * np.sin(γ_rad)
+            c_x = self.c * np.cos(β_rad)
+            c_y = (abs(self.c) * abs(self.b) * np.cos(α_rad) - b_x * c_x) / b_y
+            c_z = np.sqrt(c**2 - c_x**2 - c_y**2)
 
-        vecs = np.array([
-            [a_x,   0,   0],
-            [b_x, b_y,   0],
-            [c_x, c_y, c_z]
-        ]).T
+            vecs = np.array([
+                [a_x,   0,   0],
+                [b_x, b_y,   0],
+                [c_x, c_y, c_z]
+            ]).T
+        elif align == 'cz':
+            f = (1 - (np.cos(α_rad))**2 - (np.cos(β_rad))**2 - (np.cos(γ_rad))**2
+                 + 2 * np.cos(α_rad) * np.cos(β_rad) * np.cos(γ_rad))**0.5
+            a_x = self.a * f / np.sin(α_rad)
+            a_y = self.a * (np.cos(γ_rad) - np.cos(α_rad) * np.cos(β_rad)) / np.sin(α_rad)
+            a_z = self.a * np.cos(β)
+            b_y = self.b * np.sin(α_rad)
+            b_z = self.b * np.cos(α_rad)
+            c_z = self.c
 
+            vecs = np.array([
+                [a_x, a_y, a_z],
+                [0,   b_y, b_z],
+                [0,     0, c_z]
+            ]).T
         self.vecs = vectors.snap_arr_to_val(vecs, 0, 1e-14)
 
         # Set lattice sites for the specified centring type:

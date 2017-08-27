@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import shutil
-import dict_parser
 import utils
 import dbhelpers
 import readwrite
@@ -26,6 +25,7 @@ SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
 SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
 
+
 class Archive(object):
     """
     Class to represent the area on a machine where simulations are archived.
@@ -37,11 +37,35 @@ class Archive(object):
 
     """
 
-    def __init__(self, session_id, path, dropbox, key):
+    def __init__(self, session_id, path, dropbox=False, dropbox_key=None, scratch=None):
 
         self.dropbox = dropbox
-        self.key = key
-        self.path = posixpath.join(path, session_id)
+        self.dropbox_key = dropbox_key
+
+        # If Archive is not on dropbox, assume it is on the scratch machine
+        # (i.e. instantiate Archive with scratch.os_name)
+        if dropbox:
+            self.remote = True
+            self.host = None
+            self.os_name = 'posix'
+
+        else:
+            if scratch.remote:
+                self.remote = True
+                self.host = scratch.host
+                self.os_name = scratch.os_name
+
+            else:
+                self.remote = False
+                self.host = None
+                self.os_name = os.name
+
+        if self.os_name == 'nt':
+            path_mod = ntpath
+        elif self.os_name == 'posix':
+            path_mod = posixpath
+
+        self.path = path_mod.join(path, session_id)
 
 
 class Stage(object):
@@ -147,11 +171,42 @@ class Stage(object):
     def copy_to_archive(self, archive):
         """
         """
-        dbx = dbhelpers.get_dropbox(archive.key)
-        db_path = archive.path
-        # Only copy plots:
-        db_inc = ['*.html']
-        dbhelpers.upload_dropbox_dir(dbx, self.path, db_path, include=db_inc)
+
+        archive_dir_exists = 'Directory already exists on archive. Aborting.'
+        copy_msg = 'Copying plots to {}{} archive.'.format(
+            'remote' if archive.remote else 'local',
+            ' (Dropbox)' if archive.dropbox else ''
+        )
+        if archive.remote:
+
+            # Only copy plots:
+            inc_filter = ['*.html']
+
+            if archive.dropbox:
+
+                dbx = dbhelpers.get_dropbox(archive.dropbox_key)
+                db_path = archive.path
+                print(copy_msg)
+                dbhelpers.upload_dropbox_dir(dbx, self.path, db_path,
+                                             include=inc_filter)
+
+            else:
+
+                # Connect to remote archive host for copying stuff
+                if utils.dir_exists_remote(archive.host, archive.path):
+                    raise ValueError(archive_dir_exists)
+
+                print(copy_msg)
+                bash_path = self.get_bash_path(end_path_sep=True)
+                utils.rsync_remote(bash_path, archive.host, archive.path,
+                                   include=inc_filter)
+
+        else:
+
+            pass
+            # Don't need to pre-copy stuff to Archive since everything
+            # went to scratch in this case and will thus be copied to
+            # Archive when process.py is run.
 
     def submit_on_scratch(self, scratch):
         """
@@ -290,6 +345,7 @@ def prepare_series_update(series_spec, atomistic_structure):
         'geom_stress_tol',
         'relative_shift',
         'gamma_surface',
+        'boundary_vac',
     ]
     if series_spec.get('name') not in allowed_sn:
         raise NotImplementedError('Series name: {} not understood.'.format(sn))
@@ -303,14 +359,30 @@ def prepare_series_update(series_spec, atomistic_structure):
 
         edge_vecs = atomistic_structure.boundary_vecs
         grid = geometry.Grid(edge_vecs, series_spec.get('grid_spec'))
-        rel_shifts = list(grid.get_grid_points()['points_frac'].T)
+        ggp = grid.get_grid_points()
+        rel_shifts = ggp['points_frac'].T
+        rel_shifts_tup = ggp['points_tup']
+        grid_idx = ggp['grid_idx_flat']
+        row_idx = ggp['row_idx']
+        col_idx = ggp['col_idx']
+        point_idx = ggp['point_idx']
         common_series_info.update({
-            'gamma_surface': grid,
+            'gamma_surface': {
+                **grid.to_jsonable(),
+                'preview': series_spec['preview']
+            },
         })
         series_spec = {
             'name': 'relative_shift',
             'vals': rel_shifts,
+            'vals_tup': rel_shifts_tup,
             'as_fractions': True,
+            'extra_update': {
+                'grid_idx': grid_idx,
+                'row_idx': row_idx,
+                'col_idx': col_idx,
+                'point_idx': point_idx,
+            }
         }
 
     # Convenience
@@ -454,20 +526,41 @@ def prepare_series_update(series_spec, atomistic_structure):
 
     elif sn == 'relative_shift':
 
-        for v in vals:
+        num_digts = len(str(len(vals)))
+        pad_fmt = '{{:0{}d}}'.format(num_digts)
+        v_tup = ss.get('vals_tup')
+        for v_idx, v in enumerate(vals):
 
             if ss.get('as_fractions') is True:
-                v_frac = [fractions.Fraction(i).limit_denominator() for i in v]
-                v_str = '_'.join(
-                    ['{}({})'.format(i.numerator, i.denominator) for i in v_frac])
+                v_t = v_tup[v_idx]
+                v_str = '_'.join(['{}({})'.format(i[0], i[1]) for i in v_t])
+
             else:
                 v_str = '{}_{}'.format(*v)
 
             out.append({
                 'base_structure': {'relative_shift_args': {'shift': v}},
                 'series_id': {'name': sn, 'val': v,
-                              'path': v_str}
+                              'path': (pad_fmt + '__').format(v_idx) + v_str}
             })
+
+    elif sn == 'boundary_vac':
+
+        for v in vals:
+
+            out.append({
+                'base_structure': {'boundary_vac_args': {'vac_thickness': v}},
+                'series_id': {'name': sn, 'val': v,
+                              'path': '{:.2f}'.format(v)}
+            })
+
+    extra_update = ss.get('extra_update')
+    if extra_update is not None:
+        for up_idx, up in enumerate(out):
+            eu = {}
+            for k, v in extra_update.items():
+                eu.update({k: np.asscalar(v[up_idx])})
+            out[up_idx]['series_id'].update(eu)
 
     return out, common_series_info
 
@@ -545,7 +638,7 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
     return all_updates, common_series_info
 
 
-def process_castep_opt(castep_opt):
+def process_castep_opt(castep_opt, sym_ops=None):
     """
 
     """
@@ -560,6 +653,30 @@ def process_castep_opt(castep_opt):
 
     castep_opt.pop('backup_interval', None)
     castep_opt.pop('checkpoint', None)
+
+    castep_opt['sym_ops'] = None
+    if castep_opt['find_inv_sym']:
+
+        if castep_opt['cell'].get('symmetry_generate') is True:
+            raise ValueError('Cannot find inversion symmetry if '
+                             '`symmetry_generate` is `True`.')
+
+        sym_rots = sym_ops['rotations']
+        sym_trans = sym_ops['translations']
+        inv_sym_rot = -np.eye(3, dtype=int)
+        inv_sym_idx = np.where(np.all(sym_rots == inv_sym_rot, axis=(1, 2)))[0]
+
+        if len(inv_sym_idx) == 0:
+            raise ValueError('The bicrystal does not have inversion symmetry.')
+        if len(inv_sym_idx) > 1:
+            raise ValueError('Multiple inversion sym ops found!.')
+
+        inv_sym_trans = sym_trans[inv_sym_idx[0]]
+
+        castep_opt['sym_ops'] = [
+            np.vstack([np.eye(3), np.zeros((3,))]),
+            np.vstack([inv_sym_rot, inv_sym_trans])
+        ]
 
 
 def process_lammps_opt(lammps_opt, structure):
@@ -654,7 +771,7 @@ def append_db(opt):
 
             # Download database file:
             tmp_db_path = os.path.join(SU_PATH, 'temp_db')
-            dpbx_path = '/calcs/db.pickle'
+            dpbx_path = su['database']['path']
 
             # Check if db file exists, if not prompt to create:
             db_exists = dbhelpers.check_dropbox_file_exist(dbx, dpbx_path)
@@ -679,6 +796,30 @@ def append_db(opt):
                 dbhelpers.upload_dropbox_file(dbx, tmp_db_path, dpbx_path,
                                               overwrite=True)
 
+    else:
+
+        db_path = su['database']['path']
+        db_exists = os.path.isfile(db_path)
+
+        if db_exists:
+            db = readwrite.read_pickle(db_path)
+        else:
+            db_dir, db_fname = os.path.split(db_path)
+            os.makedirs(db_dir, exist_ok=True)
+            db_create = utils.confirm('Database file does not exist. '
+                                      'Create it?')
+            if db_create:
+                db = {}
+            else:
+                warnings.warn('This simulaton has not been added to a '
+                              'database')
+
+        if db_exists or db_create:
+
+            # Modify database file:
+            db.update({su['time_stamp']: opt})
+            readwrite.write_pickle(db, db_path)
+
 
 def main():
     """
@@ -689,18 +830,8 @@ def main():
         -   check all ints in cs_idx resolve in crystal_structures
     -   Allow datatype parsing on list elements so specifying crystal structure
         index when forming struct_opt is cleaner.
-    -   Allow dict_parser to parse other files so don't need csl_lookup (can
-        have a file in /ref: csl_hex_[0001].txt, which can provide csl_vecs for
-        a given sigma value.)
-    -   Also allow dict_parser to have variables so crystal structure can be
-        reference as a variable instead of an index: instead of in opt.txt:
-        base_structure --> cs_idx = [0] we could have base_structure
-        --> crystal_structure = <crystal_structures>[0] where
-        crystal_structures is also defined in the opt.txt
     -   Move more code into separate functions (e.g. dropbox database stuff)
     -   Can possible update database without writing a temp file.
-    -   Form session id from timestamp instead of separate function
-    -   Store dropbox key in separate file to options.
 
     """
 
@@ -747,7 +878,24 @@ def main():
 
     stage = Stage(session_id=s_id, path=stage_path)
     scratch = Scratch(session_id=s_id, **su['scratch'])
-    archive = Archive(session_id=s_id, **su['archive'])
+    archive_opts = su['archive']
+    database_opts = su['database']
+
+    is_dropbox = [i.get('dropbox') for i in [archive_opts, database_opts]]
+    if any(is_dropbox):
+        try:
+            db_key = su['dropbox_key']
+            if is_dropbox[0]:
+                archive_opts.update({'dropbox_key': db_key})
+            if is_dropbox[1]:
+                database_opts.update({'dropbox_key': db_key})
+
+        except:
+            print('To use dropbox for Archive or database location, a dropbox '
+                  'key must be specified as opiton: `dropbox_key`.')
+
+    archive = Archive(session_id=s_id, scratch=scratch, **archive_opts)
+    su['database'] = database_opts
 
     # log.append('Making stage directory at: {}.'.format(stage_path))
     os.makedirs(stage.path, exist_ok=False)
@@ -828,7 +976,7 @@ def main():
     # Save current options dict
     opt_p_str_path = stage.get_path('opt_processed.txt')
     with open(opt_p_str_path, mode='w', encoding='utf-8') as f:
-        f.write(dict_parser.formatting.format_dict(opt))
+        f.write(readwrite.format_dict(opt))
 
     # Get series definitions:
     srs_df = opt.get('series')
@@ -858,17 +1006,23 @@ def main():
     all_upd = [{}]
     all_scratch_paths = []
     all_sims = []
-
+    csi = {}
     if is_srs:
         all_upd, csi = prepare_all_series_updates(srs_df, base_as)
 
         if 'gamma_surface' in csi:
             # Plot gamma surface grid:
             save_args = {'filename': stage.get_path('grid.html')}
-            csi['gamma_surface'].visualise(
+            geometry.Grid.from_jsonable(csi['gamma_surface']).visualise(
                 show_iplot=False, save=True, save_args=save_args)
 
-    # Generate simulation series:
+            if csi['gamma_surface'].get('preview'):
+                if not utils.confirm('Check gamma surface grid now. '
+                                     'Continue?'):
+                    print('Exiting.')
+                    return
+
+                    # Generate simulation series:
     for upd_idx, upd in enumerate(all_upd):
 
         # Update options:
@@ -928,7 +1082,10 @@ def main():
 
         # Process CASTEP options
         if srs_opt['method'] == 'castep':
-            process_castep_opt(srs_opt['castep'])
+            sym_ops = None
+            if srs_opt['castep']['find_inv_sym']:
+                sym_ops = srs_as.get_sym_ops()
+            process_castep_opt(srs_opt['castep'], sym_ops=sym_ops)
 
         elif srs_opt['method'] == 'lammps':
             process_lammps_opt(srs_opt['lammps'], srs_as)
@@ -943,6 +1100,7 @@ def main():
     pick = {
         'all_sims': all_sims,
         'base_options': opt,
+        'common_series_info': csi,
     }
     readwrite.write_pickle(pick, pick_path)
 
@@ -982,7 +1140,6 @@ def main():
         else:
             print('Did not submit.')
         if su['upload_plots']:
-            print('Uploading plots to dropbox...')
             stage.copy_to_archive(archive)
     else:
         print('Exiting.')

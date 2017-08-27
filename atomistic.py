@@ -28,6 +28,7 @@ from mendeleev import element
 import utils
 import spglib
 import gbhelper
+import warnings
 
 REF_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ref')
 
@@ -59,8 +60,10 @@ class AtomisticSimulation(object):
                 'seedname': cst_opt['seedname'],
                 'cell': cst_opt['cell'],
                 'param': cst_opt['param'],
+                'sym_ops': cst_opt['sym_ops'],
                 **common_params
             }
+
             simsio.write_castep_inputs(**cst_in_params)
 
         elif self.options['method'] == 'lammps':
@@ -210,9 +213,9 @@ class AtomisticStructure(object):
 
         if all_species_idx is not None:
             if len(all_species_idx) != atom_sites.shape[1]:
-                raise ValueError('Length of `all_species_idx` must match '
+                raise ValueError('Length of `all_species_idx` ({}) must match '
                                  'number of atoms specified as column vectors '
-                                 'in `atom_sites`.')
+                                 'in `atom_sites` ({}).'.format(len(all_species_idx), atom_sites.shape[1]))
 
         # Set attributes
         # --------------
@@ -311,7 +314,12 @@ class AtomisticStructure(object):
                 atom_sites_sym = np.dot(self.supercell, as_sym_frac)
 
             sym_atom_site_props = {
-                'mode': 'markers',
+                'mode': 'text+markers',
+                'text': np.arange(self.num_atoms),
+                'textposition': 'bottom center',
+                'textfont': {
+                    'color': 'purple',
+                },
                 'marker': {
                     'symbol': 'x',
                     'size': 5,
@@ -329,6 +337,22 @@ class AtomisticStructure(object):
                     **sym_atom_site_props
                 )
             )
+
+            # Add lines mapping symmetrically connected atoms:
+            for a_idx, a in enumerate(atom_sites_sym.T):
+                data.append({
+                    'type': 'scatter3d',
+                    'x': [a[0], self.atom_sites.T[a_idx][0]],
+                    'y': [a[1], self.atom_sites.T[a_idx][1]],
+                    'z': [a[2], self.atom_sites.T[a_idx][2]],
+                    'mode': 'lines',
+                    'name': 'Sym op',
+                    'legendgroup': 'Sym op',
+                    'showlegend': False,
+                    'line': {
+                        'color': 'purple',
+                    },
+                })
 
         # Supercell box
         sup_xyz = geometry.get_box_xyz(self.supercell)[0]
@@ -494,6 +518,7 @@ class AtomisticStructure(object):
 
             # Plot atoms by crystal and motif
             # Crystal boxes and atoms
+            c_prev_num = 0  # Number of atoms in previous crystal
             for c_idx, c in enumerate(self.crystals):
 
                 # Crystal centres
@@ -678,7 +703,20 @@ class AtomisticStructure(object):
                             'name': trace_name,
                             'legendgroup': trace_name,
                         }
-
+                        # Add traces for atom numbers
+                        data.append(
+                            graph_objs.Scatter3d({
+                                'x': atom_sites_sp[0],
+                                'y': atom_sites_sp[1],
+                                'z': atom_sites_sp[2],
+                                'mode': 'text',
+                                'text': [str(i + c_prev_num) for i in atom_idx],
+                                'name': num_trace_name,
+                                'legendgroup': num_trace_name,
+                                'showlegend': True if sp_idx == 0 else False,
+                                'visible': 'legendonly',
+                            })
+                        )
                         if atoms_3d:
                             rad = element(sp_i).vdw_radius * 0.25 * 1e-2  # in Ang
                             # Get sphere trace for each atom:
@@ -755,6 +793,7 @@ class AtomisticStructure(object):
                                     **atom_site_props
                                 })                                                    
 
+                c_prev_num = len(crys_atm_idx)
 
         layout = graph_objs.Layout(
             width=1000,
@@ -764,6 +803,7 @@ class AtomisticStructure(object):
             }
         )
 
+        fig_2d = None
         if proj_2d:
             # Get approximate ratio of y1 : y3
             sup_z_rn = np.max(sup_xyz[2]) - np.min(sup_xyz[2])
@@ -830,7 +870,7 @@ class AtomisticStructure(object):
                 plt_file.write(html_all)
 
         if ret_fig:
-            return fig
+            return (fig, fig_2d)
 
     def reorient_to_lammps(self):
         """
@@ -1171,7 +1211,11 @@ class AtomisticStructure(object):
         """
         dist = self.get_interatomic_dist()
         if np.any(dist < tol):
-            raise ValueError('Found overlapping atoms.')
+            raise ValueError('Found overlapping atoms. Minimum separation: '
+                             '{:.3f}'.format(np.min(dist)))
+
+    def get_sym_ops(self):
+        return spglib.get_symmetry(self.spglib_cell)
 
     # def __str__(self):
     #     pass
@@ -1457,7 +1501,6 @@ class CSLBicrystal(AtomisticStructure):
         sup_std = np.copy(grn_a_std)
         sup_std[:, NBI] = grn_a_std[:, NBI] - grn_b_rot_std[:, NBI]
 
-
         crystals = [
             {
                 'crystal': grn_a_std,
@@ -1568,8 +1611,11 @@ class CSLBicrystal(AtomisticStructure):
         self.u_unit = u_unit
         self.non_boundary_idx = NBI
         self.boundary_idx = BI
+        self.boundary_vac = 0
+        self.relative_shift = [0, 0]
+        
         self.check_inv_symmetry()
-
+        
         # Invoke additional methods:
         if reorient:
             self.reorient_to_lammps()
@@ -1635,8 +1681,6 @@ class CSLBicrystal(AtomisticStructure):
         """
 
         vt = vac_thickness
-        if vt < 0:
-            raise NotImplementedError('`vt` must be a positive number.')
 
         # For convenience:
         grn_a = self.crystals[0]
@@ -1694,6 +1738,12 @@ class CSLBicrystal(AtomisticStructure):
         self.atoms_gb_dist_old = self.atoms_gb_dist
         self.atoms_gb_dist_δ = as_dx
 
+        if self.boundary_vac != 0:
+            warnings.warn('`boundary_vac` is already non-zero. Resetting to '
+                          'new value.')
+
+        self.boundary_vac = vac_thickness
+
         # Update attributes:
         self.atom_sites = as_vac
         self.supercell = sup_vac
@@ -1727,7 +1777,7 @@ class CSLBicrystal(AtomisticStructure):
                 shift = shift[0]
         else:
             shift = np.array(shift)
-        if np.any(shift <= -1) or np.any(shift >= 1):
+        if np.any(shift < -1) or np.any(shift > 1):
             raise ValueError('Elements of `shift` should be between -1 and 1.')
 
         # Convenience:
@@ -1751,6 +1801,12 @@ class CSLBicrystal(AtomisticStructure):
         self.crystals[0].update({
             'origin': grn_a_org_shift
         })
+
+        if self.relative_shift != [0, 0]:
+            warnings.warn('`relative_shift` is already non-zero. Resetting to '
+                          'new value.')
+        self.relative_shift = [i + j for i,
+                               j in zip(shift.tolist(), self.relative_shift)]
 
         if self.maintain_inv_sym:
             # Modify out-of-boundary supercell vector
@@ -1803,13 +1859,13 @@ class CSLBulkCrystal(CSLBicrystal):
 
     def __init__(self, crystal_structure, csl_vecs, box_csl=None,
                  gb_type=None, gb_size=None, edge_conditions=None,
-                 reorient=True):
+                 reorient=True, overlap_tol=1):
         """Constructor method for CSLBulkCrystal object."""
 
         super().__init__(crystal_structure, [csl_vecs, csl_vecs],
                          box_csl=box_csl, gb_type=gb_type, gb_size=gb_size,
                          edge_conditions=edge_conditions, reorient=reorient,
-                         wrap=False)
+                         wrap=False, overlap_tol=overlap_tol)
 
     def apply_boundary_vac(self, *args, **kwargs):
 
@@ -1840,7 +1896,7 @@ class CSLSurfaceCrystal(CSLBicrystal):
     def __init__(self, crystal_structure, csl_vecs, box_csl=None,
                  gb_type=None, gb_size=None, edge_conditions=None,
                  maintain_inv_sym=False, reorient=True, boundary_vac_args=None,
-                 relative_shift_args=None, wrap=True, surface_idx=0):
+                 relative_shift_args=None, wrap=True, surface_idx=0, overlap_top=1):
         """Constructor method for CSLSurfaceCrystal object."""
 
         super().__init__(crystal_structure, [csl_vecs, csl_vecs],
@@ -1850,7 +1906,9 @@ class CSLSurfaceCrystal(CSLBicrystal):
                          reorient=reorient,
                          boundary_vac_args=boundary_vac_args,
                          relative_shift_args=relative_shift_args,
-                         wrap=wrap)
+                         wrap=wrap,
+                         overlap_tol=overlap_top,
+                         )
 
         # Remove atoms from removed crystal
         atoms_keep = np.where(self.crystal_idx == surface_idx)[0]

@@ -984,7 +984,7 @@ def read_lammps_output(dir_path, log_name='log.lammps'):
 
 
 def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
-                        seedname='sim', cell=None, param=None,
+                        seedname='sim', cell=None, param=None, sym_ops=None,
                         cell_constraints=None, atom_constraints=None):
     """
     Generate CASTEP input files.
@@ -1007,6 +1007,9 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
         Key value pairs to add to the cell file.
     param : dict, optional
         Key value pairs to add to the param file.
+    sym_ops: list of ndarray of shape (4, 3)
+        Each array represents a symmetry operation, where the first three rows
+        are the rotation matrix and the final row is the translation.
     cell_constraints : dict, optional
         A dict with the following keys:
             lengths_equal : str
@@ -1155,6 +1158,16 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                                  col_delim=' '))
 
             cf.write('%endblock ionic_constraints\n')
+
+        # Symmetry ops
+        if sym_ops is not None:
+
+            sym_ops = np.vstack(sym_ops)
+            cf.write('\n%block symmetry_ops\n')
+            cf.write(fmt_arr(sym_ops,
+                             format_spec='{:24.15f}',
+                             col_delim=' '))
+            cf.write('%endblock symmetry_ops\n')
 
         # Other cell file items:
         if cell is not None:
@@ -2148,7 +2161,7 @@ def read_cell_file(cellfile):
                 coordinates of the atoms and n is the number of atoms.
             `species` : list
                 List of length n associated with each atom in `atom_sites`.
-    
+
 
     Notes
     -----
@@ -2203,9 +2216,9 @@ def read_cell_file(cellfile):
         motif['species'] = species_str
 
         lattice_data = {
-            'cell_vecs'   : cell_vecs,
-            'latt_params' : latt_params,
-            'motif'       : motif
+            'cell_vecs': cell_vecs,
+            'latt_params': latt_params,
+            'motif': motif
         }
 
         return lattice_data

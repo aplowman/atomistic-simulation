@@ -1,5 +1,19 @@
 import numpy as np
-import plotly.graph_objs as go
+
+# Plotly
+from plotly import tools
+from plotly.offline import plot, iplot, init_notebook_mode
+from plotly import graph_objs as go
+
+# Matplotlib
+import matplotlib.pyplot as plt
+
+# Bokeh
+import bokeh.plotting as bok_plot
+
+
+COLS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+        '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 
 
 def get_grid_trace_plotly(vectors, grid_size, grid_origin=None, line_args=None,
@@ -427,6 +441,121 @@ def get_circle_shape_plotly(radius, origin=None, fill_colour=None,
     }
 
     return (trace, shape)
+
+
+def basic_plot_plotly(all_traces, save_args=None):
+    """
+    Parameters
+    ----------
+    all_traces : list of dict of (str: dict)
+        The data within each list element is to be plotted in a subplot.
+
+    """
+    WIDTH_PER_SUBPLOT = 500
+    save_args_def = {
+        'auto_open': False
+    }
+
+    if save_args is None:
+        save_args = save_args_def
+    else:
+        save_args = {**save_args_def, **save_args}
+
+    common_ax_props = dict(
+        linecolor='black',
+        linewidth=1,
+        ticks='inside',
+        tickwidth=1,
+        mirror='ticks'
+    )
+
+    fig = tools.make_subplots(1, len(all_traces))
+
+    data = []
+    for subplot_idx, t in enumerate(all_traces):
+        for k_idx, (k, v) in enumerate(t.items()):
+            data.append({
+                'type': 'scatter',
+                'x': v['x'],
+                'y': v['y'],
+                'name': k,
+                'legendgroup': k,
+                'showlegend': True if subplot_idx == 0 else False,
+                'xaxis': 'x' + str(subplot_idx + 1),
+                'yaxis': 'y' + str(subplot_idx + 1),
+                'line': {
+                    'color': COLS[k_idx]
+                }
+            })
+
+    layout = {
+        'width': WIDTH_PER_SUBPLOT * len(all_traces),
+        'height': 500,
+    }
+
+    for subplot_idx in range(1, len(all_traces) + 1):
+        layout.update({
+            'xaxis' + str(subplot_idx): {
+                **common_ax_props,
+                'anchor': 'y' + str(subplot_idx),
+            },
+            'yaxis' + str(subplot_idx): {
+                **common_ax_props,
+                'anchor': 'x' + str(subplot_idx),
+            },
+        })
+
+    fig['data'] = data
+    fig['layout'].update(layout)
+    plot(fig, **save_args)
+
+
+def basic_plot_mpl(traces, filename):
+
+    for k, v in traces.items():
+        plt.plot(v['x'], v['y'], label=k)
+
+    plt.grid(True)
+    plt.savefig(filename)
+
+
+def basic_plot_bokeh(x, y, filename):
+
+    bok_plot.output_file(filename)
+    p = bok_plot.figure()
+    p.line(x, y)
+    bok_plot.save(p)
+
+
+def contour_plot_mpl(traces, filename):
+
+    DPI = 96
+    fig = plt.figure(figsize=(500 / DPI, 500 / DPI), dpi=DPI)
+    ax = fig.gca()
+
+    for k, v in traces.items():
+        x, y, z = v['x'], v['y'], v['z']
+        x_flat, y_flat = [np.array(i).flatten() for i in [x, y]]
+        cset = ax.contourf(x, y, z, cmap=plt.get_cmap('rainbow'))
+        ax.scatter(x_flat, y_flat, color='red', s=1)
+
+        x_minmax = [np.min(x_flat), np.max(x_flat)]
+        y_minmax = [np.min(y_flat), np.max(y_flat)]
+
+        if v.get('xlabel'):
+            ax.set_xlabel(v.get('xlabel'))
+        if v.get('ylabel'):
+            ax.set_ylabel(v.get('ylabel'))
+
+        ax.set_xlim(x_minmax)
+        ax.set_ylim(y_minmax)
+        ax.set_aspect('equal')
+        cbar = plt.colorbar(cset)
+
+        if v.get('zlabel'):
+            cbar.set_label(v.get('zlabel'))
+
+    plt.savefig(filename)
 
 
 def get_circle_trace_plotly(radius, origin=None, start_ang=0, stop_ang=360, degrees=True, line_args=None, fill_args=None, segment=False):

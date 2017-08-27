@@ -838,6 +838,7 @@ def main():
     struct_lookup = {
         'BulkCrystal': atomistic.BulkCrystal,
         'CSLBicrystal': atomistic.CSLBicrystal,
+        'CSLBicrystal_fs' : atomistic.CSLBicrystal.from_structure,
         'CSLBulkCrystal': atomistic.CSLBulkCrystal,
         'CSLSurfaceCrystal': atomistic.CSLSurfaceCrystal
     }

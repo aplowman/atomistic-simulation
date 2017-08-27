@@ -692,6 +692,7 @@ class AtomisticStructure(object):
                         sp_col = 'rgb' + str(atom_cols[sp_i])
 
                         trace_name = sp_name + ' (crystal #{})'.format(c_idx + 1)
+                        num_trace_name = 'Atom index (crystal #{})'.format(c_idx + 1)
 
                         atom_site_props = {
                             'mode': 'markers',
@@ -1536,7 +1537,7 @@ class CSLBicrystal(AtomisticStructure):
             }
         
 
-        return cls(**as_params, maintain_inv_sym=maintain_inv_sym, reorient=reorient, 
+        return cls(as_params, maintain_inv_sym=maintain_inv_sym, reorient=reorient, 
                    boundary_vac_args=boundary_vac_args, 
                    relative_shift_args=relative_shift_args, wrap=wrap)
   
@@ -1581,17 +1582,17 @@ class CSLBicrystal(AtomisticStructure):
                 }
         
 
-        return cls(**as_params, maintain_inv_sym=maintain_inv_sym, reorient=reorient, 
+        return cls(as_params, maintain_inv_sym=maintain_inv_sym, reorient=reorient, 
                    boundary_vac_args=boundary_vac_args, 
                    relative_shift_args=relative_shift_args, wrap=wrap)
         
         
-    def __init__(self, maintain_inv_sym=False, reorient=False,
+    def __init__(self, as_params, maintain_inv_sym=False, reorient=False,
                  boundary_vac_args=None, relative_shift_args=None,
-                 wrap=True, **kwargs):
+                 wrap=True):
 
         # Call parent constructor
-        super().__init__(**kwargs)
+        super().__init__(**as_params)
         
         # Non-boundary (column) index of `box_csl` and grain arrays
         NBI = 2

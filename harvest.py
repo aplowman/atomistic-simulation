@@ -1,6 +1,5 @@
 from readwrite import read_pickle, write_pickle, format_list, format_dict
 import simsio
-import dict_parser
 import os
 import numpy as np
 import utils
@@ -16,10 +15,208 @@ SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
 SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
 # HOME_PATH = r'C:\Users\{}\Dropbox (Research Group)\calcs'.format(
-# os.getlogin())
+#     os.getlogin())
 HOME_PATH = r'C:\calcs_archive'.format(os.getlogin())
 RES_PATH = r'C:\Users\{}\Dropbox (Research Group)\calcs_results'.format(
     os.getlogin())
+
+
+def do_plots(out):
+
+    def format_title(name, val):
+        d = zip(name, val)
+        t = ['{}: {},'.format(i, out) for i, out in d]
+        return ' '.join(t)[:-1]
+
+    series_names = out['series_name']
+    sesh_ids = out['session_id']
+    num_sims = len(sesh_ids)
+
+    vrs = out['variables']
+
+    for pl in out['plots']:
+
+        fmt = pl['fmt']
+        lib = pl['lib']
+        fn = pl['filename']
+        file_srs = pl['file_series']
+        subplot_srs = pl['subplot_series']
+        trace_srs = pl['trace_series']
+        all_data_defn = pl['data']
+
+        all_data = []
+        for i in all_data_defn:
+
+            x = dict_from_list(vrs, {'id': i['x']['id']})['vals']
+            y = dict_from_list(vrs, {'id': i['y']['id']})['vals']
+
+            d = {
+                'x': x,
+                'y': y,
+                **{k: v for k, v in i.items() if k not in ['x', 'y', 'z']}
+            }
+            if i['type'] == 'contour':
+                row_idx = dict_from_list(vrs, {'id': i['row_idx_id']})['vals']
+                col_idx = dict_from_list(vrs, {'id': i['col_idx_id']})['vals']
+                shape = dict_from_list(vrs, {'id': i['shape_id']})['vals']
+                z = dict_from_list(vrs, {'id': i['z']['id']})['vals']
+                d.update({
+                    'z': z,
+                    'row_idx': row_idx,
+                    'col_idx': col_idx,
+                    'shape': shape,
+                })
+            all_data.append(d)
+
+        all_types_srs = [file_srs, subplot_srs, trace_srs]
+        all_types_srs_vals = [[], [], []]
+        for srs_type_idx, srs_type in enumerate(all_types_srs):
+
+            for i in srs_type:
+
+                if i in series_names:
+                    i_idx = series_names.index(i)
+                    i_vals = utils.get_col(out['series_id']['val'], i_idx)
+                else:
+                    i_vals = dict_from_list(
+                        out['variables'], {'id': i})['vals']
+
+                all_types_srs_vals[srs_type_idx].append(i_vals)
+
+        all_types_srs_vals = [utils.transpose_list(
+            i) for i in all_types_srs_vals]
+
+        file_srs_vals = all_types_srs_vals[0]
+        subplot_srs_vals = all_types_srs_vals[1]
+        trace_srs_vals = all_types_srs_vals[2]
+
+        if len(file_srs_vals) == 0:
+            file_srs_vals = [[0] for _ in range(num_sims)]
+
+        if len(subplot_srs_vals) == 0:
+            subplot_srs_vals = [[0] for _ in range(num_sims)]
+
+        if len(trace_srs_vals) == 0:
+            trace_srs_vals = [[0] for _ in range(num_sims)]
+
+        unique_fsv = []
+        unique_fsv_idx = []
+        for f_idx, f in enumerate(file_srs_vals):
+            if f in unique_fsv:
+                unique_fsv_idx[unique_fsv.index(f)].append(f_idx)
+            elif None in f:
+                continue
+            else:
+                unique_fsv.append(f)
+                unique_fsv_idx.append([f_idx])
+
+        unique_ssv = []
+        unique_ssv_idx = []
+        for s_idx, s in enumerate(subplot_srs_vals):
+            if s in unique_ssv:
+                unique_ssv_idx[unique_ssv.index(s)].append(s_idx)
+            elif None in s:
+                continue
+            else:
+                unique_ssv.append(s)
+                unique_ssv_idx.append([s_idx])
+
+        unique_tsv = []
+        unique_tsv_idx = []
+        for t_idx, t in enumerate(trace_srs_vals):
+            if t in unique_tsv:
+                unique_tsv_idx[unique_tsv.index(t)].append(t_idx)
+            elif None in t:
+                continue
+            else:
+                unique_tsv.append(t)
+                unique_tsv_idx.append([t_idx])
+
+        # print('unique_fsv_idx: \n{}\n'.format(unique_fsv_idx))
+        # print('unique_ssv_idx: \n{}\n'.format(unique_ssv_idx))
+        # print('unique_tsv_idx: \n{}\n'.format(unique_tsv_idx))
+
+        # print('unique_fsv: \n{}\n'.format(unique_fsv))
+        # print('unique_ssv: \n{}\n'.format(unique_ssv))
+        # print('unique_tsv: \n{}\n'.format(unique_tsv))
+
+        all_f = []
+        for f in unique_fsv_idx:
+            all_s = []
+            for s in unique_ssv_idx:
+                all_t = []
+                for t in unique_tsv_idx:
+                    all_i = []
+                    for i in t:
+                        if i in f and i in s:
+                            all_i.append(i)
+                    all_t.append(all_i)
+                all_s.append(all_t)
+            all_f.append(all_s)
+
+        print('all_f: \n{}\n'.format(all_f))
+
+        figs = []
+        for f_idx, f in enumerate(all_f):
+            subplots = []
+            for s_idx, s in enumerate(f):
+                traces = []
+                for t_idx, t in enumerate(s):
+                    sub_traces = []
+                    for d in all_data:
+
+                        x_d = utils.index_lst(d['x'], t)
+                        y_d = utils.index_lst(d['y'], t)
+
+                        if d['type'] in ['line', 'marker']:
+
+                            utils.trim_common_nones(x_d, y_d)
+                            if d.get('sort'):
+                                srt_idx = np.argsort(x_d)
+                                x_d = list(np.array(x_d)[srt_idx])
+                                y_d = list(np.array(y_d)[srt_idx])
+
+                        # if isinstance(x_d[0], list):
+                        #     # In this case, we're getting a data set from a
+                        #     # single simulation
+                        #     x_d = x_d[0]
+                        #     y_d = y_d[0]
+
+                        st_dict = {
+                            'x': x_d,
+                            'y': y_d,
+                            'type': d['type'],
+                            'title': format_title(trace_srs, unique_tsv[t_idx]),
+                            **{k: v for k, v in d.items() if k not in ['x', 'y', 'z']},
+                        }
+
+                        if d['type'] == 'contour':
+                            z_d = utils.index_lst(d['z'], t)
+                            st_dict.update({'z': z_d})
+
+                        sub_traces.append(st_dict)
+
+                    traces.append(sub_traces)
+
+                subplots.append({
+                    'traces': traces,
+                    'title': format_title(subplot_srs, unique_ssv[s_idx]),
+                })
+
+            figs.append({
+                'subplots': subplots,
+                'title': format_title(file_srs, unique_fsv[f_idx]),
+                'fmt': pl['fmt'],
+                'filename': pl['filename'],
+            })
+
+        print('figs: \n{}\n'.format(format_list(figs)))
+
+        if pl['lib'] == 'mpl':
+            plotting.plot_many_mpl(figs, save_dir=out['dir'])
+        else:
+            raise NotImplementedError(
+                'Library "{}" not supported.'.format(pl['lib']))
 
 
 def read_results(sid, skip_idx=None, query_all=False):
@@ -174,7 +371,8 @@ def collate_results(res_opt, debug=False):
     ids = []
     required_keys = ['name', 'type', 'id', ]
     std_keys = required_keys + ['display_name', 'idx', 'vals', ]
-    allowed_types = ['result', 'parameter', 'compute', 'common_series_info', ]
+    allowed_types = ['result', 'parameter',
+                     'compute', 'common_series_info', 'series_id']
     for vr_idx, vr in enumerate(res_opt['variables']):
 
         # Check type is allowed:
@@ -211,8 +409,6 @@ def collate_results(res_opt, debug=False):
     # If an `id` is already in use, append a number to the `id`.
     for advar in additional_vars:
 
-        # print('considering advar: \n{}\n'.format(advar))
-
         # Find if the variable already exists (i.e. if it was user-specified):
         conditions = {
             'name': advar['name'],
@@ -229,8 +425,6 @@ def collate_results(res_opt, debug=False):
             append_target = computes
         else:
             append_target = variables
-
-        # print('append_target is currently: \n\n{}'.format(append_target))
 
         m_idx, _ = dict_from_list(append_target, conditions,
                                   false_keys=false_keys,
@@ -253,21 +447,13 @@ def collate_results(res_opt, debug=False):
             advar['id'] = trial_id
             append_target.append(advar)
 
-    print('variables 2: {}'.format(format_list(variables)))
-    print('computes: {}'.format(format_list(computes)))
-
-    common_series_info = []
-    for csi_idx, csi in enumerate(res_opt['common_series_info']):
-        common_series_info
-
     out = {
         'session_id': [],
         'idx': [],
         'series_name': [],
+        'plots': res_opt['plots'],
         'variables': variables + computes,
     }
-
-    # print('variables: '.format(out['variables']))
 
     all_srs_name = []
     sids = res_opt['sid']
@@ -286,11 +472,9 @@ def collate_results(res_opt, debug=False):
                 srs_name.append(series_sublist['name'])
         all_srs_name.extend(srs_name)
 
-    all_srs_name[all_srs_name.index('gamma_surface')] = 'relative_shift'
+    if 'gamma_surface' in all_srs_name:
+        all_srs_name[all_srs_name.index('gamma_surface')] = 'relative_shift'
     out['series_name'] = all_srs_name
-
-    # print('all_srs_names: {}'.format(all_srs_name))
-    # print('variables: '.format(out['variables']))
 
     # Loop through series IDs and sims to append values to `result` and
     # `parameter` variable types:
@@ -305,32 +489,29 @@ def collate_results(res_opt, debug=False):
         base_opt = pick['base_options']
         csi = pick.get('common_series_info')
 
-        print('csi: {}'.format(csi))
-
         for vr_idx, vr in enumerate(out['variables']):
 
             vr_name = vr['name']
             vr_type = vr['type']
-
-            print('vr_name: {}'.format(vr_name))
 
             if vr_type == 'common_series_info':
 
                 if csi is None:
                     raise ValueError('No common series info was saved.')
 
-                try:
-                    val = csi[vr_name]
-                    all_sub_idx = vr.get('idx')
-                    if all_sub_idx is not None:
+                val = csi
+                all_sub_idx = vr.get('idx')
+                if all_sub_idx is not None:
+                    try:
                         for sub_idx in all_sub_idx:
                             val = val[sub_idx]
-                    if isinstance(val, np.ndarray):
-                        val = val.tolist()
-                    out['variables'][vr_idx]['vals'] = val
+                    except:
+                        break
 
-                except:
-                    val = None
+                if isinstance(val, np.ndarray):
+                    val = val.tolist()
+
+                out['variables'][vr_idx]['vals'] = val
 
         for sm_idx, sm in enumerate(sims):
 
@@ -348,9 +529,6 @@ def collate_results(res_opt, debug=False):
 
                 vr_name = vr['name']
                 vr_type = vr['type']
-
-                # print('vr_name: {}'.format(vr_name))
-
                 val = None
                 if vr_type == 'result':
                     val = sm.results[vr_name]
@@ -372,22 +550,27 @@ def collate_results(res_opt, debug=False):
                 if isinstance(val, np.ndarray):
                     val = val.tolist()
 
-                # print('val ({}): {} ({})'.format(vr_name, val, type(val)))
-
                 out['variables'][vr_idx]['vals'].append(val)
 
         all_sim_idx += sm_idx
 
     all_ids = {k: v for k, v in all_ids.items() if k != 'name'}
     out['series_id'] = all_ids
-    print('out[vars]: \n{}\n'.format(format_list(out['variables'])))
-
-    # exit()
 
     # Now calculate multi `compute`s:
     for vr_idx, vr in enumerate(out['variables']):
 
-        if vr['type'] != 'compute':
+        if vr['type'] == 'series_id':
+            cid = all_srs_name.index(vr['col_id'])
+            vals = utils.get_col(all_ids[vr['name']], cid)
+
+            if vr.get('col_idx') is not None:
+                vals = utils.get_col_none(vals, vr['col_idx'])
+
+            out['variables'][vr_idx]['vals'] = vals
+            continue
+
+        elif vr['type'] != 'compute':
             continue
 
         cmpt_name = vr['name']
@@ -399,6 +582,7 @@ def collate_results(res_opt, debug=False):
 
     # Save the JSON file in the results directory of the first listed SID
     res_dir = os.path.join(RES_PATH, rs_id)
+    out['dir'] = res_dir
     os.makedirs(res_dir, exist_ok=True)
     json_path = os.path.join(res_dir, 'results.json')
 
@@ -407,138 +591,12 @@ def collate_results(res_opt, debug=False):
     dst_path = os.path.join(res_dir, 'opt_test_res.py')
     shutil.copy(src_path, res_dir)
 
+    print('json_path: {}'.format(json_path))
     with open(json_path, 'w', encoding='utf-8', newline='') as jf:
+        print('write json')
         json.dump(out, jf, sort_keys=True, indent=4)
 
-    # Plots
-    for pl in res_opt['plots']:
-
-        x = pl['x']
-        y = pl['y']
-
-        x_id = x['id']
-        y_id = y['id']
-        x_label = x['label']
-        y_label = y['label']
-
-        z = pl.get('z')
-        if z is not None:
-            z_id = z['id']
-            z_label = z['label']
-
-        x_data = dict_from_list(out['variables'], {'id': x_id})['vals']
-        all_x_subidx = pl['x'].get('idx')
-        if all_x_subidx is not None:
-            for x_subidx in all_x_subidx:
-                x_data = x_data[x_subidx]
-        # print('x_data: \n{}\n'.format(x_data))
-
-        y_data = dict_from_list(out['variables'], {'id': y_id})['vals']
-        all_y_subidx = pl['y'].get('idx')
-        if all_y_subidx is not None:
-            for y_subidx in all_y_subidx:
-                y_data = y_data[y_subidx]
-        # print('y_data: \n{}\n'.format(y_data))
-
-        if z is not None:
-            z_data = dict_from_list(out['variables'], {'id': z_id})['vals']
-            all_z_subidx = z.get('idx')
-            if all_z_subidx is not None:
-                for z_subidx in all_z_subidx:
-                    z_data = z_data[z_subidx]
-            # print('z_data: \n{}\n'.format(z_data))
-
-        pl_srs_id = pl.get('series_id')
-        if pl_srs_id is not None:
-            pl_srs = []
-            for pid in pl_srs_id:
-                pl_srs.append(dict_from_list(all_d, id=pid)['vals'])
-
-        # plot_name = '{}_{}'.format(x_label, y_label)
-        plot_name = pl['filename']
-        # if z is not None:
-        #     plot_name += '_{}'.format(z_label)
-        plot_path = os.path.join(res_dir, plot_name)
-        # print('plt_path: {}'.format(plot_path))
-
-        if pl_srs_id is None:
-            if z is None:
-                traces = {
-                    y_label: {
-                        'x': x_data,
-                        'y': y_data,
-                        'xlabel': x_label,
-                        'ylabel': y_label,
-                    }
-                }
-            else:
-                traces = {
-                    z_label: {
-                        'x': x_data,
-                        'y': y_data,
-                        'z': z_data,
-                        'xlabel': x_label,
-                        'ylabel': y_label,
-                        'zlabel': z_label,
-                    }
-                }
-        else:
-            # Identify unique traces by series:
-            traces = {}
-            for x_idx, x in enumerate(x_data):
-
-                if isinstance(pl_srs[0], list):
-                    pl_srs = utils.transpose_list(pl_srs)
-                trace_id = pl_srs[x_idx]
-                trace_id_str = ' '.join([str(t) for t in trace_id])
-                if trace_id_str in traces:
-                    traces[trace_id_str]['x'].append(x)
-                    traces[trace_id_str]['y'].append(y_data[x_idx])
-                else:
-                    traces.update({
-                        trace_id_str: {
-                            'x': [x],
-                            'y': [y_data[x_idx]],
-                        }
-                    })
-                traces[trace_id_str].update({
-                    'xlabel': x_label,
-                    'ylabel': y_label,
-                })
-
-        for k, v in traces.items():
-            utils.trim_common_nones(v['x'], v['y'])
-
-        all_traces = [traces]
-        # print('all_traces: {}'.format(all_traces))
-
-        if pl.get('plot_sequential_diff') is True:
-
-            # Add a subplot showing difference between adjacent y values
-            all_traces.append(copy.deepcopy(traces))
-            for k, v in all_traces[1].items():
-                all_traces[1][k]['x'] = v['x'][1:]
-                all_traces[1][k]['y'] = np.ediff1d(v['y'])
-
-        # print('traces: {}'.format(traces))
-
-        if pl['lib'] == 'plotly':
-            save_args = {
-                'filename': plot_path + '.html'
-            }
-            # Make plot
-            plotting.basic_plot_plotly(all_traces, save_args=save_args)
-
-        elif pl['lib'] == 'mpl':
-            plot_path += '.' + pl['fmt']
-            if z is None:
-                plotting.basic_plot_mpl(traces, plot_path)
-            else:
-                plotting.contour_plot_mpl(traces, plot_path)
-
-        elif pl['lib'] == 'bokeh':
-            plot_path += '.html'
-            plotting.basic_plot_bokeh(traces, plot_path)
+    do_plots(out)
 
 
 def main():
@@ -549,8 +607,8 @@ def main():
     if skip_idx is None or len(skip_idx) == 0:
         skip_idx = [[] for _ in range(len(sids))]
 
-    for s_idx, s in enumerate(sids):
-        read_results(s, skip_idx=skip_idx[s_idx])
+    # for s_idx, s in enumerate(sids):
+    #     read_results(s, skip_idx=skip_idx[s_idx])
 
     # Compute additional properties
     collate_results(RES_OPT, debug=True)

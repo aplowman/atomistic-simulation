@@ -560,7 +560,10 @@ def prepare_series_update(series_spec, atomistic_structure):
         for up_idx, up in enumerate(out):
             eu = {}
             for k, v in extra_update.items():
-                eu.update({k: np.asscalar(v[up_idx])})
+                vu = v[up_idx]
+                if isinstance(vu, np.generic):
+                    vu = np.asscalar(vu)
+                eu.update({k: vu})
             out[up_idx]['series_id'].update(eu)
 
     return out, common_series_info

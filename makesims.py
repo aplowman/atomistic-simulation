@@ -156,19 +156,13 @@ class Stage(object):
                 raise NotImplementedError('Unsupported remote transfer.')
 
         else:
+            if os.path.isdir(scratch.path):
+                raise ValueError(scratch_dir_exists)
 
-            if self.os_name == 'nt' and scratch.os_name == 'nt':
+            print(copy_msg)
+            shutil.copytree(self.path, scratch.path)
 
-                if os.path.isdir(scratch.path):
-                    raise ValueError(scratch_dir_exists)
-
-                print(copy_msg)
-                shutil.copytree(self.path, scratch.path)
-
-            elif self.os_name == 'posix' and scratch.os_name == 'posix':
-                # Use rsync/scp
-                raise NotImplementedError('Unsupported local transfer.')
-
+            
     def copy_to_archive(self, archive):
         """
         """
@@ -249,8 +243,10 @@ class Stage(object):
                                  creationflags=subprocess.CREATE_NEW_CONSOLE)
 
             elif self.os_name == 'posix' and scratch.os_name == 'posix':
-                # Use rsync/scp
-                raise NotImplementedError('Unsupported.')
+                
+                js_path = os.path.join(scratch.path, 'jobscript.sh')
+                os.chmod(js_path, 0o744)
+                subprocess.Popen(js_path, shell=True)
 
 
 class Scratch(object):
@@ -707,6 +703,17 @@ def process_lammps_opt(lammps_opt, structure, stage_path, scratch_path):
 
     del lammps_opt['potential_files']
 
+    charges_dict = lammps_opt.get('charges')
+    if charges_dict is not None:
+        charges = []
+        for sp in structure.all_species:
+            try:
+                charges.append(charges_dict[sp])
+            except:
+                raise ValueError('Cannot find charge specification for '
+                                 'species {}'.format(sp))
+
+    lammps_opt['charges'] = charges
 
 def process_constraints(opt, structure):
     """
@@ -938,7 +945,7 @@ def main():
             struct_opt.update({k: v})
 
     base_as = struct_lookup[base_as_opt['type']](**struct_opt)
-
+    
     in_struct = base_as_opt.get('import')
     if in_struct is not None:
 

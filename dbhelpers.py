@@ -9,6 +9,7 @@ def get_dropbox(key):
 
 
 def check_dropbox_file_exist(dbx, dropbox_path):
+    # TODO: check is a file 
     try:
         dbx.files_get_metadata(dropbox_path)
         return True

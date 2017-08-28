@@ -570,7 +570,7 @@ def get_circle_trace_plotly(radius, origin=None, start_ang=0, stop_ang=360, degr
     origin : list of length two, optional
         Position of the centre of the circle. Set to [0, 0] if not specified.
     start_ang : int or float, optional
-        Angle at which to start cicle sector, measured from positive x-axis. 
+        Angle at which to start cicle sector, measured from positive x-axis.
         Specified in either degrees or radians depending on `degrees`. Set to 0
         if not specified.
     stop_ang : int or float, optional
@@ -584,7 +584,7 @@ def get_circle_trace_plotly(radius, origin=None, start_ang=0, stop_ang=360, degr
     fill_args : dict
         Dict with allowed keys:
         fill : str ("none" | "toself")
-        fillcolor : str 
+        fillcolor : str
             For transparency set color string as "rgba(a, b, c, d)"
     segment : bool
         If True, generate a circle segment instead of a sector. The outline of
@@ -655,7 +655,10 @@ def plot_many_mpl(figs, save_dir=None):
 
     for f in figs:
 
-        # print('plot_many_mpl: f')
+        if f.get('subplot_width') is not None:
+            SUBPLOT_WIDTH = f['subplot_width']
+        if f.get('subplot_height') is not None:
+            SUBPLOT_HEIGHT = f['subplot_height']
 
         num_subplots = len(f['subplots'])
         width = (SUBPLOT_WIDTH * num_subplots) / DPI
@@ -682,9 +685,10 @@ def plot_many_mpl(figs, save_dir=None):
 
                     x = sub_t['x']
                     y = sub_t['y']
+                    xv, yv = x['vals'], y['vals']
 
-                    x_arr = np.array(x)
-                    y_arr = np.array(y)
+                    x_arr = np.array(xv)
+                    y_arr = np.array(yv)
 
                     # print('shape x: {}'.format(x_arr.shape))
                     # print('shape y: {}'.format(y_arr.shape))
@@ -697,19 +701,51 @@ def plot_many_mpl(figs, save_dir=None):
 
                     if plt_type == 'marker':
                         size = sub_t['marker'].get('size')
-                        ax.scatter(x, y, s=size, label=label)
+                        ax.scatter(xv, yv, s=size, label=label)
 
                     elif plt_type == 'line':
                         linewidth = sub_t['line'].get('width')
-                        ax.plot(x, y, linewidth=linewidth, label=label)
+                        ax.plot(xv, yv, linewidth=linewidth, label=label)
 
                     elif plt_type == 'contour':
-                        X = np.array(x).reshape(sub_t['shape'])
-                        Y = np.array(y).reshape(sub_t['shape'])
-                        Z = np.array(sub_t['z']).reshape(sub_t['shape'])
-                        cax = ax.contourf(X, Y, Z)
+
+                        z = sub_t['z']
+                        zv = z['vals']
+                        col_idx = sub_t['col_idx']
+                        row_idx = sub_t['row_idx']
+
+                        lens = [len(i) for i in [xv, yv, zv, row_idx, col_idx]]
+                        if len(set(lens)) != 1:
+                            raise ValueError('Lengths do not agree for contour'
+                                             ' plot: (x, y, z, row_idx, col_idx) '
+                                             '= {}'.format(lens))
+
+                        Z = np.ones(sub_t['shape']) * np.nan
+                        for i_idx in range(len(xv)):
+                            ri = row_idx[i_idx]
+                            ci = col_idx[i_idx]
+                            Z[ri][ci] = zv[i_idx]
+
+                        X = x_arr.reshape(sub_t['shape'])
+                        Y = y_arr.reshape(sub_t['shape'])
+
+                        minX, maxX = np.min(X), np.max(X)
+                        minY, maxY = np.min(Y), np.max(Y)
+
+                        cmap = plt.cm.get_cmap(sub_t['colour_map'])
+                        cax = ax.contourf(X, Y, Z, cmap=cmap)
                         ax.set_aspect('equal')
+
+                        ax.set_xlabel(x['label'])
+                        ax.set_ylabel(y['label'])
+                        ax.set_xlim([minX, maxX])
+                        ax.set_ylim([minY, maxY])
+
                         cbar = f_i.colorbar(cax, ax=ax)
+                        cbar.set_label(z['label'])
+
+                        if sub_t.get('show_xy'):
+                            ax.scatter(x_arr, y_arr, c='black', s=2)
 
             ax.legend()
             ax.set_title(s['title'])
@@ -719,7 +755,8 @@ def plot_many_mpl(figs, save_dir=None):
         if save_dir is not None:
             os.makedirs(save_dir, exist_ok=True)
             fn = f['filename'] + '_' + f['title']
-            fn = fn.replace(':', '_').replace(' ', '_')
-            fn += '.' + f['fmt']
-            path = os.path.join(save_dir, fn)
-            plt.savefig(path)
+            fn_base = fn.replace(':', '_').replace(' ', '_')
+            for fmt_i in f['fmt']:
+                fn = fn_base + '.' + fmt_i
+                path = os.path.join(save_dir, fn)
+                plt.savefig(path)

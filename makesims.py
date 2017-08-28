@@ -1000,30 +1000,54 @@ def main():
 
     # If only one simulation, plot the structure:
     if lst_struct_idx == -1:
-        base_as.visualise(show_iplot=False, save=True,
-                          save_args=save_args, proj_2d=True)
+        if opt['make_plots']:
+            base_as.visualise(show_iplot=False, save=True,
+                              save_args=save_args, proj_2d=True)
 
     # Prepare series update data:
     all_upd = [{}]
     all_scratch_paths = []
     all_sims = []
-    csi = {}
+    csi = []
     if is_srs:
         all_upd, csi = prepare_all_series_updates(srs_df, base_as)
 
-        if 'gamma_surface' in csi:
-            # Plot gamma surface grid:
-            save_args = {'filename': stage.get_path('grid.html')}
-            geometry.Grid.from_jsonable(csi['gamma_surface']).visualise(
-                show_iplot=False, save=True, save_args=save_args)
+        # Plot gamma surface grids:
+        g_preview = []
+        cnd = {'series_name': 'gamma_surface'}
+        g_idx, gamma = utils.dict_from_list(csi, cnd, ret_index=True)
 
-            if csi['gamma_surface'].get('preview'):
-                if not utils.confirm('Check gamma surface grid now. '
-                                     'Continue?'):
+        if gamma is not None and opt['make_plots']:
+
+            if gamma.get('preview') is not None:
+                g_preview.append(gamma['preview'])
+
+            gamma_count = 0
+            while gamma is not None:
+
+                g_fn = stage.get_path('γ_surface_{}.html'.format(gamma_count))
+                vis_args = {
+                    'show_iplot': False,
+                    'save': True,
+                    'save_args': {
+                        'filename': g_fn
+                    }
+                }
+                geometry.Grid.from_jsonable(gamma).visualise(**vis_args)
+
+                csi_sub = [i for i_idx, i in enumerate(csi) if i_idx != g_idx]
+                g_idx, gamma = utils.dict_from_list(
+                    csi_sub, cnd, ret_index=True)
+                gamma_count += 1
+
+            if any(g_preview):
+                g_prv_msg = 'Check gamma surface grid(s) now. Continue?'
+                if not utils.confirm(g_prv_msg):
                     print('Exiting.')
                     return
 
-                    # Generate simulation series:
+    # Generate simulation series:
+    num_sims = len(all_upd)
     for upd_idx, upd in enumerate(all_upd):
 
         stdout.write('Making sim: {} of {}\r'.format(upd_idx + 1, num_sims))

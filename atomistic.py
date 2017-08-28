@@ -27,6 +27,7 @@ import readwrite
 from mendeleev import element
 import utils
 import spglib
+from functools import reduce
 import warnings
 
 REF_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ref')
@@ -1006,6 +1007,8 @@ class AtomisticStructure(object):
 
         return seps
 
+
+
     def get_all_species(self):
 
         all_sp = []
@@ -1020,14 +1023,18 @@ class AtomisticStructure(object):
             cs_sp = cs.motif['species']
 
             # Local species index for this crystal:
-            c_sp_idx = np.copy(
-                self.species_idx[np.where(self.crystal_idx == c_idx)[0]])
+            c_sp_idx_old = self.species_idx[np.where(self.crystal_idx == c_idx)[0]]
+            c_sp_idx_new = np.array([None] * len(c_sp_idx_old))
 
             # Need to map the indices from local CrystalStructure to global
             # AtomisticStructure
+
+            cs_sp = reduce(lambda l, x: l if x in l else l + [x], cs_sp, [])
+
             for sp_idx, sp in enumerate(cs_sp):
 
                 if sp not in all_sp:
+
                     new_sp_idx = all_sp_count
                     all_sp.append(sp)
                     all_sp_count += 1
@@ -1035,14 +1042,16 @@ class AtomisticStructure(object):
                 else:
                     new_sp_idx = all_sp.index(sp)
 
-                c_sp_idx[np.where(c_sp_idx == sp_idx)[0]] = new_sp_idx
+                w = np.where(c_sp_idx_old == sp_idx)[0]
+                c_sp_idx_new[w] = new_sp_idx
 
-            all_sp_idx.extend(c_sp_idx)
+            all_sp_idx.extend(c_sp_idx_new)
 
         all_sp = np.array(all_sp)
         all_sp_idx = np.array(all_sp_idx)
 
         return all_sp, all_sp_idx
+
 
     @property
     def all_species(self):

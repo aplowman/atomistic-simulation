@@ -368,7 +368,7 @@ def write_lammps_atoms(supercell, atom_sites, species, species_idx, path, atom_s
     atom_type = (species_idx + 1)[:, np.newaxis]
 
     if atom_style == 'full':
-        mol_id = np.zeros((num_atoms, 1))
+        mol_id = np.zeros((num_atoms, 1), dtype=int)
         ch = charges[species_idx][:, np.newaxis]
 
     os.makedirs(path, exist_ok=True)

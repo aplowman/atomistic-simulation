@@ -307,7 +307,7 @@ def get_castep_cell_constraints(lengths_equal, angles_equal, fix_lengths,
     return encoded
 
 
-def write_lammps_atoms(supercell, atom_sites, species, species_idx, path):
+def write_lammps_atoms(supercell, atom_sites, species, species_idx, path, atom_style, charges=None):
     """
     Write file defining atoms for a LAMMPS simulation, using the
     `atomic` atom style.
@@ -324,6 +324,12 @@ def write_lammps_atoms(supercell, atom_sites, species, species_idx, path):
         Maps each atom site to a given species in `species`.
     path : str
         Directory in which to generate the atoms file.
+    atom_style : str ("atomic" or "full")
+        Corresponds to the LAMMPs command `atom_style`. Determines which
+        columns are neccessary in writing the atom data.
+    charges : list or ndarray of float of shape (M, ), optional
+        The charge associated with each species type. Only used if `atom_style`
+        is "full".
 
     Returns
     -------
@@ -331,10 +337,22 @@ def write_lammps_atoms(supercell, atom_sites, species, species_idx, path):
 
     Notes
     -----
-    Generates atom file in the `atomic` atom style so columns of the body of
-    the generated file are: `atom-ID`, `atom-type`, `x`, `y`, `z`.
+    For `atom_style` "atomic", output columns of the body of the generated file
+    are: `atom-ID`, `atom-type`, `x`, `y`, `z`. For `atom_style` "full",
+    output columns are: `atom-ID`, `molecule-ID`, `atom-type`, `q` (charge),
+    `x`, `y`, `z`.
+
 
     """
+
+    if isinstance(charges, list):
+        charges = np.array(charges)
+
+    # Validation
+    all_atom_styles = ['full', 'atomic']
+    if atom_style not in all_atom_styles:
+        raise ValueError('Atom style: "{}" not understood. Must be one of '
+                         ': {}'.format(all_atom_styles))
 
     num_atoms = atom_sites.shape[1]
     num_atom_types = len(species)
@@ -348,6 +366,10 @@ def write_lammps_atoms(supercell, atom_sites, species, species_idx, path):
 
     atom_id = np.arange(1, num_atoms + 1)[:, np.newaxis]
     atom_type = (species_idx + 1)[:, np.newaxis]
+
+    if atom_style == 'full':
+        mol_id = np.zeros((num_atoms, 1))
+        ch = charges[species_idx][:, np.newaxis]
 
     os.makedirs(path, exist_ok=True)
     atom_path = os.path.join(path, 'atoms.lammps')
@@ -370,16 +392,22 @@ def write_lammps_atoms(supercell, atom_sites, species, species_idx, path):
 
         at_f.write('Atoms\n\n')
 
-        fmt_sp = ['{:>8d}', '{:>5d}', '{:>24.15f}']
-        arr_fm = readwrite.format_arr([atom_id, atom_type, atom_sites.T],
-                                      format_spec=fmt_sp)
+        if atom_style == 'atomic':
+            fmt_sp = ['{:>8d}', '{:>5d}', '{:>24.15f}']
+            arrs = [atom_id, atom_type, atom_sites.T]
+
+        elif atom_style == 'full':
+            fmt_sp = ['{:>8d}', '{:>5d}', '{:>5d}', '{:>15.10f}', '{:>24.15f}']
+            arrs = [atom_id, mol_id, atom_type, ch, atom_sites.T]
+
+        arr_fm = readwrite.format_arr(arrs, format_spec=fmt_sp, col_delim=' ')
         at_f.write(arr_fm)
 
 
 def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
-                        potential_path, potential_type, potential_species,
+                        parameters, interactions, atoms_file, atom_style,
                         atom_constraints=None, cell_constraints=None,
-                        computes=None, thermos_dt=1, dump_dt=1):
+                        computes=None, thermos_dt=1, dump_dt=1, charges=None):
     """
     Generate LAMMPS input files for energy minimisation of a 3D periodic
     supercell.
@@ -396,13 +424,9 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
         Maps each atom site to a given species in `species`.
     path : str
         Directory in which to generate input files.
-    potential_path : str
-        Absolute path to the potential file.
-    potential_type : str
-        Type of potential which `potential_path` points to.
-    potential_species : str
-        Species which is modelled by the potential which `potential_path`
-        points to.
+    atom_style : str ("atomic" or "full")
+        Corresponds to the LAMMPs command `atom_style`. Determines which
+        columns are neccessary in writing the atom data.
     atom_constraints : dict, optional
         A dict with the following keys:
             fix_xy_idx : list or ndarray of dimension 1
@@ -434,6 +458,9 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
     dump_dt : int, optional
         After this number of timesteps, output dump file containing atom
         positions.
+    charges : list or ndarray of float of shape (M, ), optional
+        The charge associated with each species type. Only used if `atom_style`
+        is "full".
 
     Notes
     -----
@@ -444,6 +471,7 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
     [1] http://lammps.sandia.gov/doc/Section_commands.html
 
     TODO:
+    -   Add stress compute
     -   Implement cell constraints, see:
         http://lammps.sandia.gov/doc/fix_box_relax.html
 
@@ -464,7 +492,7 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
             'name': 'voratom',
             'dims': 2,
             'fmt': ['%20.10f', '%5.f'],
-        }
+        },
     }
 
     if computes is None:
@@ -477,18 +505,16 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
                 'Compute "{}" is not understood.'.format(c))
 
     # Write file defining atom positions:
-    write_lammps_atoms(supercell, atom_sites, species, species_idx, path)
+    write_lammps_atoms(supercell, atom_sites, species, species_idx, path,
+                       atom_style, charges=charges)
 
-    command_lns = [
-        'units        metal',
-        'dimension    3',
-        'boundary     p p p',
-        'atom_style   atomic',
-        'box          tilt large',
-        'read_data    atoms.lammps',
-        'pair_style   {}'.format(potential_type),
-        'pair_coeff   * * "{}" {}'.format(potential_path, potential_species)
-    ]
+    command_lns = list(parameters)
+    command_lns.append('atom_style   {}'.format(atom_style))
+    command_lns.append('')
+    command_lns.append('read_data    {}'.format(atoms_file))
+    command_lns.append('')
+    command_lns += interactions
+
 
     # Cell constraints (cell is fixed by default)
     fix_lengths = cell_constraints.get('fix_lengths')
@@ -611,7 +637,7 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
                 dmp_fmt += ' {}'.format(c_fm[i])
 
     # thermo prints info to the log file
-    thermo_args = ['step', 'atoms', 'pe', 'ke', 'etotal']
+    thermo_args = ['step', 'atoms', 'pe', 'ke', 'etotal', 'fmax']
     thermo_args_all = ' '.join(thermo_args)
     thermo_lns = [
         'thermo_style custom {}'.format(thermo_args_all),
@@ -619,9 +645,17 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
         'thermo {:d}'.format(thermos_dt)
     ]
 
-    dump_str = 'dump 1 all custom {} dump.*.txt id type x y z'.format(dump_dt)
+    if atom_style == 'atomic':
+        dump_str = 'dump 1 all custom {} dump.*.txt id type x y z'.format(
+            dump_dt)
+        dump_mod = 'dump_modify 1 format line "%5d %5d %20.10f %20.10f %20.10f'
+
+    elif atom_style == 'full':
+        dump_str = 'dump 1 all custom {} dump.*.txt id type x y z q'.format(
+            dump_dt)
+        dump_mod = 'dump_modify 1 format line "%5d %5d %20.10f %20.10f %20.10f %20.10f'
+
     dump_str += dmp_computes
-    dump_mod = 'dump_modify 1 format line "%5d %5d %20.10f %20.10f %20.10f'
     dump_mod += dmp_fmt + '"'
     dump_lns = [dump_str, dump_mod]
 
@@ -679,6 +713,10 @@ def read_lammps_log(path):
         'etotal': {
             'name': 'TotEng',
             'dtype': float
+        },
+        'fmax': {
+            'name': 'Fmax',
+            'dtype': float,
         }
     }
 
@@ -2148,9 +2186,9 @@ def read_cell_file(cellfile):
 
     Returns
     -------
-    lattice_data : dict of (str : ndarray or list or dict) 
+    lattice_data : dict of (str : ndarray or list or dict)
         `cell_vecs` : ndarray
-            Array of shape (3, 3), where the row vectors are the three lattice 
+            Array of shape (3, 3), where the row vectors are the three lattice
             vectors.
         `latt_params` : list
             List containing the lattice parameters of the unit cell,

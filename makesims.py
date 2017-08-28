@@ -20,6 +20,7 @@ from set_up.opt import OPT
 from set_up.setup_profiles import HOME_PATH
 import geometry
 import fractions
+from sys import stdout
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
@@ -1024,6 +1025,9 @@ def main():
 
                     # Generate simulation series:
     for upd_idx, upd in enumerate(all_upd):
+
+        stdout.write('Making sim: {} of {}\r'.format(upd_idx + 1, num_sims))
+        stdout.flush()
 
         # Update options:
         srs_opt = copy.deepcopy(opt)

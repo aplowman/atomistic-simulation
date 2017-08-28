@@ -322,7 +322,7 @@ class Scratch(object):
         return self.path_sep.join([self.path] + list(add_path))
 
 
-def prepare_series_update(series_spec, atomistic_structure):
+def prepare_series_update(series_spec, common_series_info, atomistic_structure):
     """
     Return a list of dicts representing each element in a simulation series.
 
@@ -351,7 +351,7 @@ def prepare_series_update(series_spec, atomistic_structure):
     if series_spec.get('name') not in allowed_sn:
         raise NotImplementedError('Series name: {} not understood.'.format(sn))
 
-    common_series_info = {}
+    # common_series_info = {}
 
     # Some series generate other series: e.g. gamma_surface should generate a
     # relative_shift series.
@@ -362,16 +362,16 @@ def prepare_series_update(series_spec, atomistic_structure):
         grid = geometry.Grid(edge_vecs, series_spec.get('grid_spec'))
         ggp = grid.get_grid_points()
         rel_shifts = ggp['points_frac'].T
+        points_std = ggp['points_std'].T
         rel_shifts_tup = ggp['points_tup']
         grid_idx = ggp['grid_idx_flat']
         row_idx = ggp['row_idx']
         col_idx = ggp['col_idx']
         point_idx = ggp['point_idx']
-        common_series_info.update({
-            'gamma_surface': {
-                **grid.to_jsonable(),
-                'preview': series_spec['preview']
-            },
+        common_series_info.append({
+            'series_name': 'gamma_surface',
+            **grid.to_jsonable(),
+            'preview': series_spec['preview']
         })
         series_spec = {
             'name': 'relative_shift',
@@ -383,6 +383,8 @@ def prepare_series_update(series_spec, atomistic_structure):
                 'row_idx': row_idx,
                 'col_idx': col_idx,
                 'point_idx': point_idx,
+                'points_std': points_std,
+                'csi_idx': [len(common_series_info) - 1] * len(rel_shifts),
             }
         }
 
@@ -566,7 +568,7 @@ def prepare_series_update(series_spec, atomistic_structure):
                 eu.update({k: vu})
             out[up_idx]['series_id'].update(eu)
 
-    return out, common_series_info
+    return out
 
 
 def prepare_all_series_updates(all_series_spec, atomistic_structure):
@@ -587,14 +589,14 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
     """
 
     # Replace each series dict with a list of update dicts:
-    common_series_info = {}
+    common_series_info = []
     srs_update = []
     for i in all_series_spec:
         upds = []
         for j in i:
-            upd, csi = prepare_series_update(j, atomistic_structure)
+            upd = prepare_series_update(
+                j, common_series_info, atomistic_structure)
             upds.append(upd)
-            common_series_info.update(csi)
         srs_update.append(upds)
 
     # Combine parallel series:
@@ -683,24 +685,29 @@ def process_castep_opt(castep_opt, sym_ops=None):
         ]
 
 
-def process_lammps_opt(lammps_opt, structure):
+def process_lammps_opt(lammps_opt, structure, stage_path, scratch_path):
     """
     """
 
-    # Set full potential path
-    fn = lammps_opt['potential_file']
-    lammps_opt['potential_path'] = os.path.join(REF_PATH, 'potentials', fn)
-    lammps_opt.pop('potential_file')
+    for k, v in lammps_opt['potential_files'].items():
 
-    # Set the potential species
-    sp = structure.all_species
+        pot_path = os.path.join(REF_PATH, 'potentials', v)
+        pot_path_stage = os.path.join(stage_path, v)
+        pot_path_scratch = os.path.join(scratch_path, v)
 
-    if len(sp) > 1:
-        raise NotImplementedError('Writing the potential command in '
-                                  'multi-species LAMMPS input files has not '
-                                  'yet been implemented.')
+        try:
+            shutil.copy(pot_path, pot_path_stage)
+        except:
+            raise ValueError(
+                'Check potential file: "{}" exists.'.format(pot_path))
 
-    lammps_opt['potential_species'] = sp[0]
+        for ln_idx, ln in enumerate(lammps_opt['interactions']):
+            if k in ln:
+                pot_path_scratch = '"' + pot_path_scratch + '"'
+                lammps_opt['interactions'][ln_idx] = ln.replace(
+                    k, pot_path_scratch)
+
+    del lammps_opt['potential_files']
 
 
 def process_constraints(opt, structure):
@@ -1093,7 +1100,7 @@ def main():
         srs_opt['set_up']['stage_series_path'] = stage_srs_path
         srs_opt['set_up']['scratch_srs_path'] = scratch_srs_path
 
-        if lst_struct_idx > -1:
+        if lst_struct_idx > -1 and opt['make_plots']:
 
             plt_path_lst = [stage.path, 'calcs'] + \
                 srs_path[:lst_struct_idx + 1] + ['plots']
@@ -1119,7 +1126,8 @@ def main():
             process_castep_opt(srs_opt['castep'], sym_ops=sym_ops)
 
         elif srs_opt['method'] == 'lammps':
-            process_lammps_opt(srs_opt['lammps'], srs_as)
+            process_lammps_opt(srs_opt['lammps'],
+                               srs_as, stage.path, scratch.path)
 
         # Generate AtomisticSim:
         asim = atomistic.AtomisticSimulation(srs_as, srs_opt)

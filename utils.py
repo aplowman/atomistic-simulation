@@ -625,3 +625,18 @@ def get_bash_path(path, end_path_sep=False):
 def get_col(a, col_idx):
     """Return a column in a list of lists"""
     return [row[col_idx] for row in a]
+
+
+def get_col_none(a, col_idx):
+    b = []
+    for row_idx, row in enumerate(a):
+        try:
+            b.append(row[col_idx])
+        except:
+            b.append(None)
+    return b
+
+
+def index_lst(lst, idx):
+    """Return indexed elements of a list."""
+    return [i for i_idx, i in enumerate(lst) if i_idx in idx]

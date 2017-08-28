@@ -707,6 +707,18 @@ def process_lammps_opt(lammps_opt, structure, stage_path, scratch_path):
 
     del lammps_opt['potential_files']
 
+    charges_dict = lammps_opt.get('charges')
+    if charges_dict is not None:
+        charges = []
+        for sp in structure.all_species:
+            try:
+                charges.append(charges_dict[sp])
+            except:
+                raise ValueError('Cannot find charge specification for species: '
+                                 ' {}'.format(sp))
+
+        lammps_opt['charges'] = charges
+
 
 def process_constraints(opt, structure):
     """

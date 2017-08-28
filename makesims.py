@@ -351,8 +351,6 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
     if series_spec.get('name') not in allowed_sn:
         raise NotImplementedError('Series name: {} not understood.'.format(sn))
 
-    # common_series_info = {}
-
     # Some series generate other series: e.g. gamma_surface should generate a
     # relative_shift series.
 

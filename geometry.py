@@ -334,6 +334,8 @@ class Grid(object):
 
         else:
 
+            grid_spec = copy.deepcopy(grid_spec)
+
             # First form base grid parent grid spec:
             A = edge_vecs[:, 0:1]
             B = edge_vecs[:, 1:2]

@@ -20,6 +20,7 @@ from set_up.opt import OPT
 from set_up.setup_profiles import HOME_PATH
 import geometry
 import fractions
+from sys import stdout
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
@@ -321,7 +322,7 @@ class Scratch(object):
         return self.path_sep.join([self.path] + list(add_path))
 
 
-def prepare_series_update(series_spec, atomistic_structure):
+def prepare_series_update(series_spec, common_series_info, atomistic_structure):
     """
     Return a list of dicts representing each element in a simulation series.
 
@@ -350,8 +351,6 @@ def prepare_series_update(series_spec, atomistic_structure):
     if series_spec.get('name') not in allowed_sn:
         raise NotImplementedError('Series name: {} not understood.'.format(sn))
 
-    common_series_info = {}
-
     # Some series generate other series: e.g. gamma_surface should generate a
     # relative_shift series.
 
@@ -361,16 +360,16 @@ def prepare_series_update(series_spec, atomistic_structure):
         grid = geometry.Grid(edge_vecs, series_spec.get('grid_spec'))
         ggp = grid.get_grid_points()
         rel_shifts = ggp['points_frac'].T
+        points_std = ggp['points_std'].T
         rel_shifts_tup = ggp['points_tup']
         grid_idx = ggp['grid_idx_flat']
         row_idx = ggp['row_idx']
         col_idx = ggp['col_idx']
         point_idx = ggp['point_idx']
-        common_series_info.update({
-            'gamma_surface': {
-                **grid.to_jsonable(),
-                'preview': series_spec['preview']
-            },
+        common_series_info.append({
+            'series_name': 'gamma_surface',
+            **grid.to_jsonable(),
+            'preview': series_spec['preview']
         })
         series_spec = {
             'name': 'relative_shift',
@@ -382,6 +381,8 @@ def prepare_series_update(series_spec, atomistic_structure):
                 'row_idx': row_idx,
                 'col_idx': col_idx,
                 'point_idx': point_idx,
+                'points_std': points_std,
+                'csi_idx': [len(common_series_info) - 1] * len(rel_shifts),
             }
         }
 
@@ -559,10 +560,13 @@ def prepare_series_update(series_spec, atomistic_structure):
         for up_idx, up in enumerate(out):
             eu = {}
             for k, v in extra_update.items():
-                eu.update({k: np.asscalar(v[up_idx])})
+                vu = v[up_idx]
+                if isinstance(vu, np.generic):
+                    vu = np.asscalar(vu)
+                eu.update({k: vu})
             out[up_idx]['series_id'].update(eu)
 
-    return out, common_series_info
+    return out
 
 
 def prepare_all_series_updates(all_series_spec, atomistic_structure):
@@ -583,14 +587,14 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
     """
 
     # Replace each series dict with a list of update dicts:
-    common_series_info = {}
+    common_series_info = []
     srs_update = []
     for i in all_series_spec:
         upds = []
         for j in i:
-            upd, csi = prepare_series_update(j, atomistic_structure)
+            upd = prepare_series_update(
+                j, common_series_info, atomistic_structure)
             upds.append(upd)
-            common_series_info.update(csi)
         srs_update.append(upds)
 
     # Combine parallel series:
@@ -679,24 +683,29 @@ def process_castep_opt(castep_opt, sym_ops=None):
         ]
 
 
-def process_lammps_opt(lammps_opt, structure):
+def process_lammps_opt(lammps_opt, structure, stage_path, scratch_path):
     """
     """
 
-    # Set full potential path
-    fn = lammps_opt['potential_file']
-    lammps_opt['potential_path'] = os.path.join(REF_PATH, 'potentials', fn)
-    lammps_opt.pop('potential_file')
+    for k, v in lammps_opt['potential_files'].items():
 
-    # Set the potential species
-    sp = structure.all_species
+        pot_path = os.path.join(REF_PATH, 'potentials', v)
+        pot_path_stage = os.path.join(stage_path, v)
+        pot_path_scratch = os.path.join(scratch_path, v)
 
-    if len(sp) > 1:
-        raise NotImplementedError('Writing the potential command in '
-                                  'multi-species LAMMPS input files has not '
-                                  'yet been implemented.')
+        try:
+            shutil.copy(pot_path, pot_path_stage)
+        except:
+            raise ValueError(
+                'Check potential file: "{}" exists.'.format(pot_path))
 
-    lammps_opt['potential_species'] = sp[0]
+        for ln_idx, ln in enumerate(lammps_opt['interactions']):
+            if k in ln:
+                pot_path_scratch = '"' + pot_path_scratch + '"'
+                lammps_opt['interactions'][ln_idx] = ln.replace(
+                    k, pot_path_scratch)
+
+    del lammps_opt['potential_files']
 
 
 def process_constraints(opt, structure):
@@ -1000,31 +1009,58 @@ def main():
 
     # If only one simulation, plot the structure:
     if lst_struct_idx == -1:
-        base_as.visualise(show_iplot=False, save=True,
-                          save_args=save_args, proj_2d=True)
+        if opt['make_plots']:
+            base_as.visualise(show_iplot=False, save=True,
+                              save_args=save_args, proj_2d=True)
 
     # Prepare series update data:
     all_upd = [{}]
     all_scratch_paths = []
     all_sims = []
-    csi = {}
+    csi = []
     if is_srs:
         all_upd, csi = prepare_all_series_updates(srs_df, base_as)
 
-        if 'gamma_surface' in csi:
-            # Plot gamma surface grid:
-            save_args = {'filename': stage.get_path('grid.html')}
-            geometry.Grid.from_jsonable(csi['gamma_surface']).visualise(
-                show_iplot=False, save=True, save_args=save_args)
+        # Plot gamma surface grids:
+        g_preview = []
+        cnd = {'series_name': 'gamma_surface'}
+        g_idx, gamma = utils.dict_from_list(csi, cnd, ret_index=True)
 
-            if csi['gamma_surface'].get('preview'):
-                if not utils.confirm('Check gamma surface grid now. '
-                                     'Continue?'):
+        if gamma is not None and opt['make_plots']:
+
+            if gamma.get('preview') is not None:
+                g_preview.append(gamma['preview'])
+
+            gamma_count = 0
+            while gamma is not None:
+
+                g_fn = stage.get_path('γ_surface_{}.html'.format(gamma_count))
+                vis_args = {
+                    'show_iplot': False,
+                    'save': True,
+                    'save_args': {
+                        'filename': g_fn
+                    }
+                }
+                geometry.Grid.from_jsonable(gamma).visualise(**vis_args)
+
+                csi_sub = [i for i_idx, i in enumerate(csi) if i_idx != g_idx]
+                g_idx, gamma = utils.dict_from_list(
+                    csi_sub, cnd, ret_index=True)
+                gamma_count += 1
+
+            if any(g_preview):
+                g_prv_msg = 'Check gamma surface grid(s) now. Continue?'
+                if not utils.confirm(g_prv_msg):
                     print('Exiting.')
                     return
 
-                    # Generate simulation series:
+    # Generate simulation series:
+    num_sims = len(all_upd)
     for upd_idx, upd in enumerate(all_upd):
+
+        stdout.write('Making sim: {} of {}\r'.format(upd_idx + 1, num_sims))
+        stdout.flush()
 
         # Update options:
         srs_opt = copy.deepcopy(opt)
@@ -1063,7 +1099,7 @@ def main():
         srs_opt['set_up']['stage_series_path'] = stage_srs_path
         srs_opt['set_up']['scratch_srs_path'] = scratch_srs_path
 
-        if lst_struct_idx > -1:
+        if lst_struct_idx > -1 and opt['make_plots']:
 
             plt_path_lst = [stage.path, 'calcs'] + \
                 srs_path[:lst_struct_idx + 1] + ['plots']
@@ -1089,7 +1125,8 @@ def main():
             process_castep_opt(srs_opt['castep'], sym_ops=sym_ops)
 
         elif srs_opt['method'] == 'lammps':
-            process_lammps_opt(srs_opt['lammps'], srs_as)
+            process_lammps_opt(srs_opt['lammps'],
+                               srs_as, stage.path, scratch.path)
 
         # Generate AtomisticSim:
         asim = atomistic.AtomisticSimulation(srs_as, srs_opt)

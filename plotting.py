@@ -1,4 +1,5 @@
 import numpy as np
+import os
 
 # Plotly
 from plotly import tools
@@ -637,3 +638,88 @@ def get_circle_trace_plotly(radius, origin=None, start_ang=0, stop_ang=360, degr
     }
 
     return out
+
+
+def plot_many_mpl(figs, save_dir=None):
+    """
+    Plot multiple figures with mutliple subplots and traces in Matplotlib.
+
+    """
+
+    SUBPLOT_WIDTH = 500
+    SUBPLOT_HEIGHT = 400
+    DPI = 96
+
+    num_figs = len(figs)
+    add_colourbar = False
+
+    for f in figs:
+
+        # print('plot_many_mpl: f')
+
+        num_subplots = len(f['subplots'])
+        width = (SUBPLOT_WIDTH * num_subplots) / DPI
+        height = (SUBPLOT_HEIGHT) / DPI
+        f_i, all_ax = plt.subplots(
+            1, num_subplots, figsize=(width, height), dpi=DPI)
+
+        for s_idx, s in enumerate(f['subplots']):
+
+            # print('plot_many_mpl: s')
+
+            num_traces = len(s['traces'])
+
+            try:
+                ax = all_ax[s_idx]
+            except:
+                ax = all_ax
+
+            for t in s['traces']:
+
+                # print('plot_many_mpl: t: {}'.format(t))
+
+                for sub_t in t:
+
+                    x = sub_t['x']
+                    y = sub_t['y']
+
+                    x_arr = np.array(x)
+                    y_arr = np.array(y)
+
+                    # print('shape x: {}'.format(x_arr.shape))
+                    # print('shape y: {}'.format(y_arr.shape))
+
+                    plt_type = sub_t['type']
+                    label = sub_t['name']
+
+                    if sub_t.get('title') is not None:
+                        label += ' ' + sub_t['title']
+
+                    if plt_type == 'marker':
+                        size = sub_t['marker'].get('size')
+                        ax.scatter(x, y, s=size, label=label)
+
+                    elif plt_type == 'line':
+                        linewidth = sub_t['line'].get('width')
+                        ax.plot(x, y, linewidth=linewidth, label=label)
+
+                    elif plt_type == 'contour':
+                        X = np.array(x).reshape(sub_t['shape'])
+                        Y = np.array(y).reshape(sub_t['shape'])
+                        Z = np.array(sub_t['z']).reshape(sub_t['shape'])
+                        cax = ax.contourf(X, Y, Z)
+                        ax.set_aspect('equal')
+                        cbar = f_i.colorbar(cax, ax=ax)
+
+            ax.legend()
+            ax.set_title(s['title'])
+
+        f_i.suptitle(f['title'])
+
+        if save_dir is not None:
+            os.makedirs(save_dir, exist_ok=True)
+            fn = f['filename'] + '_' + f['title']
+            fn = fn.replace(':', '_').replace(' ', '_')
+            fn += '.' + f['fmt']
+            path = os.path.join(save_dir, fn)
+            plt.savefig(path)

@@ -63,6 +63,111 @@ def compute_gb_thickness(sim):
         return None
 
 
+def atoms_gb_dist_initial(sim):
+    try:
+        return sim.structure.atoms_gb_dist_old
+    except:
+        return None
+
+
+def atoms_gb_dist_final(sim):
+
+    if sim.options['method'] == 'lammps':
+        atom_sites_final = sim.results['atoms'][-1]
+    elif sim.options['method'] == 'castep':
+        atom_sites_final = sim.results['geom']['ions'][-1]
+
+    try:
+        n_unit = sim.structure.n_unit
+        gb_dist = np.einsum('jk,jl->k', atom_sites_final, n_unit)
+        return gb_dist
+
+    except:
+        return None
+
+
+def atoms_gb_dist_δ(sim):
+    try:
+        return sim.structure.atoms_gb_dist_δ
+    except:
+        return None
+
+
+def gamma_info(sim, info):
+
+    sid_idx = None
+    for s_idx, s in enumerate(sim.options['series']):
+        cnd = {'name': 'gamma_surface'}
+        g_idx, g = utils.dict_from_list(s, cnd, ret_index=True)[0]
+        if g is not None:
+            sid_idx = (sid_idx, g_idx)
+            break
+    try:
+        d = sim.options['series_id'][sid_idx[0]][sid_idx[1]]
+        if info in ['col_idx', 'row_idx', 'points_std']:
+            out = d[info]
+        return out
+
+    except:
+        return None
+
+
+def atoms_gb_dist_δ_final(out):
+    gb_dist_initial_cnd = {
+        'type': 'compute',
+        'name': 'atoms_gb_dist_initial',
+    }
+    gb_dist_final_cnd = {
+        'type': 'compute',
+        'name': 'atoms_gb_dist_final',
+    }
+    gb_dist_δ_cnd = {
+        'type': 'compute',
+        'name': 'atoms_gb_dist_δ',
+    }
+    this_cmpt_cnd = {
+        'type': 'compute',
+        'name': 'atoms_gb_dist_δ_final',
+    }
+    type_cnd = {
+        'type': 'parameter',
+        'name': 'base_structure',
+        'idx': ('type', ),
+    }
+
+    variables = out['variables']
+    this_cmpt = dict_from_list(variables, this_cmpt_cnd)
+
+    # Required parameters/results:
+    gb_dist_initial = dict_from_list(variables, gb_dist_initial_cnd)['vals']
+    gb_dist_final = dict_from_list(variables, gb_dist_final_cnd)['vals']
+    gb_dist_δ = dict_from_list(variables, gb_dist_δ_cnd)['vals']
+    type_param = dict_from_list(variables, type_cnd)['vals']
+    num_vals = len(type_param)
+
+    print('len(gb_dist_final): {}'.format(len(gb_dist_final)))
+    print('len(gb_dist_initial): {}'.format(len(gb_dist_initial)))
+    print('len(gb_dist_δ): {}'.format(len(gb_dist_δ)))
+
+    atoms_gb_dist_δ_final = [None, ] * num_vals
+    for sim_idx, sup_type in enumerate(type_param):
+
+        if sup_type == 'CSLBicrystal':
+            atoms_in = np.array(gb_dist_initial[sim_idx])
+            atoms_fi = np.array(gb_dist_final[sim_idx])
+            δf = atoms_fi - atoms_in
+
+            # Sort by dist from origin boundary plane
+            srt_idx = np.argsort(atoms_in)
+            atoms_gb_dist_δ_final[sim_idx] = list(δf[srt_idx])
+            gb_dist_initial[sim_idx] = list(atoms_in[srt_idx])
+            gb_dist_final[sim_idx] = list(atoms_fi[srt_idx])
+            gb_dist_δ[sim_idx] = list(np.array(gb_dist_δ[sim_idx])[srt_idx])
+
+    this_cmpt['vals'] = atoms_gb_dist_δ_final
+    print('hi!')
+
+
 def compute_gamma_energy(out, energy_src, opt_step, series=None):
     gamma_xy_cnd = {
         'type': 'common_series_info',
@@ -206,19 +311,37 @@ def compute_gb_energy(out, series_id, bulk_src, energy_src, opt_step, unit):
     type_param = dict_from_list(variables, type_cnd)['vals']
     num_ions = dict_from_list(variables, num_ions_cnd)['vals']
     energy = dict_from_list(variables, energy_cnd)['vals']
-    num_vals = len(energy)
 
     # Required computes (if multi-computes, may not be computed yet)
     areas = dict_from_list(variables, areas_cnd)['vals']
 
-    if series_id is not None:
-        gb_srs = []
-        for s in series_id:
-            srs_var = dict_from_list(variables, {'id': s})
-            if srs_var is None:
-                raise ValueError('Variable with `id` "{}" cannot be'
-                                 ' found.'.format(s))
-            gb_srs.append(srs_var['vals'])
+    series_names = out['series_name']
+    sesh_ids = out['session_id']
+    num_sims = len(sesh_ids)
+
+    srs_vals = []
+    for i in series_id:
+
+        if i in series_names:
+            i_idx = series_names.index(i)
+            i_vals = utils.get_col(out['series_id']['val'], i_idx)
+        else:
+            i_vals = dict_from_list(
+                out['variables'], {'id': i})['vals']
+
+        srs_vals.append(i_vals)
+
+    srs_vals = utils.transpose_list(srs_vals)
+
+    if len(srs_vals) == 0:
+        srs_vals = [[0] for _ in range(num_sims)]
+
+    # print('srs_vals: \n{}\n'.format(srs_vals))
+
+    # print('energy: \n{}\n'.format(energy))
+    # print('type_param: \n{}\n'.format(type_param))
+    # print('num_ions: \n{}\n'.format(num_ions))
+    # print('areas: \n{}\n'.format(areas))
 
     gb_idx = []
     bulk_idx = []
@@ -228,39 +351,20 @@ def compute_gb_energy(out, series_id, bulk_src, energy_src, opt_step, unit):
         elif i == 'CSLBulkCrystal':
             bulk_idx.append(i_idx)
 
-    print('gb_idx: {}'.format(gb_idx))
-    print('bulk_idx: {}'.format(bulk_idx))
-
-    # Get series_id_val of each GB, bulk supercell
-    srs_id_val = out['series_id']['val']
-    print('srs_id_val: \n{}\n'.format(srs_id_val))
-    print('series_id: {}'.format(series_id))
+    # print('gb_idx: {}'.format(gb_idx))
+    # print('bulk_idx: {}'.format(bulk_idx))
 
     # For each GB supercell, find a bulk supercell whose series val matches
     # (Broadcasting logic would go here)
-    all_E_gb = [None, ] * num_vals
+    all_E_gb = [None, ] * num_sims
     for gb_i in gb_idx:
         for bulk_i in bulk_idx:
-
-            print('bulk_i: {}'.format(bulk_i))
-            print("srs_id_val[bulk_i]: {}".format(srs_id_val[bulk_i]))
-            if srs_id_val[bulk_i] == [None, None] or srs_id_val[gb_i] == srs_id_val[bulk_i]:
-
-                calc_gb = True
-                if series_id is not None or len(series_id) > 0:
-                    print('series_id found')
-                    for s in gb_srs:
-                        if s[gb_i] != s[bulk_i]:
-                            calc_gb = False
-                            break
-
-                if calc_gb:
-                    print('calc_gb')
-                    gb_num = num_ions[gb_i]
-                    bulk_num = num_ions[bulk_i]
-                    bulk_frac = gb_num / bulk_num
-                    E_gb = (energy[gb_i] - bulk_frac *
-                            energy[bulk_i]) / (2 * areas[gb_i])
+            if srs_vals[gb_i] == srs_vals[bulk_i]:
+                gb_num = num_ions[gb_i]
+                bulk_num = num_ions[bulk_i]
+                bulk_frac = gb_num / bulk_num
+                E_gb = (energy[gb_i] - bulk_frac *
+                        energy[bulk_i]) / (2 * areas[gb_i])
 
         if unit == 'J/m^2':
             E_gb *= 16.02176565
@@ -271,6 +375,7 @@ def compute_gb_energy(out, series_id, bulk_src, energy_src, opt_step, unit):
 MULTICOMPUTE_LOOKUP = {
     'gb_energy': compute_gb_energy,
     'gamma_energy': compute_gamma_energy,
+    'atoms_gb_dist_δ_final': atoms_gb_dist_δ_final,
 }
 
 # Computed quantities which are dependent on exactly one simulation:
@@ -283,7 +388,13 @@ SINGLE_COMPUTES = {
     'forces_uncons_rms':  (compute_rms_force, 1),
     'forces_cons_sym_rms':  (compute_rms_force, 2),
     'gb_area': (compute_gb_area, ),
-    'gb_thickness': (compute_gb_thickness, )
+    'gb_thickness': (compute_gb_thickness, ),
+    'atoms_gb_dist_initial': (atoms_gb_dist_initial, ),
+    'atoms_gb_dist_final': (atoms_gb_dist_final, ),
+    'atoms_gb_dist_δ': (atoms_gb_dist_δ, ),
+    'gamma_row_idx': (gamma_info, 'row_idx'),
+    'gamma_col_idx': (gamma_info, 'col_idx'),
+    'gamma_xy': (gamma_info, 'xy'),
 }
 
 # Variables which do not need to be parameterised:
@@ -344,6 +455,24 @@ PREDEFINED_VARS = {
         'id': 'gamma_surface_xy',
         'vals': [],
     },
+    'gb_dist_initial': {
+        'type': 'compute',
+        'name': 'atoms_gb_dist_initial',
+        'id': 'atoms_gb_dist_initial',
+        'vals': [],
+    },
+    'gb_dist_final': {
+        'type': 'compute',
+        'name': 'atoms_gb_dist_final',
+        'id': 'atoms_gb_dist_final',
+        'vals': [],
+    },
+    'gb_dist_δ': {
+        'type': 'compute',
+        'name': 'atoms_gb_dist_δ',
+        'id': 'atoms_gb_dist_δ',
+        'vals': [],
+    },
 }
 
 
@@ -391,6 +520,14 @@ def get_required_defn(var_name, **kwargs):
                                  opt_step=kwargs['opt_step'])
         out += [
             PREDEFINED_VARS['num_ions']
+        ]
+
+    elif var_name == 'atoms_gb_dist_δ_final':
+        out += [
+            PREDEFINED_VARS['gb_dist_initial'],
+            PREDEFINED_VARS['gb_dist_final'],
+            PREDEFINED_VARS['gb_dist_δ'],
+            PREDEFINED_VARS['sup_type'],
         ]
 
     # print('get_required_defn: out: {}'.format(format_list(out)))

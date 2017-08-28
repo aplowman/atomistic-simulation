@@ -611,7 +611,7 @@ def main():
     #     read_results(s, skip_idx=skip_idx[s_idx])
 
     # Compute additional properties
-    collate_results(RES_OPT, debug=True)
+    collate_results(RES_OPT, debug=RES_OPT.get('debug', False))
 
 
 if __name__ == '__main__':

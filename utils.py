@@ -483,7 +483,7 @@ def format_time(secs):
     return time_fmt
 
 
-def trim_common_nones(a, b):
+def trim_common_nones(a, b, ret_idx=False):
     """
     Trim two equal-length lists from both ends by removing common None values.
 
@@ -539,6 +539,9 @@ def trim_common_nones(a, b):
 
     a[:] = [i for i_idx, i in enumerate(a) if i_idx not in trim_idx]
     b[:] = [i for i_idx, i in enumerate(b) if i_idx not in trim_idx]
+
+    if ret_idx:
+        return trim_idx
 
 
 def dict_from_list(lst, conditions, false_keys=None, ret_index=False):

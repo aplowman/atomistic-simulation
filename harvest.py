@@ -34,7 +34,7 @@ def do_plots(out):
 
     vrs = out['variables']
 
-    for pl in out['plots']:
+    for pl_idx, pl in enumerate(out['plots']):
 
         fmt = pl['fmt']
         lib = pl['lib']
@@ -45,10 +45,13 @@ def do_plots(out):
         all_data_defn = pl['data']
 
         all_data = []
-        for i in all_data_defn:
+        for ii_idx, i in enumerate(all_data_defn):
 
-            x = dict_from_list(vrs, {'id': i['x']['id']})['vals']
-            y = dict_from_list(vrs, {'id': i['y']['id']})['vals']
+            x_defn = dict_from_list(vrs, {'id': i['x']['id']})
+            y_defn = dict_from_list(vrs, {'id': i['y']['id']})
+
+            x, y = i['x'], i['y']
+            x['vals'], y['vals'] = x_defn['vals'], y_defn['vals']
 
             d = {
                 'x': x,
@@ -59,7 +62,11 @@ def do_plots(out):
                 row_idx = dict_from_list(vrs, {'id': i['row_idx_id']})['vals']
                 col_idx = dict_from_list(vrs, {'id': i['col_idx_id']})['vals']
                 shape = dict_from_list(vrs, {'id': i['shape_id']})['vals']
-                z = dict_from_list(vrs, {'id': i['z']['id']})['vals']
+
+                z_defn = dict_from_list(vrs, {'id': i['z']['id']})
+                z = i['z']
+                z['vals'] = z_defn['vals']
+
                 d.update({
                     'z': z,
                     'row_idx': row_idx,
@@ -154,45 +161,65 @@ def do_plots(out):
                 all_s.append(all_t)
             all_f.append(all_s)
 
-        print('all_f: \n{}\n'.format(all_f))
-
         figs = []
         for f_idx, f in enumerate(all_f):
+
             subplots = []
             for s_idx, s in enumerate(f):
                 traces = []
                 for t_idx, t in enumerate(s):
                     sub_traces = []
-                    for d in all_data:
+                    for d_idx, d in enumerate(all_data):
 
-                        x_d = utils.index_lst(d['x'], t)
-                        y_d = utils.index_lst(d['y'], t)
+                        x_d = utils.index_lst(d['x']['vals'], t)
+                        y_d = utils.index_lst(d['y']['vals'], t)
+
+                        trm_idx = utils.trim_common_nones(
+                            x_d, y_d, ret_idx=True)
+
+                        if trm_idx is None:
+                            trm_idx = []
 
                         if d['type'] in ['line', 'marker']:
 
-                            utils.trim_common_nones(x_d, y_d)
                             if d.get('sort'):
                                 srt_idx = np.argsort(x_d)
                                 x_d = list(np.array(x_d)[srt_idx])
                                 y_d = list(np.array(y_d)[srt_idx])
 
-                        # if isinstance(x_d[0], list):
-                        #     # In this case, we're getting a data set from a
-                        #     # single simulation
-                        #     x_d = x_d[0]
-                        #     y_d = y_d[0]
+                        x = copy.deepcopy(d['x'])
+                        x['vals'] = x_d
+
+                        y = copy.deepcopy(d['y'])
+                        y['vals'] = y_d
 
                         st_dict = {
-                            'x': x_d,
-                            'y': y_d,
+                            'x': x,
+                            'y': y,
                             'type': d['type'],
                             'title': format_title(trace_srs, unique_tsv[t_idx]),
                             **{k: v for k, v in d.items() if k not in ['x', 'y', 'z']},
                         }
 
                         if d['type'] == 'contour':
-                            z_d = utils.index_lst(d['z'], t)
-                            st_dict.update({'z': z_d})
+
+                            z_d = copy.copy(utils.index_lst(d['z']['vals'], t))
+                            z = copy.deepcopy(d['z'])
+                            z['vals'] = z_d
+
+                            row_idx = utils.index_lst(d['row_idx'], t)
+                            col_idx = utils.index_lst(d['col_idx'], t)
+
+                            for i in [z_d, row_idx, col_idx]:
+                                i[:] = [j for j_idx, j in enumerate(
+                                    i) if j_idx not in trm_idx]
+
+                            st_dict.update({
+                                'z': z,
+                                'row_idx': row_idx,
+                                'col_idx': col_idx,
+
+                            })
 
                         sub_traces.append(st_dict)
 
@@ -206,11 +233,8 @@ def do_plots(out):
             figs.append({
                 'subplots': subplots,
                 'title': format_title(file_srs, unique_fsv[f_idx]),
-                'fmt': pl['fmt'],
-                'filename': pl['filename'],
+                **{k: v for k, v in pl.items() if k not in ['subplots']},
             })
-
-        print('figs: \n{}\n'.format(format_list(figs)))
 
         if pl['lib'] == 'mpl':
             plotting.plot_many_mpl(figs, save_dir=out['dir'])
@@ -589,7 +613,6 @@ def collate_results(res_opt, debug=False):
                 all_sub_idx = vr.get('idx')
                 if all_sub_idx is not None:
                     for sub_idx in all_sub_idx:
-                        # print('val: {}'.format(val))
                         val = val[sub_idx]
                 if isinstance(val, np.ndarray):
                     val = val.tolist()

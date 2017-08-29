@@ -219,8 +219,27 @@ def do_plots(out):
                 'Library "{}" not supported.'.format(pl['lib']))
 
 
-def read_results(sid, skip_idx=None, query_all=False):
+def read_results(sid, skip_idx=None, overwrite=False, query_all=False):
     """
+    Parameters
+    ----------
+    sid : str
+        Simulation series ID.
+    skip_idx : list, optional
+        List of simulation series indices to skip. Default is None, in which
+        case none of the simulations are skipped. Useful for skipping failed
+        simulations.
+    overwrite : bool or str ("ask"), optional
+        If True, overwrite previously recorded results. If False, do not
+        overwrite previously recoreded results. If "ask", query user, in which
+        case `query_all` controls whether user is asked for each simulation
+        in the series or just the first. Default is False.
+    query_all : bool, optional
+        Only applies if `overwrite` is "ask". If True, user is asked whether to
+        overwrite results for each simulation in the series. If False, user is
+        asked for only the first simulation and the answer is rememered for
+        the remaining simulations. Default is False.
+
     """
 
     sid_path = os.path.join(HOME_PATH, sid)
@@ -248,21 +267,46 @@ def read_results(sid, skip_idx=None, query_all=False):
         elif method == 'lammps':
             out = simsio.read_lammps_output(calc_path)
 
-        query_i = False
-        if query_all:
-            query_i = True
-        elif not query_all and s_count == 1:
-            query_i = True
+        results_exist = False
+        if hasattr(sim_i, 'results'):
+            results_exist = True
 
-        save_res = True
-        if query_i and hasattr(sim_i, 'results'):
-            save_res = False
-            msg = 'Results already collated for: {}'.format(sid)
-            if query_all:
-                msg += ' : {}'.format(s_idx)
-            msg += '. Overwrite?'
-            if utils.confirm(msg):
+        if results_exist
+            if overwrite == True:
+                # Overwrite without querying
                 save_res = True
+
+            elif overwrite == False:
+                # Skip without querying
+                continue
+
+            elif overwrite == 'ask':
+                # Ask user whether to overwrite. If `query_all` is True, user
+                # is asked for each simulation, otherwise user is asked for the
+                # first simulation, and the answer is applied for remaining
+                # simulations.
+
+                query_i = False
+                if query_all:
+                    query_i = True
+                elif not query_all and s_count == 1:
+                    query_i = True
+
+                save_res = True
+                if query_i:
+                    save_res = False
+                    msg = 'Results already collated for: {}'.format(sid)
+                    if query_all:
+                        msg += ' : {}'.format(s_idx)
+                    msg += '. Overwrite?'
+
+                    if utils.confirm(msg):
+                        save_res = True
+                    elif not query_all:
+                        overwrite = False
+
+        else:
+            save_res = True
 
         if save_res:
             sims['all_sims'][s_idx].results = out
@@ -603,15 +647,17 @@ def main():
 
     sids = RES_OPT['sid']
     skip_idx = RES_OPT['skip_idx']
+    overwrite = RES_OPT.get('overwrite', False)
+    debug = RES_OPT.get('debug', False)
 
     if skip_idx is None or len(skip_idx) == 0:
         skip_idx = [[] for _ in range(len(sids))]
 
-    # for s_idx, s in enumerate(sids):
-    #     read_results(s, skip_idx=skip_idx[s_idx])
+    for s_idx, s in enumerate(sids):
+        read_results(s, skip_idx=skip_idx[s_idx], overwrite=overwrite)
 
     # Compute additional properties
-    collate_results(RES_OPT, debug=RES_OPT.get('debug', False))
+    collate_results(RES_OPT, debug=debug)
 
 
 if __name__ == '__main__':

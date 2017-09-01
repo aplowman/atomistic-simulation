@@ -298,7 +298,8 @@ def nest_lists(my_list):
 
             num_repeats = products[col_idx + 1]
             sub_list_idx = int(row_idx / num_repeats) % len(my_list[col_idx])
-            out[row_idx][col_idx] = my_list[col_idx][sub_list_idx]
+            out[row_idx][col_idx] = copy.deepcopy(
+                my_list[col_idx][sub_list_idx])
 
     return out
 

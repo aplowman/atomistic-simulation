@@ -711,23 +711,44 @@ def plot_many_mpl(figs, save_dir=None):
 
                         z = sub_t['z']
                         zv = z['vals']
-                        col_idx = sub_t['col_idx']
-                        row_idx = sub_t['row_idx']
 
-                        lens = [len(i) for i in [xv, yv, zv, row_idx, col_idx]]
-                        if len(set(lens)) != 1:
-                            raise ValueError('Lengths do not agree for contour'
-                                             ' plot: (x, y, z, row_idx, col_idx) '
-                                             '= {}'.format(lens))
+                        bad_len_msg = ('Lengths do not agree for contour plot:'
+                                       ' (x, y, z, row_idx, col_idx) = {}')
+                        bad_shp_msg = ('Shapes do not agree for contour plot:'
+                                       ' (x, y, z) = {}')
 
-                        Z = np.ones(sub_t['shape']) * np.nan
-                        for i_idx in range(len(xv)):
-                            ri = row_idx[i_idx]
-                            ci = col_idx[i_idx]
-                            Z[ri][ci] = zv[i_idx]
+                        if sub_t.get('grid') is True:
+                            # If grid is True, expect equivalenttly-shaped
+                            # 2D data for x, y, z:
 
-                        X = x_arr.reshape(sub_t['shape'])
-                        Y = y_arr.reshape(sub_t['shape'])
+                            X = np.array(xv)
+                            Y = np.array(yv)
+                            Z = np.array(zv)
+
+                            shp_lst = [X, Y, Z]
+                            shps = [i.shape for i in shp_lst]
+                            if len(set(shps)) != 1:
+                                raise ValueError(bad_shp_msg.format(shps))
+
+                        else:
+                            # If grid is False, construct 2D arrays using 1D
+                            # x, y, z, row_idx, col_idx and shape tuple:
+
+                            col_idx = sub_t['col_idx']
+                            row_idx = sub_t['row_idx']
+                            len_lst = [xv, yv, zv, row_idx, col_idx]
+                            lens = [len(i) for i in len_lst]
+                            if len(set(lens)) != 1:
+                                raise ValueError(bad_len_msg.format(lens))
+
+                            Z = np.ones(sub_t['shape']) * np.nan
+                            for i_idx in range(len(xv)):
+                                ri = row_idx[i_idx]
+                                ci = col_idx[i_idx]
+                                Z[ri][ci] = zv[i_idx]
+
+                            X = x_arr.reshape(sub_t['shape'])
+                            Y = y_arr.reshape(sub_t['shape'])
 
                         minX, maxX = np.min(X), np.max(X)
                         minY, maxY = np.min(Y), np.max(Y)
@@ -742,7 +763,8 @@ def plot_many_mpl(figs, save_dir=None):
                         ax.set_ylim([minY, maxY])
 
                         cbar = f_i.colorbar(cax, ax=ax)
-                        cbar.set_label(z['label'])
+                        if z.get('label'):
+                            cbar.set_label(z['label'])
 
                         if sub_t.get('show_xy'):
                             ax.scatter(x_arr, y_arr, c='black', s=2)

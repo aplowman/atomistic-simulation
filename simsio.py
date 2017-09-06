@@ -1115,6 +1115,9 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
     os.makedirs(path, exist_ok=True)
 
+    task = param['task'].upper()
+    geom_opt_str = ['GEOMETRYOPTIMISATION', 'GEOMETRYOPTIMIZATION']
+
     # Write CELL file:
     cell_path = os.path.join(path, seedname + '.cell')
     with open(cell_path, 'w') as cf:   # to do: test if i need universal newline mode here
@@ -1136,8 +1139,9 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
         # Cell constraints:
         encoded_params = get_castep_cell_constraints(**cell_constraints)
 
-        if not (encoded_params[0] == [1, 2, 3] and
-                encoded_params[1] == [4, 5, 6]):
+        if (not (encoded_params[0] == [1, 2, 3] and
+                 encoded_params[1] == [4, 5, 6])) and (
+                task in geom_opt_str):
 
             if (encoded_params[0] == [0, 0, 0] and
                     encoded_params[1] == [0, 0, 0]):

@@ -1007,8 +1007,6 @@ class AtomisticStructure(object):
 
         return seps
 
-
-
     def get_all_species(self):
 
         all_sp = []
@@ -1023,7 +1021,8 @@ class AtomisticStructure(object):
             cs_sp = cs.motif['species']
 
             # Local species index for this crystal:
-            c_sp_idx_old = self.species_idx[np.where(self.crystal_idx == c_idx)[0]]
+            c_sp_idx_old = self.species_idx[np.where(
+                self.crystal_idx == c_idx)[0]]
             c_sp_idx_new = np.array([None] * len(c_sp_idx_old))
 
             # Need to map the indices from local CrystalStructure to global
@@ -1051,7 +1050,6 @@ class AtomisticStructure(object):
         all_sp_idx = np.array(all_sp_idx)
 
         return all_sp, all_sp_idx
-
 
     @property
     def all_species(self):
@@ -1731,7 +1729,6 @@ class CSLBicrystal(AtomisticStructure):
         Wrap atoms to within the boundary plane as defined by the supercell.
 
         """
-
         super().wrap_atoms_to_supercell(dirs=self.boundary_idx)
         self.check_inv_symmetry()
 
@@ -1803,7 +1800,7 @@ class CSLSurfaceCrystal(CSLBicrystal):
     def __init__(self, crystal_structure, csl_vecs, box_csl=None,
                  gb_type=None, gb_size=None, edge_conditions=None,
                  maintain_inv_sym=False, reorient=True, boundary_vac_args=None,
-                 relative_shift_args=None, wrap=True, surface_idx=0, overlap_top=1):
+                 relative_shift_args=None, wrap=True, surface_idx=0, overlap_tol=1):
         """Constructor method for CSLSurfaceCrystal object."""
 
         super().__init__(crystal_structure, [csl_vecs, csl_vecs],
@@ -1814,7 +1811,7 @@ class CSLSurfaceCrystal(CSLBicrystal):
                          boundary_vac_args=boundary_vac_args,
                          relative_shift_args=relative_shift_args,
                          wrap=wrap,
-                         overlap_tol=overlap_top,
+                         overlap_tol=overlap_tol,
                          )
 
         # Remove atoms from removed crystal

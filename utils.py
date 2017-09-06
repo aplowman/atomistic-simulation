@@ -9,6 +9,7 @@ import fnmatch
 import os
 import posixpath
 import ntpath
+import readwrite
 
 """
 TODO:
@@ -568,13 +569,33 @@ def dict_from_list(lst, conditions, false_keys=None, ret_index=False):
 
     for el_idx, el in enumerate(lst):
 
-        condition_match = False
         for cnd_key, cnd_val in conditions.items():
 
             v = el.get(cnd_key)
 
-            if v is not None and v == cnd_val:
-                condition_match = True
+            if v is not None:
+
+                if any([isinstance(i, np.ndarray) for i in [v, cnd_val]]):
+
+                    v_arr = np.array(v)
+                    cnd_val_arr = np.array(cnd_val)
+
+                    if v_arr.shape != cnd_val_arr.shape:
+                        condition_match = False
+                        break
+
+                    if np.allclose(v, cnd_val):
+                        condition_match = True
+
+                    else:
+                        condition_match = False
+                        break
+
+                elif v == cnd_val:
+                    condition_match = True
+                else:
+                    condition_match = False
+                    break
             else:
                 condition_match = False
                 break

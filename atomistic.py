@@ -1278,6 +1278,10 @@ class CSLBicrystal(AtomisticStructure):
     boundary_vac_args : dict, optional
         If not None, after construction of the boundary, apply_boundary_vac()
         is invoked with this dict as keyword arguments. Default is None.
+    apply_boundary_vac_flat_args: dict, optional
+        If not None, after construction of the boundary,
+        apply_boundary_vac_flat() is invoked with this dict as keyword
+        arguments. Default is None.
     relative_shift_args : dict, optional
         If not None, after construction of the boundary, apply_relative_shift()
         is invoked with this dict as keyword arguments. Default is None.
@@ -1331,8 +1335,8 @@ class CSLBicrystal(AtomisticStructure):
     def __init__(self, crystal_structure, csl_vecs, box_csl=None,
                  gb_type=None, gb_size=None, edge_conditions=None,
                  maintain_inv_sym=False, reorient=True,
-                 boundary_vac_args=None, relative_shift_args=None,
-                 wrap=True, overlap_tol=1):
+                 boundary_vac_args=None, apply_boundary_vac_flat_args=None,
+                 relative_shift_args=None, wrap=True, overlap_tol=1):
         """Constructor method for CSLBicrystal object."""
 
         if np.all(csl_vecs[0][:, 2] != csl_vecs[1][:, 2]):
@@ -1517,6 +1521,9 @@ class CSLBicrystal(AtomisticStructure):
         if boundary_vac_args is not None:
             self.apply_boundary_vac(**boundary_vac_args)
 
+        if apply_boundary_vac_flat_args is not None:
+            self.apply_boundary_vac_flat(**apply_boundary_vac_flat_args)
+
         if relative_shift_args is not None:
             self.apply_relative_shift(**relative_shift_args)
 
@@ -1568,7 +1575,6 @@ class CSLBicrystal(AtomisticStructure):
         to a sigmoid function.
 
         TODO:
-        -   Understand/fix behaviour for negative vac_thick
         -   Also apply to lattice sites
 
         """
@@ -1632,8 +1638,8 @@ class CSLBicrystal(AtomisticStructure):
         self.atoms_gb_dist_δ = as_dx
 
         if self.boundary_vac != 0:
-            warnings.warn('`boundary_vac` is already non-zero. Resetting to '
-                          'new value.')
+            warnings.warn('`boundary_vac` is already non-zero ({}). Resetting to '
+                          'new value.'.format(self.boundary_vac))
 
         self.boundary_vac = vac_thickness
 
@@ -1651,6 +1657,14 @@ class CSLBicrystal(AtomisticStructure):
 
         self.check_overlapping_atoms(self._overlap_tol)
         self.check_inv_symmetry()
+
+    def apply_boundary_vac_flat(self, vac_thickness):
+        """
+        Apply boundary vacuum to the supercell without affecting the atom
+        blocks.
+
+        """
+        self.apply_boundary_vac(vac_thickness, sharpness=1000)
 
     def apply_relative_shift(self, shift):
         """

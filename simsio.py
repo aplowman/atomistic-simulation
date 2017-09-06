@@ -515,7 +515,6 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
     command_lns.append('')
     command_lns += interactions
 
-
     # Cell constraints (cell is fixed by default)
     fix_lengths = cell_constraints.get('fix_lengths')
     fix_angles = cell_constraints.get('fix_angles')
@@ -1401,6 +1400,7 @@ def read_castep_file(cst_path):
     cell_constraints = None
     cell_constraints_num = None
     finite_basis_correction = None
+    calc_type_str = None
     errors = []
 
     bfgs_iter_idx = 0

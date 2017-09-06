@@ -662,6 +662,24 @@ def get_col_none(a, col_idx):
     return b
 
 
-def index_lst(lst, idx):
+def index_lst(lst, idx, not_idx=False):
     """Return indexed elements of a list."""
-    return [i for i_idx, i in enumerate(lst) if i_idx in idx]
+    if not_idx:
+        return [i for i_idx, i in enumerate(lst) if i_idx not in idx]
+    else:
+        return [i for i_idx, i in enumerate(lst) if i_idx in idx]
+
+
+def arguments(print_args=True):
+    """Returns tuple containing dictionary of calling function's
+        named arguments and a list of calling function's unnamed
+        positional arguments.
+    """
+    from inspect import getargvalues, stack
+    posname, kwname, args = getargvalues(stack()[1][0])[-3:]
+    posargs = args.pop(posname, [])
+    args.update(args.pop(kwname, []))
+    if print_args:
+        print('args: \n{}\n'.format(readwrite.format_dict(args)))
+        print('posargs: \n{}\n'.format(readwrite.format_list(posargs)))
+    return args, posargs

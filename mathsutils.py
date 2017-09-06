@@ -37,4 +37,19 @@ def sigmoid(x, a, b, c, d):
 
     """
 
-    return a * ((1 / (1 + np.exp(-b * (x - c)))) - d)
+    e_arg = -b * (x - c)
+    f = np.empty_like(e_arg)
+
+    lo_idx = np.where(e_arg < -50)[0]
+    hi_idx = np.where(e_arg < +50)[0]
+
+    lim_lo_idx = e_arg < -50
+    lim_hi_idx = e_arg > 50
+    lim_idx = np.logical_or(lim_lo_idx, lim_hi_idx)
+    not_lim_idx = np.logical_not(lim_idx)
+
+    f[not_lim_idx] = 1 / (1 + np.exp(e_arg[not_lim_idx]))
+    f[lim_lo_idx] = 1
+    f[lim_hi_idx] = 0
+
+    return a * (f - d)

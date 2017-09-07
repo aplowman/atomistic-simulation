@@ -162,7 +162,6 @@ class Stage(object):
             print(copy_msg)
             shutil.copytree(self.path, scratch.path)
 
-            
     def copy_to_archive(self, archive):
         """
         """
@@ -243,7 +242,7 @@ class Stage(object):
                                  creationflags=subprocess.CREATE_NEW_CONSOLE)
 
             elif self.os_name == 'posix' and scratch.os_name == 'posix':
-                
+
                 js_path = os.path.join(scratch.path, 'jobscript.sh')
                 os.chmod(js_path, 0o744)
                 subprocess.Popen(js_path, shell=True)
@@ -715,6 +714,7 @@ def process_lammps_opt(lammps_opt, structure, stage_path, scratch_path):
 
     lammps_opt['charges'] = charges
 
+
 def process_constraints(opt, structure):
     """
     Process constraint options, so they are ready to be passed to the methods
@@ -854,7 +854,7 @@ def main():
     struct_lookup = {
         'BulkCrystal': atomistic.BulkCrystal,
         'CSLBicrystal': atomistic.CSLBicrystal,
-        'CSLBicrystal_fs' : atomistic.CSLBicrystal.from_structure,
+        'CSLBicrystal_fs': atomistic.CSLBicrystal.from_structure,
         'CSLBulkCrystal': atomistic.CSLBulkCrystal,
         'CSLSurfaceCrystal': atomistic.CSLSurfaceCrystal
     }
@@ -945,7 +945,7 @@ def main():
             struct_opt.update({k: v})
 
     base_as = struct_lookup[base_as_opt['type']](**struct_opt)
-    
+
     in_struct = base_as_opt.get('import')
     if in_struct is not None:
 

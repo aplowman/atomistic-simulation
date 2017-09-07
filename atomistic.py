@@ -1551,8 +1551,8 @@ class CSLBicrystal(AtomisticStructure):
                    relative_shift_args=relative_shift_args, wrap=wrap)
   
     @classmethod
-    def from_structure(cls, struct_params, 
-                       overlap_tol=1, maintain_inv_sym=False, reorient=True, 
+    def from_structure(cls, csl, csl_params,
+                       overlap_tol=0.1, maintain_inv_sym=False, reorient=True, 
                        boundary_vac_args=None, relative_shift_args=None, wrap=True,
                        **kwargs):
         """
@@ -1574,10 +1574,11 @@ class CSLBicrystal(AtomisticStructure):
         
         """
 
-        csl = struct_params['csl']
+        # csl = struct_params['csl']
         create_bound = getattr(gbhelper, 'construct_' + csl)
-        bound_struct = create_bound(**struct_params['csl_params'])
-        
+        # bound_struct = create_bound(**struct_params['csl_params'])
+        bound_struct = create_bound(**csl_params)
+
         # AtomisticStructure parameters
         as_params = {
                     'atom_sites'  : bound_struct['atom_sites'],
@@ -1604,8 +1605,8 @@ class CSLBicrystal(AtomisticStructure):
         super().__init__(**as_params)
         
         # Non-boundary (column) index of `box_csl` and grain arrays
-        NBI = 2
-        BI = [0, 1]
+        NBI = 0
+        BI = [1, 2]
 
         # Boundary normal vector:
         n = np.cross(self.supercell[:, BI[0]], self.supercell[:, BI[1]])[:, np.newaxis]
@@ -1852,6 +1853,7 @@ class CSLBicrystal(AtomisticStructure):
             sym_trans = sym_ops['translations']
             inv_sym_rot = -np.eye(3, dtype=int)
             inv_sym = np.where(np.all(sym_rots == inv_sym_rot, axis=(1, 2)))[0]
+            print(inv_sym)
             if len(inv_sym) == 0:
                 raise ValueError('The bicrystal does not have inversion '
                                  'symmetry.')

@@ -1542,13 +1542,13 @@ class CSLBicrystal(AtomisticStructure):
                 'lat_crystal_idx' : lat_crystal_idx,
                 'species_idx' : species_idx,
                 'motif_idx' : motif_idx,
-                'overlap_tol' : overlap_tol
+                'overlap_tol' : overlap_tol,
             }
         
 
         return cls(as_params, maintain_inv_sym=maintain_inv_sym, reorient=reorient, 
                    boundary_vac_args=boundary_vac_args, 
-                   relative_shift_args=relative_shift_args, wrap=wrap)
+                   relative_shift_args=relative_shift_args, wrap=wrap, nbi=2)
   
     @classmethod
     def from_structure(cls, csl, csl_params,
@@ -1594,19 +1594,20 @@ class CSLBicrystal(AtomisticStructure):
 
         return cls(as_params, maintain_inv_sym=maintain_inv_sym, reorient=reorient, 
                    boundary_vac_args=boundary_vac_args, 
-                   relative_shift_args=relative_shift_args, wrap=wrap)
+                   relative_shift_args=relative_shift_args, wrap=wrap, nbi=0)
         
         
     def __init__(self, as_params, maintain_inv_sym=False, reorient=False,
                  boundary_vac_args=None, relative_shift_args=None,
-                 wrap=True):
+                 wrap=True, nbi=None):
 
         # Call parent constructor
         super().__init__(**as_params)
         
         # Non-boundary (column) index of `box_csl` and grain arrays
-        NBI = 0
-        BI = [1, 2]
+        NBI = nbi
+        BI = [0, 1, 2]
+        BI.remove(nbi)
 
         # Boundary normal vector:
         n = np.cross(self.supercell[:, BI[0]], self.supercell[:, BI[1]])[:, np.newaxis]

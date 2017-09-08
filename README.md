@@ -1,4 +1,4 @@
-# atomistic-simulation
+# Simulation series
 
 ## Series definition dicts
 A simulation series is defined by a series dict which contains at least a `name` key. Many series types also support a `vals` key. For example:
@@ -64,20 +64,13 @@ series = [
     [
         {
             'name': 'cut_off_energy',
-            'vals': [
-                250,
-                300,
-                350
-            ]
+            'vals': [250, 300, 350],
         }
     ],
     [
         {
             'name': 'kpoint',
-            'vals': [
-                0.07,
-                0.08
-            ]
+            'vals': [0.07, 0.08],
         }
     ]
 ]
@@ -90,18 +83,13 @@ series = [
     [
         {
             'name': 'cut_off_energy',
-            'vals': [
-                250,
-                300
-            ]
+            'vals': [250, 300],
         },
         {
             'name': 'kpoint',
-            'vals': [
-                0.07,
-                0.08
+            'vals': [0.07, 0.08],
             ]
-        }        
+        }
     ]
 ]
 </pre>
@@ -131,3 +119,60 @@ series = [
     ]
 ]
 </pre>
+
+# Harvesting results
+Collating results is done by running `harvest.py`. Options for harvesting results are specified in a Python file, `harvest_opt.py` (in the `set_up` directory), which contains a single dict named `HARVEST_OPT`. Running `harvest.py` generates a JSON file, `results.json`, and optionally generates plots of the data listed in the JSON file.
+
+## Keys in `HARVEST_OPT`
+<dl>
+    <dt><code>sid</code> : list of str</dt>
+    <dd>
+        Lists which simulation series are to be included in the results harvesting.
+    </dd>
+    <dt><code>overwrite_results</code> : bool or str (True | False | 'ask'), optional</dt>
+    <dd>
+        The results for each simulation are stored in the <code>results</code> attribute of the <code>AtomisticSimulation</code> object for that simulation. If <code>harvest.py</code> encounters a simulation for which results have already been assigned, this boolean determines whether to overwrite them or not.
+    </dd>
+    <dt><code>debug</code> : bool, optional</dt>
+    <dd>
+        If True, <code>results.json</code> and plots are generated inside a directory named <code>0000-00-00-0000-00000</code>. If False, a new results ID is generated in the format: <code>YYYY-MM-DD-TTTT-RRRRR</code> where Y, M, D, T refer to the current year, month, day and time respectively, and R are random digits. <code>results.json</code> and plots are then placed inside a directory with this name.
+    </dd>
+    <dt><code>skip_idx</code> : list of list of int, optional</dt>
+    <dd>
+        a
+    </dd>
+    <dt><code>variables</code> : list of dict, optional</dt>
+    <dd>
+        a
+    </dd>
+    <dt><code>plots</code> : list of dict, optional</dt>
+    <dd>
+        a
+    </dd>
+</dl>
+
+## Specifying simulaton series
+Simulation series identifiers are listed in the `HARVEST_OPT` key `sid`. To skip some simulations, specify their indices within their series in the key `skip_idx`. For example, let's say we want to collate the results from three simulation series, but the first two simulations of the second series failed and so we don't want to include them. We would specify the options like this:
+<pre>
+HARVEST_OPT = {
+    'sid': [
+        '2017-08-09-1122_13068',
+        '2017-08-09-1137_99144',
+        '2017-08-09-1125_28108',
+    ],
+    'skip_idx': [
+        [],
+        [0, 1],
+        [],
+    ]
+}
+</pre>
+
+## Variables
+Each variable is represented as a dict inside the `variables` list. Each variables must have the keys: `type`, `id`, and `name`. Allowed `type` values are:
+* `result`
+* `parameter`
+* `compute`
+* `series_id`
+
+The variable `id` is chosen as a unique identifier for the variable. This then allows us to reference the variable later on (for instance in the data for a plot).

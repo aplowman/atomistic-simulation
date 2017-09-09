@@ -682,6 +682,11 @@ def process_castep_opt(castep_opt, sym_ops=None):
             np.vstack([inv_sym_rot, inv_sym_trans])
         ]
 
+    geom_opt_str = ['GEOMETRYOPTIMISATION', 'GEOMETRYOPTIMIZATION']
+    if castep_opt['param']['task'].upper() not in geom_opt_str:
+        castep_opt['param'].pop('geom_max_iter', None)
+        castep_opt['param'].pop('geom_method', None)
+
 
 def process_lammps_opt(lammps_opt, structure, stage_path, scratch_path):
     """

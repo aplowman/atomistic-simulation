@@ -5,6 +5,7 @@ import plotting
 import copy
 from plotly import graph_objs as go
 from plotly.offline import plot, iplot, init_notebook_mode
+from utils import transpose_list
 
 
 def check_centrosymmetry(points, centre, periodic_box=None):
@@ -457,7 +458,7 @@ class Grid(object):
 
         points_std = []
         points_frac = []
-        points_tup = []
+        points_num_den = []
         grid_idx_nested = []
         grid_idx_flat = []
         point_idx = []
@@ -470,12 +471,12 @@ class Grid(object):
 
                 pnts_s = gd['grid_points_std']
                 pnts_f = gd['grid_points_frac']
-                pnts_t = gd['grid_points_tup']
+                pnts_t = gd['grid_points_num_den']
                 num_pnts = pnts_s.shape[1]
 
                 points_std.append(pnts_s)
                 points_frac.append(pnts_f)
-                points_tup.extend(pnts_t)
+                points_num_den.extend(pnts_t)
                 grid_idx_nested.extend([gd['idx']] * num_pnts)
                 grid_idx_flat.extend([gd_idx] * num_pnts)
                 point_idx.extend(range(num_pnts))
@@ -497,7 +498,7 @@ class Grid(object):
             'points_std': points_std,
             'points_frac': points_frac,
             'points_frac_obj': points_frac_obj,
-            'points_tup': points_tup,
+            'points_num_den': points_num_den,
             'grid_idx_nested': grid_idx_nested,
             'grid_idx_flat': np.array(grid_idx_flat),
             'point_idx': np.array(point_idx),
@@ -615,7 +616,7 @@ class Grid(object):
 
             pnts_std = gd['grid_points_std']
             pnts_frac = gd['grid_points_frac']
-            pnts_tup = gd['grid_points_tup']
+            pnts_num_den = gd['grid_points_num_den']
             row_idx = gd['row_idx']
             col_idx = gd['col_idx']
             num_pnts = pnts_std.shape[1]
@@ -626,13 +627,13 @@ class Grid(object):
             w = np.where(msk)[0]
             unique_pnts_std = pnts_std[:, w]
             unique_pnts_frac = pnts_frac[:, w]
-            unique_pnts_tup = np.array(pnts_tup)[w].tolist()
+            unique_pnts_tup = np.array(pnts_num_den)[:, w].tolist()
             unique_ri = row_idx[w]
             unique_ci = col_idx[w]
 
             self.grids[gd_idx]['grid_points_std'] = unique_pnts_std
             self.grids[gd_idx]['grid_points_frac'] = unique_pnts_frac
-            self.grids[gd_idx]['grid_points_tup'] = unique_pnts_tup
+            self.grids[gd_idx]['grid_points_num_den'] = unique_pnts_tup
             self.grids[gd_idx]['row_idx'] = unique_ri
             self.grids[gd_idx]['col_idx'] = unique_ci
 
@@ -763,12 +764,14 @@ class Grid(object):
                            (origin_frac_tup[1][0] * gs_points_den_2[1][0],
                             origin_frac_tup[1][1] * gs_points_den_2[1][0])]
 
-        gs_points_tup = []
+        gs_points_num_den = []
         for i_idx, i in enumerate(gs_points_num_3.T):
-            gs_points_tup.append(((i[0] + origin_frac_tup[0][0],
-                                   gs_points_den_3[0, 0]),
-                                  (i[1] + origin_frac_tup[1][0],
-                                   gs_points_den_3[1, 0])))
+            gs_points_num_den.append(((i[0] + origin_frac_tup[0][0],
+                                       gs_points_den_3[0, 0]),
+                                      (i[1] + origin_frac_tup[1][0],
+                                       gs_points_den_3[1, 0])))
+
+        gs_points_num_den = transpose_list(gs_points_num_den)
 
         gs_points_frac = (gs_points_num / gs_points_den) * \
             pg_pf.reshape((2, 1)) * par_frac.reshape((2, 1)) + origin_frac
@@ -781,7 +784,7 @@ class Grid(object):
             'unit_cell': unit_cell,
             'origin_std': origin_std,
             'origin_frac': origin_frac,
-            'gs_points_tup': gs_points_tup,
+            'gs_points_num_den': gs_points_num_den,
             'grid_points': gs_msh_std,
             'par_frac': par_frac,
         })
@@ -797,7 +800,7 @@ class Grid(object):
                 'origin_std': origin_std,
                 'grid_points_std': gs_points_std,
                 'grid_points_frac': gs_points_frac,
-                'grid_points_tup': gs_points_tup,
+                'grid_points_num_den': gs_points_num_den,
                 'size': gs_sz,
                 'row_idx': row_idx,
                 'col_idx': col_idx,

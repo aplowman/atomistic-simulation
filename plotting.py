@@ -648,6 +648,7 @@ def plot_many_mpl(figs, save_dir=None):
 
     SUBPLOT_WIDTH = 500
     SUBPLOT_HEIGHT = 400
+    MAX_HORZ_SUBPLOTS = 4
     DPI = 96
 
     num_figs = len(figs)
@@ -661,25 +662,30 @@ def plot_many_mpl(figs, save_dir=None):
             SUBPLOT_HEIGHT = f['subplot_height']
 
         num_subplots = len(f['subplots'])
-        width = (SUBPLOT_WIDTH * num_subplots) / DPI
-        height = (SUBPLOT_HEIGHT) / DPI
+
+        # Partition subplots into reasonable grid
+        sp_nrows = int(np.ceil(num_subplots / MAX_HORZ_SUBPLOTS))
+        sp_ncols = int(np.ceil(num_subplots / sp_nrows))
+
+        width = (SUBPLOT_WIDTH * sp_ncols) / DPI
+        height = (SUBPLOT_HEIGHT * sp_nrows) / DPI
+
         f_i, all_ax = plt.subplots(
-            1, num_subplots, figsize=(width, height), dpi=DPI)
+            sp_nrows, sp_ncols, figsize=(width, height), dpi=DPI)
 
         for s_idx, s in enumerate(f['subplots']):
 
-            # print('plot_many_mpl: s')
+            sp_ridx = int(np.floor(s_idx / sp_ncols))
+            sp_cidx = int(s_idx - (sp_ridx * sp_ncols))
 
             num_traces = len(s['traces'])
 
             try:
-                ax = all_ax[s_idx]
+                ax = all_ax[sp_ridx][sp_cidx]
             except:
                 ax = all_ax
 
             for t in s['traces']:
-
-                # print('plot_many_mpl: t: {}'.format(t))
 
                 for sub_t in t:
 
@@ -689,9 +695,6 @@ def plot_many_mpl(figs, save_dir=None):
 
                     x_arr = np.array(xv)
                     y_arr = np.array(yv)
-
-                    # print('shape x: {}'.format(x_arr.shape))
-                    # print('shape y: {}'.format(y_arr.shape))
 
                     plt_type = sub_t['type']
                     label = sub_t['name']
@@ -768,6 +771,12 @@ def plot_many_mpl(figs, save_dir=None):
 
                         if sub_t.get('show_xy'):
                             ax.scatter(x_arr, y_arr, c='black', s=2)
+
+                    if x.get('reverse'):
+                        ax.invert_xaxis()
+
+                    if y.get('reverse'):
+                        ax.invert_yaxis()
 
             ax.legend()
             ax.set_title(s['title'])

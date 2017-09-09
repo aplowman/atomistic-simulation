@@ -589,18 +589,122 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
         list of kpoint spacings, it is useful to remove kpoint spacing values
         which produce duplicate kpoint MP grids.
 
+    Notes
+    -----
+    Consider two parallel series A, B and a nested series C, so 
+    `all_series_spec` looks like this:
+    [
+        [A_defn, B_defn], [C_defn],
+    ]
+    where X_defn is a dict which when passed to `prepare_series_update`
+    returns a list of updates dicts, each denoted Xi.
+
+    Firstly, replace definition dict with list of update dicts:
+    [
+        [ [A1, A2], [B1, B2] ], [C1, C2, C3]
+    ]
+
+    Next, combine parallel series update dicts:
+    [
+        [A1B1, A2B2], [C1, C2, C3]
+    ]
+
+    Next, nest the series:
+    [
+        [A1B1, C1], [A1B1, C2], [A1B1, C3], [A2B2, C1], [A2B2, C2], [A2B2, C3],
+    ]
+
+    Finally, for each simulation we combine update dicts into a single update
+    dict, resulting in a flat list of dicts:
+    [
+        A1B1C1, A1B1C2, A1B1C4, A2B2C1, A2B2C2, A2B2C3,
+    ]
+
+    Alternatively, consider the D series to be a "lookup series" where the C
+    series elements are found from a lookup based on the parent series element:
+    [
+        [A_defn], [B_defn, C_defn], [D_lookup_defn]
+    ]
+    As before, firstly replace definition dict with list of update dicts (and 
+    remove the lookup defn):
+    [
+        [ [A1, A2] ], [ [B1, B2], [C1, C2] ],
+    ]
+
+    And combine parallel series update dicts and move lookup out of list:
+    [
+        [A1, A2], [B1C1, B2C2],
+    ]
+
+    Nest series:
+    [
+        [A1, B1C1], [A1, B2C2], [A2, B1C1], [A2, B2C2],
+    ]
+
+    Combine update dicts up to lookup series:
+    [
+        A1B1C1, A1B2C2, A2B1C1, A2B2C2,
+    ]
+
+    Now loop through each parent_val in the lookup definition and see if there
+    if a matching update dict.
+
+    For each element in the lookup parent series, generate a child series if it
+    matches a parent specified in the lookup dict. Note that the child series 
+    lengths need not be the same for each parent series element.
+    [
+        [[A1B1C1], [D1, D2]], [[A1B2C2], [D3]], [[A2B1C1], []], [[A2B2C2], []]
+    ]
+
+    Nest, and extend:
+    [
+        [A1B1C1, D1], [A1B1C1, D2], [A1B2C2, D3], [A2B1C1], [], [A2B2C2], [],
+    ]
+
+    Combine:
+    [
+        A1B1C1, A1B1C2, A2B2C1
+    ]
     """
 
     # Replace each series dict with a list of update dicts:
     common_series_info = []
     srs_update = []
-    for i in all_series_spec:
+    lookup_idx = None
+    for i_idx, i in enumerate(all_series_spec):
+
+        if lookup_idx is not None and i_idx > lookup_idx:
+            raise NotImplementedError('Lookup series must be the final (most-'
+                                      'nested) series.')
+
         upds = []
-        for j in i:
+        for j_idx, j in enumerate(i):
+
+            if j['name'] == 'lookup':
+                lookup_defn = j
+
+                # Validation:
+                if lookup_idx is not None:
+                    raise NotImplementedError('Cannot specify multiple lookup '
+                                              'series')
+
+                if len(all_series_spec[i_idx]) > 1:
+                    raise NotImplementedError('Lookup series cannot have '
+                                              'parallel series.')
+                if i_idx == 0:
+                    raise ValueError('Lookup series cannot be a top-level '
+                                     'series; there must be a parent series.')
+
+                lookup_idx = i_idx
+                break
+
             upd = prepare_series_update(
                 j, common_series_info, atomistic_structure)
+
             upds.append(upd)
-        srs_update.append(upds)
+
+        if len(upds) > 0:
+            srs_update.append(upds)
 
     # Combine parallel series:
     for s_idx, s in enumerate(srs_update):
@@ -644,7 +748,50 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
         m['series_id'] = all_sids
         all_updates.append(m)
 
-    return all_updates, common_series_info
+    if lookup_idx is None:
+        return all_updates, common_series_info
+
+    all_updates_lkup = []
+    for i in all_updates:
+
+        # Check for a match in series lookup:
+
+        par_srs = lookup_defn['src']['parent_series']
+        par_vals = lookup_defn['src']['parent_val']
+
+        srs_id = i['series_id']
+        # print('Parent series id: {}'.format(srs_id))
+
+        # Loop through series ids
+        for sid in srs_id:
+
+            # Loop through parent vals of lookup series
+            for pv_idx, pvs in enumerate(par_vals):
+
+                for psn, pv in zip(par_srs, pvs):
+
+                    m = utils.dict_from_list(sid, {'name': psn, 'val': pv})
+
+                    if m is not None:
+                        chd_srs = lookup_defn['src']['child_series'][pv_idx]
+                        new_srs = prepare_series_update(
+                            chd_srs, common_series_info, atomistic_structure)
+                        all_updates_lkup.append([[i], new_srs])
+
+    # Nest:
+    all_updates_lkup_nest = []
+    for i in all_updates_lkup:
+        all_updates_lkup_nest.extend(utils.nest_lists(i))
+
+    # Merge update dicts:
+    for i_idx, i in enumerate(all_updates_lkup_nest):
+        lkup_srs_id = all_updates_lkup_nest[i_idx][1]['series_id']                                                                  ))
+        all_updates_lkup_nest[i_idx][0]['series_id'].append([lkup_srs_id])
+        del i[1]['series_id']
+
+        all_updates_lkup_nest[i_idx] = utils.combine_list_of_dicts(i)
+        
+    return all_updates_lkup_nest, common_series_info
 
 
 def process_castep_opt(castep_opt, sym_ops=None):
@@ -852,7 +999,7 @@ def append_db(opt):
             readwrite.write_pickle(db, db_path)
 
 
-def main():
+def main(opt):
     """
     Read the options file and generate a simulation (series).
 
@@ -1213,4 +1360,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(OPT)

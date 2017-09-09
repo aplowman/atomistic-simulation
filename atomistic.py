@@ -1333,7 +1333,7 @@ class CSLBicrystal(AtomisticStructure):
     def __init__(self, crystal_structure, csl_vecs, box_csl=None,
                  gb_type=None, gb_size=None, edge_conditions=None,
                  maintain_inv_sym=False, reorient=True,
-                 boundary_vac_args=None, apply_boundary_vac_flat_args=None,
+                 boundary_vac_args=None, boundary_vac_flat_args=None,
                  relative_shift_args=None, wrap=True, overlap_tol=1):
         """Constructor method for CSLBicrystal object."""
 
@@ -1519,8 +1519,8 @@ class CSLBicrystal(AtomisticStructure):
         if boundary_vac_args is not None:
             self.apply_boundary_vac(**boundary_vac_args)
 
-        if apply_boundary_vac_flat_args is not None:
-            self.apply_boundary_vac_flat(**apply_boundary_vac_flat_args)
+        if boundary_vac_flat_args is not None:
+            self.apply_boundary_vac_flat(**boundary_vac_flat_args)
 
         if relative_shift_args is not None:
             self.apply_relative_shift(**relative_shift_args)

@@ -347,9 +347,11 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
         'relative_shift',
         'gamma_surface',
         'boundary_vac',
+        'boundary_vac_flat',
     ]
     if series_spec.get('name') not in allowed_sn:
-        raise NotImplementedError('Series name: {} not understood.'.format(sn))
+        raise NotImplementedError(
+            'Series name: {} not understood.'.format(series_spec.get('name')))
 
     # Some series generate other series: e.g. gamma_surface should generate a
     # relative_shift series.
@@ -551,6 +553,16 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
 
             out.append({
                 'base_structure': {'boundary_vac_args': {'vac_thickness': v}},
+                'series_id': {'name': sn, 'val': v,
+                              'path': '{:.2f}'.format(v)}
+            })
+
+    elif sn == 'boundary_vac_flat':
+
+        for v in vals:
+
+            out.append({
+                'base_structure': {'boundary_vac_flat_args': {'vac_thickness': v}},
                 'series_id': {'name': sn, 'val': v,
                               'path': '{:.2f}'.format(v)}
             })
@@ -875,11 +887,10 @@ def main():
         'box_lat': True,
         'nextra_bands': False,
         'relative_shift': True,
+        'boundary_vac': True,
+        'boundary_vac_flat': True,
     }
     log = []
-
-    # Read the options file
-    opt = OPT
 
     # Convenience
     su = opt['set_up']

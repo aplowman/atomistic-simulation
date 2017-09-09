@@ -362,11 +362,8 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
         grid = geometry.Grid(edge_vecs, series_spec.get('grid_spec'))
         ggp = grid.get_grid_points()
         rel_shifts = ggp['points_frac'].T
-        points_std = ggp['points_std'].T
-        rel_shifts_tup = ggp['points_tup']
+        rel_shifts_num_den = ggp['points_num_den']
         grid_idx = ggp['grid_idx_flat']
-        row_idx = ggp['row_idx']
-        col_idx = ggp['col_idx']
         point_idx = ggp['point_idx']
         common_series_info.append({
             'series_name': 'gamma_surface',
@@ -376,14 +373,11 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
         series_spec = {
             'name': 'relative_shift',
             'vals': rel_shifts,
-            'vals_tup': rel_shifts_tup,
+            'vals_num_den': rel_shifts_num_den,
             'as_fractions': True,
             'extra_update': {
                 'grid_idx': grid_idx,
-                'row_idx': row_idx,
-                'col_idx': col_idx,
                 'point_idx': point_idx,
-                'points_std': points_std,
                 'csi_idx': [len(common_series_info) - 1] * len(rel_shifts),
             }
         }
@@ -530,12 +524,12 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
 
         num_digts = len(str(len(vals)))
         pad_fmt = '{{:0{}d}}'.format(num_digts)
-        v_tup = ss.get('vals_tup')
+        v_num_den = ss.get('vals_num_den')
         for v_idx, v in enumerate(vals):
 
             if ss.get('as_fractions') is True:
-                v_t = v_tup[v_idx]
-                v_str = '_'.join(['{}({})'.format(i[0], i[1]) for i in v_t])
+                v_nd = utils.get_col(v_num_den, v_idx)
+                v_str = '_'.join(['{}({})'.format(i[0], i[1]) for i in v_nd])
 
             else:
                 v_str = '{}_{}'.format(*v)

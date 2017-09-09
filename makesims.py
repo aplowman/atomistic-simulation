@@ -428,7 +428,6 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
         for v in vals:
 
             v = float(v)
-            print('v: {}'.format(v))
             kpt_gd = tuple(atomistic_structure.get_kpoint_grid(v))
 
             if unique_grids.get(kpt_gd) is None:
@@ -441,7 +440,7 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
             unique_vals.append(sorted(v)[0])
 
         vals = sorted(unique_vals)
-        print(vals)
+        print('Found unique kpoint spacings: {}'.format(vals))
 
     out = []
 
@@ -1160,6 +1159,8 @@ def main():
         asim.write_input_files()
         all_sims.append(asim)
 
+    print('Completed making {} sim(s).'.format(num_sims))
+
     # Save all sims as pickle file:
     pick_path = stage.get_path('sims.pickle')
     pick = {
@@ -1168,6 +1169,8 @@ def main():
         'common_series_info': csi,
     }
     readwrite.write_pickle(pick, pick_path)
+
+    # print('calc_paths: {}'.format(all_scratch_paths))
 
     # Write jobscript
     js_params = {

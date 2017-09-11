@@ -238,8 +238,8 @@ class Bicrystal(AtomisticStructure):
 
     def apply_relative_shift(self, shift):
         """
-        Apply in-boundary-plane shifts to grain_a to explore the microscopic
-        degrees of freedom.
+        Apply in-boundary-plane shifts to the grain further away from the origin 
+        (right hand side of boundary) to explore the microscopic degrees of freedom.
 
         `shift` is a 2 element array whose elements are the
         relative shift in fractional coords of the boundary area.
@@ -268,25 +268,39 @@ class Bicrystal(AtomisticStructure):
             raise ValueError('Elements of `shift` should be between -1 and 1.')
 
         # Convenience:
-        grn_a = self.crystals[0]
         nbi = self.non_boundary_idx
         bi = self.boundary_idx
+        sup_nb = self.supercell[:, nbi:nbi + 1]
+
+        # Find the right grain to shift
+        # Crystals origins
+        crys_orgns = np.array([self.crystals[i]['origin'] for i in range(2)])
+        # Find crystals with origin at supercell origin if any
+        crys_sup_orgn = np.all((crys_orgns==0.0), axis=1)
+
+        if len(np.where(crys_sup_orgn==False)[0])==1:
+            sh_idx = np.where(crys_sup_orgn==False)[0][0] 
+        else:
+            for i in range(2):
+                if gb.crystals[i]['crystal'][:,nbi][nbi] > 0:
+                    sh_idx = i 
+        grn_sh = self.crystals[sh_idx]
 
         shift_gb = np.zeros((3, 1))
         shift_gb[bi] = shift[:, np.newaxis]
-        shift_std = np.dot(grn_a['crystal'], shift_gb)
+        shift_std = np.dot(grn_sh['crystal'], shift_gb)
 
-        # Translate grain A atoms:
+        # Translate shifted grain atoms:
         as_shift = np.copy(self.atom_sites)
-        as_shift[:, np.where(self.crystal_idx == 0)[0]] += shift_std
+        as_shift[:, np.where(self.crystal_idx == sh_idx)[0]] += shift_std
 
-        # Translate grain A origin:
-        grn_a_org_shift = grn_a['origin'] + shift_std
+        # Translate shifted grain origin:
+        grn_sh_org_shift = grn_sh['origin'] + shift_std
 
         # Update attributes:
         self.atom_sites = as_shift
-        self.crystals[0].update({
-            'origin': grn_a_org_shift
+        self.crystals[sh_idx].update({
+            'origin': grn_sh_org_shift
         })
 
         if self.relative_shift != [0, 0]:

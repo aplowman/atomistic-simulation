@@ -3,6 +3,7 @@ import spglib
 from atsim.structure.atomistic import AtomisticStructure
 from atsim import vectors, mathsutils
 from atsim.structure.crystal import CrystalBox
+from atsim.structure import gbhelper
 
 
 CSL_FROM_PARAMS_GB_TYPES = {

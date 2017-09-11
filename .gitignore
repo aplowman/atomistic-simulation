@@ -98,11 +98,13 @@ ENV/
 /site
 
 # Custom
-set_up/
-!set_up/jobscript_templates
-ref/potentials
-ref/structures
+atsim/set_up/*
+!atsim/set_up/jobscript_templates
+
+atsim/ref/*
+!atsim/ref/jmol_colours.pickle
+!atsim/ref/jmol_colours.txt
+
 test.py
-dbkey.py
 notebooks
 process_output

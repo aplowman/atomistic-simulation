@@ -1,7 +1,8 @@
-import utils
-from utils import dict_from_list
-from readwrite import format_list, format_dict
 import numpy as np
+import atsim.utils
+from atsim.utils import dict_from_list
+from atsim.readwrite import format_list, format_dict
+
 
 # Variables which do not need to be parameterised:
 PREDEFINED_VARS = {

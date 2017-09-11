@@ -1,13 +1,15 @@
-import dbhelpers as dbh
 import sys
 import os
 from copy import deepcopy
-from set_up.secret import DB_KEY
-from readwrite import read_pickle, write_pickle, find_files_in_dir_glob, factor_common_files
+from distutils.dir_util import copy_tree
 import shutil
 import subprocess
-import simsio
-from distutils.dir_util import copy_tree
+
+import atsim.dbhelpers as dbh
+from atsim.set_up.secret import DB_KEY
+from atsim.readwrite import read_pickle, write_pickle, find_files_in_dir_glob, factor_common_files
+from atsim import simsio
+
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
@@ -41,10 +43,10 @@ def check_errors(sms_path, src_path, skip_idx=None):
         calc_path = os.path.join(src_path, 'calcs', *srs_paths)
 
         if method == 'castep':
-            out = simsio.read_castep_output(calc_path)
+            out = simsio.castep.read_castep_output(calc_path)
 
         elif method == 'lammps':
-            out = simsio.read_lammps_output(calc_path)
+            out = simsio.lammps.read_lammps_output(calc_path)
 
         if len(out['errors']) > 0:
             error_paths.extend(srs_paths)

@@ -2,11 +2,8 @@ import numpy as np
 import os
 from plotly import graph_objs
 from plotly.offline import plot, iplot
-from bravais import BravaisLattice
-import geometry
-import vectors
-import readwrite
-import simsio
+from atsim.structure.bravais import BravaisLattice
+from atsim import geometry, vectors, readwrite, simsio
 
 REF_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ref')
 
@@ -372,7 +369,8 @@ class CrystalStructure(object):
             raise NotImplementedError(
                 'File type "{}" is not supported.'.format(filetype))
 
-        params = dict(zip(['a', 'b', 'c', 'α', 'β', 'γ'], latt_data['latt_params']))
+        params = dict(zip(['a', 'b', 'c', 'α', 'β', 'γ'],
+                          latt_data['latt_params']))
 
         bl = BravaisLattice(lattice_system, centring_type=centring_type,
                             **params, degrees=False)

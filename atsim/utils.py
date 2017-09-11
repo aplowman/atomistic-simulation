@@ -9,7 +9,7 @@ import fnmatch
 import os
 import posixpath
 import ntpath
-import readwrite
+from atsim import readwrite
 
 """
 TODO:

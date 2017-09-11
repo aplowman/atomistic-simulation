@@ -1,9 +1,7 @@
 import numpy as np
 from plotly import graph_objs
 from plotly.offline import plot, iplot
-import geometry
-import vectors
-import utils
+from atsim import geometry, vectors, utils
 
 
 class BravaisLattice(object):
@@ -246,7 +244,8 @@ class BravaisLattice(object):
             f = (1 - (np.cos(α_rad))**2 - (np.cos(β_rad))**2 - (np.cos(γ_rad))**2
                  + 2 * np.cos(α_rad) * np.cos(β_rad) * np.cos(γ_rad))**0.5
             a_x = self.a * f / np.sin(α_rad)
-            a_y = self.a * (np.cos(γ_rad) - np.cos(α_rad) * np.cos(β_rad)) / np.sin(α_rad)
+            a_y = self.a * (np.cos(γ_rad) - np.cos(α_rad)
+                            * np.cos(β_rad)) / np.sin(α_rad)
             a_z = self.a * np.cos(β)
             b_y = self.b * np.sin(α_rad)
             b_z = self.b * np.cos(α_rad)

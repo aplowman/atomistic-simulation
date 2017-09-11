@@ -1,21 +1,18 @@
-from readwrite import read_pickle, write_pickle, format_list, format_dict
-import simsio
 import os
 import numpy as np
-import utils
 import shutil
 import json
 import copy
-from set_up.harvest_opt import HARVEST_OPT
-import compute_funcs
-from compute_funcs import get_depends, SINGLE_COMPUTE_LOOKUP, MULTI_COMPUTE_LOOKUP
-from postprocess import SINGLE_COMPUTES, MULTICOMPUTE_LOOKUP, compute_gb_energy, dict_from_list, get_required_defn
-import plotting
-import vectors
+from pathlib import Path
+from atsim.readwrite import read_pickle, write_pickle, format_list, format_dict
+from atsim import simsio, utils, plotting, vectors
+from atsim.analysis import compute_funcs
+from atsim.analysis.compute_funcs import get_depends, SINGLE_COMPUTE_LOOKUP, MULTI_COMPUTE_LOOKUP
+from atsim.analysis.postprocess import SINGLE_COMPUTES, MULTICOMPUTE_LOOKUP, compute_gb_energy, dict_from_list, get_required_defn
+from atsim.set_up.harvest_opt import HARVEST_OPT
 
-SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
+SCRIPTS_PATH = str(Path(__file__).parents[1])
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
-SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
 
 
 # List of multi computes which require the common series info list:
@@ -353,10 +350,10 @@ def read_results(sid, skip_idx=None, overwrite=False, query_all=False):
         calc_path = os.path.join(sid_path, 'calcs', *srs_paths)
 
         if method == 'castep':
-            out = simsio.read_castep_output(calc_path)
+            out = simsio.castep.read_castep_output(calc_path)
 
         elif method == 'lammps':
-            out = simsio.read_lammps_output(calc_path)
+            out = simsio.lammps.read_lammps_output(calc_path)
 
         results_exist = False
         if hasattr(sim_i, 'results'):
@@ -719,12 +716,12 @@ def collate_results(res_opt, skip_idx=None, debug=False):
     return out
 
 
-def main():
+def main(harvest_opt):
 
-    sids = HARVEST_OPT['sid']
-    skip_idx = HARVEST_OPT['skip_idx']
-    overwrite = HARVEST_OPT.get('overwrite', False)
-    debug = HARVEST_OPT.get('debug', False)
+    sids = harvest_opt['sid']
+    skip_idx = harvest_opt['skip_idx']
+    overwrite = harvest_opt.get('overwrite', False)
+    debug = harvest_opt.get('debug', False)
 
     if skip_idx is None or len(skip_idx) == 0:
         skip_idx = [[] for _ in range(len(sids))]
@@ -733,10 +730,10 @@ def main():
         read_results(s, skip_idx=skip_idx[s_idx], overwrite=overwrite)
 
     # Compute additional properties
-    out = collate_results(HARVEST_OPT, skip_idx=skip_idx, debug=debug)
+    out = collate_results(harvest_opt, skip_idx=skip_idx, debug=debug)
 
     # Save the JSON file in the results directory of the first listed SID
-    res_dir = os.path.join(HARVEST_OPT['output_path'], out['rid'])
+    res_dir = os.path.join(harvest_opt['output_path'], out['rid'])
 
     os.makedirs(res_dir, exist_ok=True)
     json_fn = 'results.json'
@@ -756,4 +753,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(HARVEST_OPT)

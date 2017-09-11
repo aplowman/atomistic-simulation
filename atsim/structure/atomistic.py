@@ -11,6 +11,7 @@ from mendeleev import element
 
 from functools import reduce
 import warnings
+import spglib
 
 
 class AtomisticStructure(object):

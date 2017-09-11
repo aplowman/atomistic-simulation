@@ -3,6 +3,7 @@ import spglib
 from atsim.structure.atomistic import AtomisticStructure
 from atsim import vectors, mathsutils
 from atsim.structure.crystal import CrystalBox
+from atsim.structure import gbhelper
 
 
 CSL_FROM_PARAMS_GB_TYPES = {
@@ -669,5 +670,75 @@ def csl_surface_bicrystal_from_parameters(crystal_structure, csl_vecs,
     return bc
 
 
-def csl_bicrystal_from_structure():
-    pass
+def csl_bicrystal_from_structure(csl, csl_params,
+                                overlap_tol=0.1, reorient=True,
+                                maintain_inv_sym=False,  
+                                boundary_vac_args=None, 
+                                relative_shift_args=None, 
+                                wrap=False):
+    """
+    Create a CSL Bicrystal from a structure.
+        
+    Parameters
+    ----------
+    csl : string
+        '[angle_axis_structure]' to be constructed using a method 
+        defined as 'construct_'in gbhelper.py.
+        (for example '180_001_mZrO2').
+    csl_params : dict of (str : string or ndarray or int)
+        Parameters needed to construct `csl`. Vary depending on method.
+    maintain_inv_sym : bool, optional
+        If True, the supercell atoms will be checked for inversion symmetry
+        through the centres of both crystals. This check will be repeated
+        following methods which manipulate atom positions. In this way, the two
+        grain boundaries in the bicrystal are ensured to be identical.
+    reorient : bool, optional
+        If True, after construction of the boundary, reorient_to_lammps() is
+        invoked. Default is True.
+    boundary_vac_args : dict, optional
+        If not None, after construction of the boundary, apply_boundary_vac()
+        is invoked with this dict as keyword arguments. Default is None.
+    apply_boundary_vac_flat_args: dict, optional
+        If not None, after construction of the boundary,
+        apply_boundary_vac_flat() is invoked with this dict as keyword
+        arguments. Default is None.
+    relative_shift_args : dict, optional
+        If not None, after construction of the boundary, apply_relative_shift()
+        is invoked with this dict as keyword arguments. Default is None.
+    wrap : bool, optional
+        If True, after construction of the boundary, wrap_atoms_to_supercell()
+        is invoked. Default is True.
+    Notes
+    -----
+    `reorient`=True doesn't work since no lattice_sites are passed.
+    `crystals` not yet available.
+    
+    """
+
+    create_bound = getattr(gbhelper, 'construct_' + csl)
+    bound_struct = create_bound(**csl_params)
+
+    # AtomisticStructure parameters
+    as_params = {
+                'atom_sites'  : bound_struct['atom_sites'],
+                'supercell'   : bound_struct['supercell'],
+                'all_species' : bound_struct['all_species'],
+                'all_species_idx' : bound_struct['all_species_idx'],
+                'overlap_tol' : overlap_tol,
+                'crystals'    : bound_struct['crystals'],
+            #     'crystal_structures' : crystal_structures,
+                'crystal_idx' : bound_struct['crystals_idx'],
+            }
+
+    # Bicrystal parameters
+    bc_params = {
+        'as_params': as_params,
+        'maintain_inv_sym': maintain_inv_sym,
+        'reorient': reorient,
+        'boundary_vac_args': boundary_vac_args,
+        'relative_shift_args': relative_shift_args,
+        'wrap': wrap,
+        'nbi': 0,
+    }
+
+    return Bicrystal(**bc_params)

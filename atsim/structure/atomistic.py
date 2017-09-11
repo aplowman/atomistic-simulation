@@ -789,7 +789,8 @@ class AtomisticStructure(object):
         self.atom_sites = np.dot(R, self.atom_sites)
 
         # Reorient lattice sites
-        self.lattice_sites = np.dot(R, self.lattice_sites)
+        if self.lattice_sites:
+            self.lattice_sites = np.dot(R, self.lattice_sites)
 
         # Reorient CrystalStructure lattice objects
         for c_idx in range(len(self.crystals)):
@@ -797,7 +798,8 @@ class AtomisticStructure(object):
             c = self.crystals[c_idx]
             c['crystal'] = np.dot(R, c['crystal'])
             c['origin'] = np.dot(R, c['origin'])
-            c['cs_orientation'] = np.dot(R, c['cs_orientation'])
+            if 'cs_orientation' in c.keys():
+                c['cs_orientation'] = np.dot(R, c['cs_orientation'])
 
         return R
 

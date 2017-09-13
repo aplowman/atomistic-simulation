@@ -277,14 +277,14 @@ class Bicrystal(AtomisticStructure):
         # Crystals origins
         crys_orgns = np.array([self.crystals[i]['origin'] for i in range(2)])
         # Find crystals with origin at supercell origin if any
-        crys_sup_orgn = np.all((crys_orgns==0.0), axis=1)
+        crys_sup_orgn = np.all((crys_orgns == 0.0), axis=1)
 
-        if len(np.where(crys_sup_orgn==False)[0])==1:
-            sh_idx = np.where(crys_sup_orgn==False)[0][0] 
+        if len(np.where(crys_sup_orgn == False)[0]) == 1:
+            sh_idx = np.where(crys_sup_orgn == False)[0][0]
         else:
             for i in range(2):
-                if gb.crystals[i]['crystal'][:,nbi][nbi] > 0:
-                    sh_idx = i 
+                if self.crystals[i]['crystal'][:, nbi][nbi] > 0:
+                    sh_idx = i
         grn_sh = self.crystals[sh_idx]
 
         shift_gb = np.zeros((3, 1))
@@ -671,14 +671,14 @@ def csl_surface_bicrystal_from_parameters(crystal_structure, csl_vecs,
 
 
 def csl_bicrystal_from_structure(csl, csl_params,
-                                overlap_tol=0.1, reorient=True,
-                                maintain_inv_sym=False,  
-                                boundary_vac_args=None, 
-                                relative_shift_args=None, 
-                                wrap=False):
+                                 overlap_tol=0.1, reorient=True,
+                                 maintain_inv_sym=False,
+                                 boundary_vac_args=None,
+                                 relative_shift_args=None,
+                                 wrap=False):
     """
     Create a CSL Bicrystal from a structure.
-        
+
     Parameters
     ----------
     csl : string
@@ -712,7 +712,7 @@ def csl_bicrystal_from_structure(csl, csl_params,
     -----
     `reorient`=True doesn't work since no lattice_sites are passed.
     `crystals` not yet available.
-    
+
     """
 
     create_bound = getattr(gbhelper, 'construct_' + csl)
@@ -720,15 +720,15 @@ def csl_bicrystal_from_structure(csl, csl_params,
 
     # AtomisticStructure parameters
     as_params = {
-                'atom_sites'  : bound_struct['atom_sites'],
-                'supercell'   : bound_struct['supercell'],
-                'all_species' : bound_struct['all_species'],
-                'all_species_idx' : bound_struct['all_species_idx'],
-                'overlap_tol' : overlap_tol,
-                'crystals'    : bound_struct['crystals'],
-            #     'crystal_structures' : crystal_structures,
-                'crystal_idx' : bound_struct['crystals_idx'],
-            }
+        'atom_sites': bound_struct['atom_sites'],
+        'supercell': bound_struct['supercell'],
+        'all_species': bound_struct['all_species'],
+        'all_species_idx': bound_struct['all_species_idx'],
+        'overlap_tol': overlap_tol,
+        'crystals': bound_struct['crystals'],
+        #     'crystal_structures' : crystal_structures,
+        'crystal_idx': bound_struct['crystals_idx'],
+    }
 
     # Bicrystal parameters
     bc_params = {

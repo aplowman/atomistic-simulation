@@ -228,10 +228,7 @@ def main(s_id):
     db = read_pickle(tmp_db_path)
 
     # Find the base options for this sid:
-    for k, v in db.items():
-        if v['set_up']['session_id'] == s_id:
-            base_opt = v
-            break
+    base_opt = search_database_by_session_id(db, s_id)
 
     src_path = os.path.join(base_opt['set_up']['scratch']['path'], s_id)
     dst_path = os.path.join(base_opt['set_up']['archive']['path'], s_id)

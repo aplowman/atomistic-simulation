@@ -1,14 +1,7 @@
 import os
 import numpy as np
 import shutil
-import utils
-import dbhelpers
-import readwrite
-from readwrite import replace_in_file, delete_line
-import atomistic
-import simsio
-from bravais import BravaisLattice
-from crystal import CrystalStructure
+import fractions
 import copy
 import shutil
 import subprocess
@@ -16,15 +9,203 @@ import posixpath
 import ntpath
 import time
 import warnings
-from set_up.opt import OPT
-from set_up.setup_profiles import HOME_PATH
-import geometry
-import fractions
 from sys import stdout
+from pathlib import Path
+from atsim import utils, dbhelpers, readwrite, geometry
+from atsim import readwrite
+from atsim import SERIES_NAMES, SET_UP_PATH, REF_PATH, SCRIPTS_PATH
+from atsim.readwrite import replace_in_file, delete_line, add_line
+from atsim.simulation.sim import AtomisticSimulation
+from atsim.structure.bravais import BravaisLattice
+from atsim.structure.crystal import CrystalStructure
+from atsim.structure import atomistic
+from atsim.structure import bicrystal
 
-SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
-REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
-SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
+JS_TEMPLATE_DIR = os.path.join(SCRIPTS_PATH, 'set_up', 'jobscript_templates')
+STRUCT_LOOKUP = {
+    'bulk': atomistic.BulkCrystal,
+    'csl_bicrystal': bicrystal.csl_bicrystal_from_parameters,
+    'csl_bulk_bicrystal': bicrystal.csl_bulk_bicrystal_from_parameters,
+    'csl_surface_bicrystal': bicrystal.csl_surface_bicrystal_from_parameters,
+    'csl_bicrystal_from_structure': bicrystal.csl_bicrystal_from_structure,
+}
+
+
+def write_jobscript(path, calc_paths, method, num_cores, sge, job_array,
+                    scratch_os=None, scratch_path=None, parallel_env=None,
+                    selective_submission=False, module_load=None,
+                    job_name=None, seedname=None):
+    """
+    Write a jobscript file whose execution runs calculation input files.
+
+    Parameters
+    ----------
+    path : str
+        Directory in which to save the generated jobscript file.
+    calc_paths : list of str
+        Directories in which calculations are to be run.
+    method : str
+        Either 'castep' or 'lammps'
+    num_cores : int
+        Number of processor cores to use for the calculations.
+    sge : bool
+        If True, jobscript is generated for the SGE batch scheduler. If False,
+        jobscript is generated to immediately run the calculations.
+    job_array : bool
+        Only applicable if `sge` is True. If True, calculations are submitted
+        as an SGE job array. If False, calculations are submitted in one go. If
+        the number of calculations is one (i.e. len(`calc_paths`) == 1), this
+        will be set to False. Setting this to False can be handy for many small
+        calculations which won't take a long time to complete. If submitted as
+        a job array, a significant fraction of the total completion time may be
+        queuing.
+    scratch_os : str, optional
+        Either 'nt' (Windows) or 'posix' (Unix-like, MacOS). The operating
+        system on which the jobscript file will be executed. Default is to
+        query to system on which this script is invoked i.e. `os.name`.
+    scratch_path : str, optional
+        Directory in which the jobscript is to be executed. Specify this path
+        if the jobscript will be executed in a location different to the
+        directory `path`, in which it is generated. By default, this is set to
+        the same string as `path`.
+    parallel_env : str, optional
+        The SGE parallel environment on which to submit the calculations. Only
+        applicable in `num_cores` > 1. Default is None.
+    selective_submission : bool, optional
+        Only applicable if `sge` is True. If True, the SGE task id flag `-t`
+        [1] will be excluded from the jobscript file and instead this flag will
+        be expected as a command line argument when executing the jobscript:
+        e.g. "qsub jobscript.sh -t 1-10:2". Default is False.
+    module_load : str, optional
+        A string representing the path to a module to load within the
+        jobscript. If specified, the statement "module load `module_load`" will
+        be added to the top of the jobscript.
+    job_name : str, optional
+        Only applicable if `sge` is True. Default is None.
+    seedname : str, optional
+        Must be set if `method` is 'castep'.
+
+    Returns
+    -------
+    None
+
+    References
+    ----------
+    [1] http://gridscheduler.sourceforge.net/htmlman/htmlman1/qsub.html
+
+    TODO:
+    -   Add option for specifying parallel environment type for sge jobscripts
+
+    """
+
+    # General validation:
+
+    if method == 'castep' and seedname is None:
+        raise ValueError('`seedname` must be specified for CASTEP jobscripts.')
+
+    if num_cores > 1 and parallel_env is None:
+        raise ValueError('`parallel_env` must be set if `num_cores` > 1.')
+
+    num_calcs = len(calc_paths)
+
+    if num_cores <= 0:
+        raise ValueError('Num cores not valid.')
+    elif num_cores == 1:
+        multi_type = 'serial'
+    else:
+        multi_type = 'parallel'
+
+    if sge:
+        sge_str = 'sge'
+    else:
+        sge_str = 'no_sge'
+
+    if num_calcs == 1:
+        job_array = False
+
+    if job_array:
+        job_arr_str = 'job_array'
+    else:
+        job_arr_str = 'single_job'
+
+    if scratch_path is None:
+        scratch_path = path
+
+    if scratch_os is None:
+        scratch_os = os.name
+
+    if scratch_os == 'nt':
+        scratch_path_sep = '\\'
+    elif scratch_os == 'posix':
+        scratch_path_sep = '/'
+
+    # Get the template file name:
+    tmp_fn = method + '_' + sge_str + '_' + \
+        multi_type + '_' + scratch_os + '_' + job_arr_str + '.txt'
+
+    # Get the template file path:
+    tmp_path = os.path.join(JS_TEMPLATE_DIR, tmp_fn)
+
+    # Write text file with all calc paths
+    dirlist_fn = 'dir_list.txt'
+    dir_list_path_stage = os.path.join(path, dirlist_fn)
+    dir_list_path_scratch = scratch_path_sep.join([scratch_path, dirlist_fn])
+    readwrite.write_list_file(dir_list_path_stage, calc_paths)
+
+    if scratch_os == 'posix':
+        js_ext = 'sh'
+    elif scratch_os == 'nt':
+        js_ext = 'bat'
+
+    js_name = 'jobscript.' + js_ext
+
+    # Copy template file to path
+    js_path = os.path.join(path, js_name)
+    shutil.copy(tmp_path, js_path)
+
+    # Add module load to jobscript:
+    if module_load is not None:
+        add_line(js_path, 1, '')
+        add_line(js_path, 2, 'module load {}'.format(module_load))
+
+    # Make replacements in template file:
+    replace_in_file(js_path, '<replace_with_dir_list>', dir_list_path_scratch)
+
+    if multi_type == 'parallel':
+        replace_in_file(js_path, '<replace_with_num_cores>', str(num_cores))
+        replace_in_file(js_path, '<replace_with_pe>', parallel_env)
+
+    if sge:
+        if job_name is not None:
+            replace_in_file(js_path, '<replace_with_job_name>', job_name)
+        else:
+            delete_line(js_path, '<replace_with_job_name>')
+
+        if selective_submission:
+            delete_line(js_path, '#$ -t')
+        else:
+            replace_in_file(js_path, '<replace_with_job_index_range>',
+                            '1-' + str(num_calcs))
+
+    if method == 'castep':
+        replace_in_file(js_path, '<replace_with_seed_name>', seedname)
+
+    # For `method` == 'lammps', `sge` == True, `job_array` == False, we need
+    # a helper jobscript, called by the SGE jobscript:
+    if method == 'lammps' and sge and not job_array:
+
+        if multi_type != 'serial' or scratch_os != 'posix':
+            raise NotImplementedError('Jobscript parameters not supported.')
+
+        help_tmp_path = os.path.join(
+            JS_TEMPLATE_DIR, 'lammps_no_sge_serial_posix_single_job.txt')
+
+        help_js_path = os.path.join(path, 'lammps_single_job.sh')
+        shutil.copy(help_tmp_path, help_js_path)
+        replace_in_file(help_js_path, '<replace_with_dir_list>', dir_list_path)
+
+    # Make a directory for job-related output. E.g. .o and .e files from CSF.
+    os.makedirs(os.path.join(path, 'output'))
 
 
 class Archive(object):
@@ -185,7 +366,7 @@ class Stage(object):
 
             if archive.dropbox:
 
-                dbx = dbhelpers.get_dropbox(archive.dropbox_key)
+                dbx = dbhelpers.get_dropbox()
                 db_path = archive.path
                 print(copy_msg)
                 dbhelpers.upload_dropbox_dir(dbx, self.path, db_path,
@@ -335,20 +516,7 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
     """
 
     # Validation
-    allowed_sn = [
-        'kpoint',
-        'cut_off_energy',
-        'smearing_width',
-        'gb_size',
-        'box_lat',
-        'nextra_bands',
-        'geom_energy_tol',
-        'geom_stress_tol',
-        'relative_shift',
-        'gamma_surface',
-        'boundary_vac',
-        'boundary_vac_flat',
-    ]
+    allowed_sn = SERIES_NAMES
     if series_spec.get('name') not in allowed_sn:
         raise NotImplementedError(
             'Series name: {} not understood.'.format(series_spec.get('name')))
@@ -785,12 +953,12 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
 
     # Merge update dicts:
     for i_idx, i in enumerate(all_updates_lkup_nest):
-        lkup_srs_id = all_updates_lkup_nest[i_idx][1]['series_id']                                                                  ))
+        lkup_srs_id = all_updates_lkup_nest[i_idx][1]['series_id']
         all_updates_lkup_nest[i_idx][0]['series_id'].append([lkup_srs_id])
         del i[1]['series_id']
 
         all_updates_lkup_nest[i_idx] = utils.combine_list_of_dicts(i)
-        
+
     return all_updates_lkup_nest, common_series_info
 
 
@@ -937,46 +1105,40 @@ def process_constraints(opt, structure):
 
 def append_db(opt):
 
-    # Add to database
-    su = opt['set_up']
+    if opt['database'].get('dropbox'):
 
-    if su['database'].get('dropbox'):
+        dbx = dbhelpers.get_dropbox()
 
-        dpbx_key = su['database'].get('dropbox_key')
-        if dpbx_key is not None:
+        # Download database file:
+        tmp_db_path = os.path.join(SET_UP_PATH, 'temp_db')
+        dpbx_path = opt['database']['path']
 
-            dbx = dbhelpers.get_dropbox(dpbx_key)
+        # Check if db file exists, if not prompt to create:
+        db_exists = dbhelpers.check_dropbox_file_exist(dbx, dpbx_path)
 
-            # Download database file:
-            tmp_db_path = os.path.join(SU_PATH, 'temp_db')
-            dpbx_path = su['database']['path']
-
-            # Check if db file exists, if not prompt to create:
-            db_exists = dbhelpers.check_dropbox_file_exist(dbx, dpbx_path)
-
-            if db_exists:
-                dbhelpers.download_dropbox_file(dbx, dpbx_path, tmp_db_path)
+        if db_exists:
+            dbhelpers.download_dropbox_file(dbx, dpbx_path, tmp_db_path)
+        else:
+            db_create = utils.confirm('Database file does not exist. '
+                                      'Create it?')
+            if db_create:
+                readwrite.write_pickle({}, tmp_db_path)
             else:
-                db_create = utils.confirm('Database file does not exist. '
-                                          'Create it?')
-                if db_create:
-                    readwrite.write_pickle({}, tmp_db_path)
-                else:
-                    warnings.warn('This simulaton has not been added to a '
-                                  'database')
+                warnings.warn('This simulaton has not been added to a '
+                              'database')
 
-            if db_exists or db_create:
+        if db_exists or db_create:
 
-                # Modify database file:
-                db_file = readwrite.read_pickle(tmp_db_path)
-                db_file.update({su['time_stamp']: opt})
-                readwrite.write_pickle(db_file, tmp_db_path)
-                dbhelpers.upload_dropbox_file(dbx, tmp_db_path, dpbx_path,
-                                              overwrite=True)
+            # Modify database file:
+            db_file = readwrite.read_pickle(tmp_db_path)
+            db_file.update({opt['time_stamp']: opt})
+            readwrite.write_pickle(db_file, tmp_db_path)
+            dbhelpers.upload_dropbox_file(dbx, tmp_db_path, dpbx_path,
+                                          overwrite=True)
 
     else:
 
-        db_path = su['database']['path']
+        db_path = opt['database']['path']
         db_exists = os.path.isfile(db_path)
 
         if db_exists:
@@ -995,118 +1157,51 @@ def append_db(opt):
         if db_exists or db_create:
 
             # Modify database file:
-            db.update({su['time_stamp']: opt})
+            db.update({opt['time_stamp']: opt})
             readwrite.write_pickle(db, db_path)
 
 
-def main(opt):
-    """
-    Read the options file and generate a simulation (series).
-
-    TODO:
-    -   Validation:
-        -   check all ints in cs_idx resolve in crystal_structures
-    -   Allow datatype parsing on list elements so specifying crystal structure
-        index when forming struct_opt is cleaner.
-    -   Move more code into separate functions (e.g. dropbox database stuff)
-    -   Can possible update database without writing a temp file.
-
-    """
-
-    struct_lookup = {
-        'BulkCrystal': atomistic.BulkCrystal,
-        'CSLBicrystal': atomistic.CSLBicrystal,
-        'CSLBulkCrystal': atomistic.CSLBulkCrystal,
-        'CSLSurfaceCrystal': atomistic.CSLSurfaceCrystal
-    }
-    srs_is_struct = {
-        'kpoint': False,
-        'cut_off_energy': False,
-        'smearing_width': False,
-        'gb_size': True,
-        'box_lat': True,
-        'nextra_bands': False,
-        'relative_shift': True,
-        'boundary_vac': True,
-        'boundary_vac_flat': True,
-    }
-    log = []
-
-    # Convenience
-    su = opt['set_up']
-
-    # Modify options dictionary to include additional info
-
-    # Get unique representation of this series:
-    ts = time.time()
-    su['time_stamp'] = ts
-
-    s_date, s_num = utils.get_date_time_stamp(split=True)
-    s_id = s_date + '_' + s_num
-    su['session_id'] = s_id
-    su['scratch']['job_name'] = "j_" + s_num
-
-    stage_path = su['stage_path']
-    sub_dirs = su.get('sub_dirs')
-    if sub_dirs is not None:
-        stage_path = os.path.join(stage_path, *sub_dirs)
-        su['scratch']['path'] = os.path.join(su['scratch']['path'], *sub_dirs)
-        su['archive']['path'] = os.path.join(su['archive']['path'], *sub_dirs)
-
-    stage = Stage(session_id=s_id, path=stage_path)
-    scratch = Scratch(session_id=s_id, **su['scratch'])
-    archive_opts = su['archive']
-    database_opts = su['database']
-
-    is_dropbox = [i.get('dropbox') for i in [archive_opts, database_opts]]
-    if any(is_dropbox):
-        try:
-            db_key = su['dropbox_key']
-            if is_dropbox[0]:
-                archive_opts.update({'dropbox_key': db_key})
-            if is_dropbox[1]:
-                database_opts.update({'dropbox_key': db_key})
-
-        except:
-            print('To use dropbox for Archive or database location, a dropbox '
-                  'key must be specified as opiton: `dropbox_key`.')
-
-    archive = Archive(session_id=s_id, scratch=scratch, **archive_opts)
-    su['database'] = database_opts
-
-    # log.append('Making stage directory at: {}.'.format(stage_path))
-    os.makedirs(stage.path, exist_ok=False)
-
-    # Generate CrystalStructure objects:
-    log.append('Generating CrystalStructure objects.')
+def make_crystal_structures(cs_opt):
     cs = []
-    for cs_opt in opt['crystal_structures']:
-        if 'from_file' in cs_opt:
-            path = cs_opt['from_file']['path']
-            cs.append(CrystalStructure.from_file(path,
-                                                 **cs_opt['from_file']['lattice']))
-        else:
-            brav_lat = BravaisLattice(**cs_opt['lattice'])
-            cs.append(CrystalStructure(brav_lat, cs_opt['motif']))
+    for cs_defn in cs_opt:
 
-    # Generate base structure
-    log.append('Generating base AtomisticStructure object.')
+        cs_params = {}
+
+        if 'path' in cs_defn:
+
+            cs_params.update({
+                'path': cs_defn['path'],
+                **cs_defn['lattice'],
+            })
+            cs.append(CrystalStructure.from_file(**cs_params))
+
+        else:
+            cs_params.update({
+                'bravais_lattice': BravaisLattice(**cs_defn['lattice']),
+                'motif': cs_defn['motif'],
+            })
+            cs.append(CrystalStructure(**cs_params))
+
+    return cs
+
+
+def make_base_structure(bs_opt, crystal_structures):
+
     struct_opt = {}
-    base_as_opt = opt['base_structure']
-    for k, v in base_as_opt.items():
+    for k, v in bs_opt.items():
         if k == 'type' or k == 'import' or k == 'sigma':
             continue
         elif k == 'crystal_idx':
-            if base_as_opt['type'] == 'CSLSurfaceCrystal':
+            if bs_opt['type'] == 'CSLSurfaceCrystal':
                 struct_opt.update({'surface_idx': v})
         elif k == 'cs_idx':
-            struct_opt.update({'crystal_structure': cs[v]})
+            struct_opt.update({'crystal_structure': crystal_structures[v]})
         else:
             struct_opt.update({k: v})
 
-    base_as = struct_lookup[base_as_opt['type']](**struct_opt)
+    base_as = STRUCT_LOOKUP[bs_opt['type']](**struct_opt)
 
-    in_struct = base_as_opt.get('import')
+    in_struct = bs_opt.get('import')
     if in_struct is not None:
 
         # Get atom sites/supercell from output of previous calculation
@@ -1144,11 +1239,136 @@ def main(opt):
             all_species=['Zr'],
             all_species_idx=np.zeros((new_atoms.shape[1],)))
 
-    # Visualise base AtomisticStructure:
-    save_args = {
-        'filename': stage.get_path('base_structure.html'),
-        'auto_open': False
+    return base_as
+
+
+def make_series_structure(ss_opt, crystal_structures):
+
+    srs_struct_opt = {}
+    for k, v in ss_opt.items():
+        if k == 'type' or k == 'import' or k == 'sigma':
+            continue
+        elif k == 'crystal_idx':
+            if ss_opt['type'] == 'CSLSurfaceCrystal':
+                srs_struct_opt.update({'surface_idx': v})
+        elif k == 'cs_idx':
+            srs_struct_opt.update({'crystal_structure': crystal_structures[v]})
+        else:
+            srs_struct_opt.update({k: v})
+
+    return STRUCT_LOOKUP[ss_opt['type']](**srs_struct_opt)
+
+
+def plot_gamma_surface_grids(common_series_info, stage):
+
+    g_preview = []
+    cnd = {'series_name': 'gamma_surface'}
+    g_idx, gamma = utils.dict_from_list(
+        common_series_info, cnd, ret_index=True)
+
+    if gamma is not None and opt['make_plots']:
+
+        if gamma.get('preview') is not None:
+            g_preview.append(gamma['preview'])
+
+        gamma_count = 0
+        while gamma is not None:
+
+            g_fn = stage.get_path('γ_surface_{}.html'.format(gamma_count))
+            vis_args = {
+                'show_iplot': False,
+                'save': True,
+                'save_args': {
+                    'filename': g_fn
+                }
+            }
+            geometry.Grid.from_jsonable(gamma).visualise(**vis_args)
+
+            csi_sub = [i for i_idx, i in enumerate(common_series_info)
+                       if i_idx != g_idx]
+            g_idx, gamma = utils.dict_from_list(csi_sub, cnd, ret_index=True)
+            gamma_count += 1
+
+        if any(g_preview):
+            g_prv_msg = 'Check gamma surface grid(s) now. Continue?'
+            if not utils.confirm(g_prv_msg):
+                print('Exiting.')
+                return
+
+
+def main(opt):
+    """
+    Read the options file and generate a simulation (series).
+
+    TODO:
+    -   Validation:
+        -   check all ints in cs_idx resolve in crystal_structures
+    -   Allow datatype parsing on list elements so specifying crystal structure
+        index when forming struct_opt is cleaner.
+    -   Move more code into separate functions (e.g. dropbox database stuff)
+    -   Can possible update database without writing a temp file.
+
+    """
+
+    srs_is_struct = {
+        'kpoint': False,
+        'cut_off_energy': False,
+        'smearing_width': False,
+        'gb_size': True,
+        'box_lat': True,
+        'nextra_bands': False,
+        'relative_shift': True,
+        'boundary_vac': True,
+        'boundary_vac_flat': True,
     }
+    log = []
+
+    # TEMP
+    """
+    keys in opt:
+        ['archive', 
+        'upload_plots', 
+        'crystal_structures', 
+        'offline_files', 
+        'scratch', 
+        'subdirs', 
+        'constraints', 
+        'castep', 
+        'series', 
+        'method', 
+        'base_structure', 
+        'append_db', 
+        'database', 
+        'make_plots',
+        'stage']
+
+    """
+    ####
+
+    # Get unique representation of this series:
+    opt['time_stamp'] = time.time()
+
+    s_date, s_num = utils.get_date_time_stamp(split=True)
+    s_id = s_date + '_' + s_num
+    opt['session_id'] = s_id
+    opt['scratch']['job_name'] = 'j_' + s_num
+
+    # stage_path = su['stage_path']
+    stage_path = opt['stage']['path']
+    sub_dirs = opt['sub_dirs']
+    stage_path = os.path.join(stage_path, *sub_dirs)
+    opt['scratch']['path'] = os.path.join(opt['scratch']['path'], *sub_dirs)
+    opt['archive']['path'] = os.path.join(opt['archive']['path'], *sub_dirs)
+
+    stage = Stage(session_id=s_id, path=stage_path)
+    scratch = Scratch(session_id=s_id, **opt['scratch'])
+    archive = Archive(session_id=s_id, scratch=scratch, **opt['archive'])
+
+    # log.append('Making stage directory at: {}.'.format(stage_path))
+    os.makedirs(stage.path, exist_ok=False)
+
+    crys_structs = make_crystal_structures(opt['crystal_structures'])
+    base_as = make_base_structure(opt['base_structure'], crys_structs)
 
     # Save current options dict
     opt_p_str_path = stage.get_path('opt_processed.txt')
@@ -1157,7 +1377,7 @@ def main(opt):
 
     # Get series definitions:
     srs_df = opt.get('series')
-    is_srs = srs_df is not None and len(srs_df) > 0
+    is_srs = srs_df is not None and srs_df != [[]]
 
     is_struct = []
     if is_srs:
@@ -1177,6 +1397,10 @@ def main(opt):
     # If only one simulation, plot the structure:
     if lst_struct_idx == -1:
         if opt['make_plots']:
+            save_args = {
+                'filename': stage.get_path('base_structure.html'),
+                'auto_open': False
+            }
             base_as.visualise(show_iplot=False, save=True,
                               save_args=save_args, proj_2d=True)
 
@@ -1189,38 +1413,7 @@ def main(opt):
         all_upd, csi = prepare_all_series_updates(srs_df, base_as)
 
         # Plot gamma surface grids:
-        g_preview = []
-        cnd = {'series_name': 'gamma_surface'}
-        g_idx, gamma = utils.dict_from_list(csi, cnd, ret_index=True)
-
-        if gamma is not None and opt['make_plots']:
-
-            if gamma.get('preview') is not None:
-                g_preview.append(gamma['preview'])
-
-            gamma_count = 0
-            while gamma is not None:
-
-                g_fn = stage.get_path('γ_surface_{}.html'.format(gamma_count))
-                vis_args = {
-                    'show_iplot': False,
-                    'save': True,
-                    'save_args': {
-                        'filename': g_fn
-                    }
-                }
-                geometry.Grid.from_jsonable(gamma).visualise(**vis_args)
-
-                csi_sub = [i for i_idx, i in enumerate(csi) if i_idx != g_idx]
-                g_idx, gamma = utils.dict_from_list(
-                    csi_sub, cnd, ret_index=True)
-                gamma_count += 1
-
-            if any(g_preview):
-                g_prv_msg = 'Check gamma surface grid(s) now. Continue?'
-                if not utils.confirm(g_prv_msg):
-                    print('Exiting.')
-                    return
+        plot_gamma_surface_grids(csi, stage)
 
     # Generate simulation series:
     num_sims = len(all_upd)
@@ -1229,26 +1422,9 @@ def main(opt):
         stdout.write('Making sim: {} of {}\r'.format(upd_idx + 1, num_sims))
         stdout.flush()
 
-        # Update options:
         srs_opt = copy.deepcopy(opt)
         utils.update_dict(srs_opt, upd)
-
-        # Generate AtomisticStructure:
-        log.append('Generating series AtomisticStructure object.')
-        srs_struct_opt = {}
-        srs_as_opt = srs_opt['base_structure']
-        for k, v in srs_as_opt.items():
-            if k == 'type' or k == 'import' or k == 'sigma':
-                continue
-            elif k == 'crystal_idx':
-                if srs_as_opt['type'] == 'CSLSurfaceCrystal':
-                    srs_struct_opt.update({'surface_idx': v})
-            elif k == 'cs_idx':
-                srs_struct_opt.update({'crystal_structure': cs[v]})
-            else:
-                srs_struct_opt.update({k: v})
-
-        srs_as = struct_lookup[srs_as_opt['type']](**srs_struct_opt)
+        srs_as = make_series_structure(srs_opt['base_structure'], crys_structs)
 
         # Form the directory path for this sim
         # and find out which series affect the structure (for plotting purposes):
@@ -1263,8 +1439,8 @@ def main(opt):
         scratch_srs_path = scratch.get_path('calcs', *srs_path)
 
         all_scratch_paths.append(scratch_srs_path)
-        srs_opt['set_up']['stage_series_path'] = stage_srs_path
-        srs_opt['set_up']['scratch_srs_path'] = scratch_srs_path
+        srs_opt['stage_series_path'] = stage_srs_path
+        srs_opt['scratch_srs_path'] = scratch_srs_path
 
         if lst_struct_idx > -1 and opt['make_plots']:
 
@@ -1296,7 +1472,7 @@ def main(opt):
                                srs_as, stage.path, scratch.path)
 
         # Generate AtomisticSim:
-        asim = atomistic.AtomisticSimulation(srs_as, srs_opt)
+        asim = AtomisticSimulation(srs_as, srs_opt)
         asim.write_input_files()
         all_sims.append(asim)
 
@@ -1310,8 +1486,6 @@ def main(opt):
         'common_series_info': csi,
     }
     readwrite.write_pickle(pick, pick_path)
-
-    # print('calc_paths: {}'.format(all_scratch_paths))
 
     # Write jobscript
     js_params = {
@@ -1334,21 +1508,21 @@ def main(opt):
         if seedname:
             js_params.update({'seedname': seedname})
 
-    simsio.write_jobscript(**js_params)
+    write_jobscript(**js_params)
 
     # Now prompt the user to check the calculation has been set up correctly
     # in the staging area:
     print('Simulation series generated here: {}'.format(stage.path))
     if utils.confirm('Copy to scratch?'):
         stage.copy_to_scratch(scratch)
-        if su['append_db']:
+        if opt['append_db']:
             print('Adding options to database.')
             append_db(opt)
         if utils.confirm('Submit on scratch?'):
             stage.submit_on_scratch(scratch)
         else:
             print('Did not submit.')
-        if su['upload_plots']:
+        if opt['upload_plots']:
             stage.copy_to_archive(archive)
     else:
         print('Exiting.')

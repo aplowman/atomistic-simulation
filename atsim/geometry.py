@@ -1,11 +1,10 @@
 import numpy as np
 import fractions
-import vectors
-import plotting
+from atsim import vectors, plotting
 import copy
 from plotly import graph_objs as go
 from plotly.offline import plot, iplot, init_notebook_mode
-from utils import transpose_list
+from atsim.utils import transpose_list
 
 
 def check_centrosymmetry(points, centre, periodic_box=None):

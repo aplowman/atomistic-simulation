@@ -1,7 +1,7 @@
-import utils
-from utils import dict_from_list
-from readwrite import format_list
 import numpy as np
+from atsim import utils
+from atsim.utils import dict_from_list
+from atsim.readwrite import format_list
 
 
 def compute_time_fmt(sim):

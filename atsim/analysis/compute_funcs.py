@@ -1,7 +1,8 @@
-import utils
-from utils import dict_from_list
-from readwrite import format_list, format_dict
 import numpy as np
+import atsim.utils
+from atsim.utils import dict_from_list
+from atsim.readwrite import format_list, format_dict
+
 
 # Variables which do not need to be parameterised:
 PREDEFINED_VARS = {
@@ -150,14 +151,14 @@ def energy(out, sim, sim_idx, energy_src, opt_step=None):
     if energy_src not in allowed_en_srcs[method]:
         raise ValueError(err_msg.format(energy_src, method.upper()))
 
-    energy_pa = sim.results[energy_src]
+    energy = sim.results[energy_src]
 
     if opt_step is None:
-        return energy_pa
+        return energy
     else:
         if not isinstance(opt_step, int):
             raise ValueError('`opt_step` must be an integer.')
-        return energy_pa[opt_step]
+        return energy[opt_step]
 
 
 def energy_per_atom(out, sim, sim_idx, energy_src, opt_step=None):

@@ -9,7 +9,7 @@ import fnmatch
 import os
 import posixpath
 import ntpath
-import readwrite
+from atsim import readwrite
 
 """
 TODO:
@@ -683,3 +683,54 @@ def arguments(print_args=True):
         print('args: \n{}\n'.format(readwrite.format_dict(args)))
         print('posargs: \n{}\n'.format(readwrite.format_list(posargs)))
     return args, posargs
+
+
+def flatten_dict_keys(d, base_k=None, delim='.'):
+
+    flat_d = {}
+    for k, v in d.items():
+
+        if base_k:
+            new_k = base_k + delim + k
+        else:
+            new_k = k
+
+        if isinstance(v, dict):
+            flat_d.update(get_flat_dict(v, new_k))
+
+        else:
+            flat_d.update({new_k: v})
+
+    return flat_d
+
+
+def unflatten_dict_keys(d, delim='.'):
+
+    unflat_d = {}
+    for k, v, in d.items():
+
+        if delim not in k:
+            unflat_d.update({k: v})
+
+        else:
+
+            k_split = k.split(delim)
+            sub_d = unflat_d
+
+            for ks_idx in range(len(k_split)):
+
+                ks = k_split[ks_idx]
+                prev_sub_d = sub_d
+                sub_d = sub_d.get(ks)
+
+                if sub_d is None:
+
+                    if ks_idx == len(k_split) - 1:
+                        prev_sub_d.update({ks: v})
+                        break
+
+                    else:
+                        prev_sub_d.update({ks: {}})
+                        sub_d = prev_sub_d[ks]
+
+    return unflat_d

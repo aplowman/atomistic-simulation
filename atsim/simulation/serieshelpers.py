@@ -1,12 +1,13 @@
-import makesims
 import utils
 import json
 import os
-import geometry
-from readwrite import format_dict, format_list
 import numpy as np
-from set_up.opt import OPT
 import warnings
+from atsim.simulation import makesims
+from atsim.readwrite import format_dict, format_list
+from atsim import geometry
+from atsim.set_up.opt import OPT
+
 
 # Temp hard code:
 # SID = '2017-08-28-2218_84329'

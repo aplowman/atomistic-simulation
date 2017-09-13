@@ -1,16 +1,31 @@
-import dbhelpers as dbh
 import sys
 import os
 from copy import deepcopy
-from set_up.secret import DB_KEY
-from readwrite import read_pickle, write_pickle, find_files_in_dir_glob, factor_common_files
+from distutils.dir_util import copy_tree
 import shutil
 import subprocess
-import simsio
-from distutils.dir_util import copy_tree
 
-SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
-SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
+import atsim.dbhelpers as dbh
+from atsim.readwrite import read_pickle, write_pickle, find_files_in_dir_glob, factor_common_files
+from atsim import simsio, SET_UP_PATH, SCRIPTS_PATH
+
+
+def search_database_by_session_id(database, s_id):
+
+    base_opt = None
+    for k, v in database.items():
+
+        set_up_opts = v.get('set_up')
+        if set_up_opts is not None:
+            db_sid = set_up_opts['session_id']
+        else:
+            db_sid = v['session_id']
+
+        if db_sid == s_id:
+            base_opt = v
+            break
+
+    return base_opt
 
 
 def check_errors(sms_path, src_path, skip_idx=None):
@@ -41,10 +56,10 @@ def check_errors(sms_path, src_path, skip_idx=None):
         calc_path = os.path.join(src_path, 'calcs', *srs_paths)
 
         if method == 'castep':
-            out = simsio.read_castep_output(calc_path)
+            out = simsio.castep.read_castep_output(calc_path)
 
         elif method == 'lammps':
-            out = simsio.read_lammps_output(calc_path)
+            out = simsio.lammps.read_lammps_output(calc_path)
 
         if len(out['errors']) > 0:
             error_paths.extend(srs_paths)
@@ -161,7 +176,7 @@ def modernise_pickle(sms_path):
 def move_offline_files(s_id, src_path, offline_files):
 
     arch_dir = offline_files['path']
-    fl_types = offline_files['file_types']
+    fl_types = offline_files.get('file_types') or offline_files.get('match')
 
     fls_paths = []
     for t in fl_types:
@@ -201,8 +216,8 @@ def move_offline_files(s_id, src_path, offline_files):
 def main(s_id):
 
     # Download database file:
-    dbx = dbh.get_dropbox(DB_KEY)
-    tmp_db_path = os.path.join(SU_PATH, 'temp_db')
+    dbx = dbh.get_dropbox()
+    tmp_db_path = os.path.join(SET_UP_PATH, 'temp_db')
     db_path = '/calcs/db.pickle'
     db_exists = dbh.check_dropbox_file_exist(dbx, db_path)
     if not db_exists:
@@ -213,23 +228,15 @@ def main(s_id):
     db = read_pickle(tmp_db_path)
 
     # Find the base options for this sid:
-    for k, v in db.items():
-        if v['set_up']['session_id'] == s_id:
-            base_opt = v
-            break
+    base_opt = search_database_by_session_id(db, s_id)
 
-    src_path = os.path.join(base_opt['set_up']['scratch']['path'], s_id)
-    dst_path = os.path.join(base_opt['set_up']['archive']['path'], s_id)
+    src_path = os.path.join(base_opt['scratch']['path'], s_id)
+    dst_path = os.path.join(base_opt['archive']['path'], s_id)
     sms_path = os.path.join(src_path, 'sims.pickle')
 
     print('s_id: {}'.format(s_id))
     print('src_path: {}'.format(src_path))
     print('dst_path: {}'.format(dst_path))
-
-    # Modernise sims.pickle:
-    # Temporarily #
-    if not os.path.isfile(os.path.join(src_path, 'sims.pickle_old')):
-        modernise_pickle(sms_path)
 
     error_paths = check_errors(sms_path, src_path)
     if len(error_paths) > 0:
@@ -238,18 +245,13 @@ def main(s_id):
     # Get base options from the modernised pickle:
     sms = read_pickle(sms_path)
     base_opt = sms['base_options']
-    off_fls = base_opt['set_up']['scratch']['offline_files']
+    off_fls = base_opt['scratch']['offline_files']
     move_offline_files(s_id, src_path, off_fls)
-
-    com_fls = base_opt['set_up']['common_files']
-    print('Factoring common files turned OFF due to BUG!')
-    # print('Factoring common files: {}'.format(com_fls))
-    # factor_common_files(src_path, com_fls)
 
     if not os.path.isdir(src_path):
         raise ValueError('Source path is not a directory: {}'.format(src_path))
 
-    arch_opt = base_opt['set_up']['archive']
+    arch_opt = base_opt['archive']
     is_dropbox = arch_opt.get('dropbox')
 
     if is_dropbox is True:

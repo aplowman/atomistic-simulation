@@ -5,7 +5,7 @@ source: ['makesims_opt.yml']
 
 {% for c in page.source %}
 
-  {% capture filePath %}/code/{{c}}{% endcapture %}
+  {% capture filePath %}{{c}}{% endcapture %}
 
   <a href="{{filePath}}">{{c}}</a>
 

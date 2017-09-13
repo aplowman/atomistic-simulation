@@ -6,6 +6,11 @@ import copy
 import os
 
 
+def get_scratch_lookup_name(lookup_name, method):
+    # Add the method
+    return method + '-' + lookup_name
+
+
 def get_base_structure_defn(opt, opt_lookup):
 
     explicit_opt = {k: v for k, v in opt.items() if k != '<<lookup>>'}
@@ -166,11 +171,15 @@ def parse_string_as(val, data_type):
                          'string.'.format(val))
 
 
-def check_lookup(block_name, opt, opt_lookup):
+def check_lookup(block_name, opt, opt_lookup, lookup_key_func=None, **kwargs):
     if '<<lookup>>' in opt:
         explicit_opt = {k: v for k, v in opt.items() if k != '<<lookup>>'}
         lookup_opt_spec = opt['<<lookup>>']
+
         lkup_name = lookup_opt_spec.split('<<')[1].split('>>')[0]
+        if lookup_key_func is not None:
+            lkup_name = lookup_key_func(lkup_name, **kwargs)
+
         opt = {**opt_lookup[block_name][lkup_name], **explicit_opt}
         return opt
 
@@ -246,7 +255,8 @@ def validate_ms_opt(opt_fn, lookup_opt_fn):
             valid_opt.update({k: validate_ms_database(v, opt_lookup)})
 
         elif k == 'scratch':
-            valid_opt.update({k: validate_ms_scratch(v, opt_lookup)})
+            method = opt_unflat['method']
+            valid_opt.update({k: validate_ms_scratch(v, opt_lookup, method)})
 
         elif k == 'base_structure':
             valid_opt.update({k: validate_ms_base_structure(v, opt_lookup)})
@@ -294,7 +304,7 @@ def validate_ms_database(opt, opt_lookup):
     return opt
 
 
-def validate_ms_scratch(opt, opt_lookup):
+def validate_ms_scratch(opt, opt_lookup, method):
 
     def validate_offline_files(off_fls_opt):
         allowed_keys = [
@@ -305,7 +315,14 @@ def validate_ms_scratch(opt, opt_lookup):
         valid_off_fls = copy.deepcopy(off_fls_opt)
         return valid_off_fls
 
-    opt_flat = check_lookup('scratch', opt, opt_lookup) or opt
+    check_lookup_args = {
+        'block_name': 'scratch',
+        'opt': opt,
+        'opt_lookup': opt_lookup,
+        'lookup_key_func': get_scratch_lookup_name,
+        'method': method
+    }
+    opt_flat = check_lookup(**check_lookup_args) or opt
     opt = utils.unflatten_dict_keys(opt_flat)
     allowed_keys = [
         'num_cores',

@@ -604,6 +604,7 @@ def validate_ms_lammps(opt, opt_lookup):
         'interactions',
         'potential_files',
         'dump_dt',
+        'charges',
     ]
     check_invalid_key(opt, allowed_keys)
     return opt

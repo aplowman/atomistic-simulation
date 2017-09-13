@@ -176,7 +176,7 @@ def modernise_pickle(sms_path):
 def move_offline_files(s_id, src_path, offline_files):
 
     arch_dir = offline_files['path']
-    fl_types = offline_files['file_types']
+    fl_types = offline_files.get('file_types') or offline_files.get('match')
 
     fls_paths = []
     for t in fl_types:

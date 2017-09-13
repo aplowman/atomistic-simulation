@@ -230,18 +230,13 @@ def main(s_id):
     # Find the base options for this sid:
     base_opt = search_database_by_session_id(db, s_id)
 
-    src_path = os.path.join(base_opt['set_up']['scratch']['path'], s_id)
-    dst_path = os.path.join(base_opt['set_up']['archive']['path'], s_id)
+    src_path = os.path.join(base_opt['scratch']['path'], s_id)
+    dst_path = os.path.join(base_opt['archive']['path'], s_id)
     sms_path = os.path.join(src_path, 'sims.pickle')
 
     print('s_id: {}'.format(s_id))
     print('src_path: {}'.format(src_path))
     print('dst_path: {}'.format(dst_path))
-
-    # Modernise sims.pickle:
-    # Temporarily #
-    if not os.path.isfile(os.path.join(src_path, 'sims.pickle_old')):
-        modernise_pickle(sms_path)
 
     error_paths = check_errors(sms_path, src_path)
     if len(error_paths) > 0:
@@ -250,18 +245,13 @@ def main(s_id):
     # Get base options from the modernised pickle:
     sms = read_pickle(sms_path)
     base_opt = sms['base_options']
-    off_fls = base_opt['set_up']['scratch']['offline_files']
+    off_fls = base_opt['scratch']['offline_files']
     move_offline_files(s_id, src_path, off_fls)
-
-    com_fls = base_opt['set_up']['common_files']
-    print('Factoring common files turned OFF due to BUG!')
-    # print('Factoring common files: {}'.format(com_fls))
-    # factor_common_files(src_path, com_fls)
 
     if not os.path.isdir(src_path):
         raise ValueError('Source path is not a directory: {}'.format(src_path))
 
-    arch_opt = base_opt['set_up']['archive']
+    arch_opt = base_opt['archive']
     is_dropbox = arch_opt.get('dropbox')
 
     if is_dropbox is True:

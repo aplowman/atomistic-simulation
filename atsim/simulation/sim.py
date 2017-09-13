@@ -2,8 +2,9 @@ import os
 import numpy as np
 from plotly import graph_objs
 from plotly.offline import plot, iplot, init_notebook_mode
-from atsim import plotting, simsio, geometry, vectors, mathsutils, readwrite, utils
+from atsim import plotting, geometry, vectors, mathsutils, readwrite, utils
 from atsim.structure.crystal import CrystalBox, CrystalStructure
+from atsim.simsio import castep, lammps
 
 
 class AtomisticSimulation(object):
@@ -16,13 +17,12 @@ class AtomisticSimulation(object):
 
     def write_input_files(self):
 
-        set_opt = self.options['set_up']
         common_params = {
             'supercell': self.structure.supercell,
             'atom_sites': self.structure.atom_sites,
             'species': self.structure.all_species,
             'species_idx': self.structure.all_species_idx,
-            'path': set_opt['stage_series_path'],
+            'path': self.options['stage_series_path'],
             'atom_constraints': self.options['constraints']['atom'],
             'cell_constraints': self.options['constraints']['cell'],
         }
@@ -38,7 +38,7 @@ class AtomisticSimulation(object):
                 **common_params
             }
 
-            simsio.castep.write_castep_inputs(**cst_in_params)
+            castep.write_castep_inputs(**cst_in_params)
 
         elif self.options['method'] == 'lammps':
 
@@ -47,4 +47,4 @@ class AtomisticSimulation(object):
                 **lmp_opt,
                 **common_params
             }
-            simsio.lammps.write_lammps_inputs(**lmp_in_params)
+            lammps.write_lammps_inputs(**lmp_in_params)

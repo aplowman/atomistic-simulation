@@ -1215,3 +1215,5 @@ class BulkCrystal(AtomisticStructure):
                          lat_crystal_idx=lat_crystal_idx,
                          species_idx=cb.species_idx,
                          motif_idx=cb.motif_idx)
+
+        self.meta.update({'supercell_type': ['bulk']})

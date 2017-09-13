@@ -1,3 +1,19 @@
+---
+source: ['makesims_opt.yml']
+---
+# Example options
+
+{% for c in page.source %}
+
+  {% capture filePath %}/code/{{c}}{% endcapture %}
+
+  <a href="{{filePath}}">{{c}}</a>
+
+  {% highlight c %}
+  {% include_relative {{ filePath }} %}
+  {% endhighlight %}
+{% endfor %}
+
 # Simulation series
 
 ## Series definition dicts

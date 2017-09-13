@@ -1,0 +1,68 @@
+method: lammps
+make_plots: False
+sub_dirs: []
+append_db: True
+upload_plots: False
+
+stage.path: 'C:/calcs_stage/'
+
+archive.dropbox: True
+archive.path: /calcs
+
+database.dropbox: True
+database.path: /calcs/db.pickle
+
+scratch.path: 'C:\calcs_scratch'    
+scratch.remote: False    
+scratch.offline_files.path: 'C:\calcs_offline'    
+scratch.offline_files.match: []
+scratch.num_cores: 1
+
+crystal_structures:
+  - lattice.system: hexagonal
+    lattice.centring: P
+    motif.atom_sites:
+      - [2/3, 1/3]
+      - [1/3, 2/3]
+      - [3/4, 1/4]
+    motif.species: [Zr, Zr]
+    lattice.a: 3.23406
+    lattice.c: 5.16765    
+
+  - <<α_Zr_MA#3_opt>>
+ 
+base_structure.type: csl_bicrystal
+base_structure.gb_type: tilt_A
+base_structure.gb_size: [1, 1, 3]
+base_structure.cs_idx: 0
+base_structure.sigma: 7
+base_structure.csl_vecs:  
+  - - [3, 2, 0]
+    - [1, 3, 0]
+    - [0, 0, 1]
+  - - [2, 3, 0]
+    - [-1, 2, 0]
+    - [0, 0, 1]
+
+# base_structure.type: csl_bicrystal_from_structure
+# base_structure.csl: 180_001_mZrO2
+# base_structure.csl_params.cellfile: 'C:/Users/adamj/Dropbox (Research Group)/Canary/Random/calc-out.cell'
+# base_structure.csl_params.repeats: [3, 1, 1]
+# base_structure.csl_params.bound_vac: 0.2
+# base_structure.csl_params.transls: [0.0, 0.0]
+# base_structure.csl_params.term_plns: ['100', '100']
+
+constraints.cell: <<fix_all_cell>>
+constraints.atom: <<fix_all_xy>>
+
+# castep.find_inv_sym: True
+# castep.seedname: 'sim'
+# castep.checkpoint: True
+
+# castep.cell.kpoint_mp_spacing: 0.040
+
+# castep.param: <<default_go>>
+# castep.param.cut_off_energy: 360 eV
+# castep.param.xc_functional: PBE
+
+lammps: <<default>>

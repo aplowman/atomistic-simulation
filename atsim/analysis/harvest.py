@@ -355,6 +355,8 @@ def read_results(sid, skip_idx=None, overwrite=False, query_all=False):
         results_exist = False
         if hasattr(sim_i, 'results'):
             results_exist = True
+            if sim_i.results is None:
+                results_exist = False
 
         if results_exist:
             if overwrite == True:

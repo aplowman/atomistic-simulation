@@ -1,5 +1,5 @@
 import numpy as np
-import atsim.utils
+from atsim import utils
 from atsim.utils import dict_from_list
 from atsim.readwrite import format_list, format_dict
 
@@ -35,10 +35,31 @@ PREDEFINED_VARS = {
 }
 
 
+def is_bicrystal(sim):
+    """
+    Check if a simulation structure represents a bicrystal
+
+    Notes
+    -----
+    The check in sim.options is for simulations generated before mid-
+    September 2017.
+
+    """
+    if hasattr(sim.structure, 'meta'):
+        if 'bicrystal' in sim.structure.meta['supercell_type']:
+            return True
+
+    elif sim.options['base_structure']['type'] == 'CSLBicrystal':
+        return True
+
+    else:
+        return False
+
+
 def get_depends(compute_name, inc_id=True, inc_val=True, **kwargs):
     """
     For a given compute, check if it has any dependencies. If it does,
-    return a list of those as new definitions, in addition to the specified 
+    return a list of those as new definitions, in addition to the specified
     compute, in the correct dependency order.
 
     Parameters
@@ -180,7 +201,7 @@ def energy_per_atom(out, sim, sim_idx, energy_src, opt_step=None):
 
 def gb_area(out, sim, sim_idx):
 
-    if sim.options['base_structure']['type'] == 'CSLBicrystal':
+    if is_bicrystal(sim):
         return sim.structure.boundary_area
     else:
         return None
@@ -188,7 +209,7 @@ def gb_area(out, sim, sim_idx):
 
 def gb_thickness(out, sim, sim_idx):
 
-    if sim.options['base_structure']['type'] == 'CSLBicrystal':
+    if is_bicrystal(sim):
         return sim.structure.bicrystal_thickness
     else:
         return None
@@ -196,7 +217,7 @@ def gb_thickness(out, sim, sim_idx):
 
 def atoms_gb_dist_initial(out, sim, sim_idx):
 
-    if sim.options['base_structure']['type'] == 'CSLBicrystal':
+    if is_bicrystal(sim):
         return sim.structure.atoms_gb_dist
     else:
         return None
@@ -204,7 +225,7 @@ def atoms_gb_dist_initial(out, sim, sim_idx):
 
 def atoms_gb_dist_final(out, sim, sim_idx):
 
-    if sim.options['base_structure']['type'] == 'CSLBicrystal':
+    if is_bicrystal(sim):
 
         if sim.options['method'] == 'lammps':
             atom_sites_final = sim.results['atoms'][-1]
@@ -235,12 +256,7 @@ def atoms_gb_dist_change(out, sim, sim_idx):
     atoms_gb_dist_final = req_vars[1]['vals'][sim_idx]
     sup_type = req_vars[2]['vals'][sim_idx]
 
-    print('atoms_gb_dist_initial: {}'.format(atoms_gb_dist_initial))
-    print('atoms_gb_dist_final: {}'.format(atoms_gb_dist_final))
-    print('sup_type: {}'.format(sup_type))
-
-    if sup_type == 'CSLBicrystal':
-        print('blah!')
+    if is_bicrystal(sim):
         return np.array(atoms_gb_dist_final) - np.array(atoms_gb_dist_initial)
 
 

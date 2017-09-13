@@ -373,6 +373,7 @@ def validate_ms_base_structure(opt, opt_lookup):
     sup_type = opt['type']
     allowed_keys_all = [
         'type',
+        'overlap_tol',
     ]
     allowed_keys_gb_from_structure = allowed_keys_all + [
         'csl',

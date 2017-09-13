@@ -6,13 +6,28 @@ import shutil
 import subprocess
 
 import atsim.dbhelpers as dbh
-from atsim.set_up.secret import DB_KEY
 from atsim.readwrite import read_pickle, write_pickle, find_files_in_dir_glob, factor_common_files
 from atsim import simsio, SET_UP_PATH, SCRIPTS_PATH
 
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
 SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
+def search_database_by_session_id(database, s_id):
+
+    base_opt = None
+    for k, v in database.items():
+
+        set_up_opts = v.get('set_up')
+        if set_up_opts is not None:
+            db_sid = set_up_opts['session_id']
+        else:
+            db_sid = v['session_id']
+
+        if db_sid == s_id:
+            base_opt = v
+            break
+
+    return base_opt
 
 
 def check_errors(sms_path, src_path, skip_idx=None):

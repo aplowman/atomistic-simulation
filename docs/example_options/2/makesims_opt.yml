@@ -29,14 +29,20 @@ base_structure.csl_params.term_plns: ['100', '100']
 constraints.cell: <<fix_all_cell>>
 constraints.atom: <<fix_all_xy>>
 
-# castep.find_inv_sym: True
-# castep.seedname: 'sim'
-# castep.checkpoint: True
-
-# castep.cell.kpoint_mp_spacing: 0.040
-
-# castep.param: <<default_go>>
-# castep.param.cut_off_energy: 360 eV
-# castep.param.xc_functional: PBE
-
-lammps: <<default>>
+lammps.parameters: 
+  - 'units        metal'
+  - 'dimension    3'
+  - 'boundary     p p p'
+  - 'box          tilt large'
+lammps.atom_style: full
+lammps.atoms_file: atoms.lammps
+lammps.interactions:
+  - 'kspace_style pppm 1.0e-5'
+  - 'pair_style  hybrid/overlay coul/long 11 eam/alloy'
+  - 'pair_coeff * * coul/long'
+  - 'pair_coeff * * eam/alloy <FILENAME> O Zr'
+lammps.potential_files: 
+  <FILENAME>: ZrO.eam.alloy
+lammps.charges.O: -1.110400
+lammps.charges.Zr: 2.220800
+lammps.dump_dt: 100

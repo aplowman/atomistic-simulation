@@ -8,7 +8,7 @@ import subprocess
 import atsim.dbhelpers as dbh
 from atsim.set_up.secret import DB_KEY
 from atsim.readwrite import read_pickle, write_pickle, find_files_in_dir_glob, factor_common_files
-from atsim import simsio
+from atsim import simsio, SET_UP_PATH, SCRIPTS_PATH
 
 
 SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -203,8 +203,8 @@ def move_offline_files(s_id, src_path, offline_files):
 def main(s_id):
 
     # Download database file:
-    dbx = dbh.get_dropbox(DB_KEY)
-    tmp_db_path = os.path.join(SU_PATH, 'temp_db')
+    dbx = dbh.get_dropbox()
+    tmp_db_path = os.path.join(SET_UP_PATH, 'temp_db')
     db_path = '/calcs/db.pickle'
     db_exists = dbh.check_dropbox_file_exist(dbx, db_path)
     if not db_exists:

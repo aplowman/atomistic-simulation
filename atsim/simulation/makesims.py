@@ -338,17 +338,11 @@ class Stage(object):
 
         else:
 
-            if self.os_name == 'nt' and scratch.os_name == 'nt':
+            if os.path.isdir(scratch.path):
+                raise ValueError(scratch_dir_exists)
 
-                if os.path.isdir(scratch.path):
-                    raise ValueError(scratch_dir_exists)
-
-                print(copy_msg)
-                shutil.copytree(self.path, scratch.path)
-
-            elif self.os_name == 'posix' and scratch.os_name == 'posix':
-                # Use rsync/scp
-                raise NotImplementedError('Unsupported local transfer.')
+            print(copy_msg)
+            shutil.copytree(self.path, scratch.path)
 
     def copy_to_archive(self, archive):
         """
@@ -431,7 +425,9 @@ class Stage(object):
 
             elif self.os_name == 'posix' and scratch.os_name == 'posix':
                 # Use rsync/scp
-                raise NotImplementedError('Unsupported.')
+                js_path = os.path.join(scratch.path, 'jobscript.sh')
+                os.chmod(js_path, 0o744)
+                subprocess.Popen(js_path, shell=True)
 
 
 class Scratch(object):

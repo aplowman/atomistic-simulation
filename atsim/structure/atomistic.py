@@ -535,15 +535,16 @@ class AtomisticStructure(object):
                     cs = self.crystal_structures[c['cs_idx']]
 
                 # Lattice unit cell, need to rotate by given orientation
-                if ((c.get('cs_orientation') is not None) and 
-                    (c.get('cs_origin') is not None)):
-                
+                if ((c.get('cs_orientation') is not None) and
+                        (c.get('cs_origin') is not None)):
+
                     unit_cell = np.dot(c['cs_orientation'],
-                                    cs.bravais_lattice.vecs)
+                                       cs.bravais_lattice.vecs)
 
                     cs_origin = np.dot(unit_cell, c['cs_origin'])
                     uc_origin = c['origin'] + cs_origin[:, np.newaxis]
-                    uc_xyz = geometry.get_box_xyz(unit_cell, origin=uc_origin)[0]
+                    uc_xyz = geometry.get_box_xyz(
+                        unit_cell, origin=uc_origin)[0]
 
                     uc_trace_name = 'Unit cell (crystal #{})'.format(c_idx + 1)
                     uc_props = {
@@ -581,7 +582,8 @@ class AtomisticStructure(object):
                 if self.lattice_sites is not None:
                     ls_idx = np.where(self.lat_crystal_idx == c_idx)[0]
                     ls = self.lattice_sites[:, ls_idx]
-                    ls_trace_name = 'Lattice sites (crystal #{})'.format(c_idx + 1)
+                    ls_trace_name = 'Lattice sites (crystal #{})'.format(
+                        c_idx + 1)
                     lat_site_props = {
                         'mode': 'markers',
                         'marker': {
@@ -626,12 +628,15 @@ class AtomisticStructure(object):
 
                         atom_idx = np.where(
                             self.motif_idx[crys_atm_idx] == sp_idx)[0]
-                        atom_sites_sp = self.atom_sites[:, crys_atm_idx[atom_idx]]
+                        atom_sites_sp = self.atom_sites[:,
+                                                        crys_atm_idx[atom_idx]]
                         sp_i = cs.motif['species'][sp_idx]
                         sp_col = 'rgb' + str(atom_cols[sp_i])
 
-                        trace_name = sp_name + ' (crystal #{})'.format(c_idx + 1)
-                        num_trace_name = 'Atom index (crystal #{})'.format(c_idx + 1)
+                        trace_name = sp_name + \
+                            ' (crystal #{})'.format(c_idx + 1)
+                        num_trace_name = 'Atom index (crystal #{})'.format(
+                            c_idx + 1)
 
                         atom_site_props = {
                             'mode': 'markers',
@@ -658,7 +663,8 @@ class AtomisticStructure(object):
                             })
                         )
                         if atoms_3d:
-                            rad = element(sp_i).vdw_radius * 0.25 * 1e-2  # in Ang
+                            rad = element(sp_i).vdw_radius * \
+                                0.25 * 1e-2  # in Ang
                             # Get sphere trace for each atom:
                             for i in atom_sites_sp.T:
                                 sph_args = {
@@ -698,8 +704,10 @@ class AtomisticStructure(object):
                     # crystals but no crystal structure
                     for sp_idx, sp in enumerate(self.all_species):
 
-                        atom_idx = np.where(self.all_species_idx[crys_atm_idx] == sp_idx)[0]
-                        atom_sites_sp = self.atom_sites[:, crys_atm_idx[atom_idx]]
+                        atom_idx = np.where(
+                            self.all_species_idx[crys_atm_idx] == sp_idx)[0]
+                        atom_sites_sp = self.atom_sites[:,
+                                                        crys_atm_idx[atom_idx]]
                         sp_col = str(atom_cols[sp])
                         trace_name = sp + ' (Crystal #{})'.format(c_idx + 1)
 
@@ -720,7 +728,7 @@ class AtomisticStructure(object):
                                 z=atom_sites_sp[2],
                                 **atom_site_props
                             )
-                        )   
+                        )
                         if proj_2d:
                             for i in proj_2d_dirs:
                                 data_2d.append({
@@ -731,7 +739,7 @@ class AtomisticStructure(object):
                                     'yaxis': ax_lab_2d[i][1],
                                     'showlegend': show_leg_2d[i],
                                     **atom_site_props
-                                })                                                    
+                                })
 
                 c_prev_num = len(crys_atm_idx)
 

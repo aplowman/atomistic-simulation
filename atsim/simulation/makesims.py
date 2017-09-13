@@ -1289,7 +1289,9 @@ def plot_gamma_surface_grids(opt, common_series_info, stage):
             g_prv_msg = 'Check gamma surface grid(s) now. Continue?'
             if not utils.confirm(g_prv_msg):
                 print('Exiting.')
-                return
+                return False
+
+    return True
 
 
 def main(opt):
@@ -1411,7 +1413,8 @@ def main(opt):
         all_upd, csi = prepare_all_series_updates(srs_df, base_as)
 
         # Plot gamma surface grids:
-        plot_gamma_surface_grids(opt, csi, stage)
+        if not plot_gamma_surface_grids(opt, csi, stage):
+            return
 
     # Generate simulation series:
     num_sims = len(all_upd)

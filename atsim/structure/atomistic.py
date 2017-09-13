@@ -789,7 +789,7 @@ class AtomisticStructure(object):
         self.atom_sites = np.dot(R, self.atom_sites)
 
         # Reorient lattice sites
-        if self.lattice_sites:
+        if self.lattice_sites is not None:
             self.lattice_sites = np.dot(R, self.lattice_sites)
 
         # Reorient CrystalStructure lattice objects

@@ -9,9 +9,9 @@ source: ['makesims_opt.yml']
 
   <a href="{{filePath}}">{{c}}</a>
 
-  {% highlight yaml %}
+  ```
   {% include_relative {{ filePath }} %}
-  {% endhighlight %}
+  ```
 {% endfor %}
 
 # Simulation series

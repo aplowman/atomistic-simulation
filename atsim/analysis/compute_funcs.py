@@ -12,9 +12,8 @@ PREDEFINED_VARS = {
         'id': 'gb_area',
     },
     'sup_type': {
-        'type': 'parameter',
-        'name': 'base_structure',
-        'idx': ('type',),
+        'type': 'compute',
+        'name': 'supercell_type',
         'id': 'supercell_type',
     },
     'gb_dist_initial': {
@@ -158,6 +157,31 @@ def get_depends(compute_name, inc_id=True, inc_val=True, **kwargs):
 
 def num_atoms(out, sim, sim_idx):
     return sim.structure.num_atoms
+
+
+def supercell_type(out, sim, sim_idx):
+    """
+    Get the supercell type.
+
+    Notes
+    -----
+    It is neccessary for this to be a "compute" rather than a "parameter"
+    for compatibility reasons.
+
+    """
+
+    COMPATIBILITY_LOOKUP = {
+        'CSLBicrystal': 'bicrystal',
+        'CSLBulkBicrystal': 'bulk',
+        'CSLSurfaceBicrystal': 'surface',
+        'BulkCrystal': 'bulk',
+    }
+
+    if hasattr(sim.structure, 'meta'):
+        return sim.structure.meta['supercell_type'][0]
+
+    else:
+        return COMPATIBILITY_LOOKUP[sim.options['base_structure']['type']]
 
 
 def energy(out, sim, sim_idx, energy_src, opt_step=None):
@@ -313,9 +337,9 @@ def gb_energy(out, series_id, energy_src, opt_step, unit='J/m^2'):
     gb_idx = []
     bulk_idx = []
     for i_idx, i in enumerate(sup_type):
-        if i == 'CSLBicrystal':
+        if i == 'bicrystal':
             gb_idx.append(i_idx)
-        elif i == 'CSLBulkCrystal':
+        elif i == 'bulk':
             bulk_idx.append(i_idx)
 
     all_E_gb = [None, ] * num_sims
@@ -342,6 +366,7 @@ SINGLE_COMPUTE_LOOKUP = {
     'energy': energy,
     'energy_per_atom': energy_per_atom,
     'gb_area': gb_area,
+    'supercell_type': supercell_type,
     'gb_thickness': gb_thickness,
     'atoms_gb_dist_initial': atoms_gb_dist_initial,
     'atoms_gb_dist_final': atoms_gb_dist_final,

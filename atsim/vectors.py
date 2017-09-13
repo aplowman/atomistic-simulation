@@ -422,7 +422,7 @@ def find_eq_row(arr):
     """
     if arr.ndim != 2:
         raise ValueError('Array must have 2 dimensions.')
-    eq_idx = vectors.get_equal_indices(arr)[0]
+    eq_idx = get_equal_indices(arr)[0]
     return [[k] + v for k, v in eq_idx.items()]
 
 
@@ -438,7 +438,7 @@ def find_eq_col(arr):
     """
     if arr.ndim != 2:
         raise ValueError('Array must have 2 dimensions.')
-    eq_idx = vectors.get_equal_indices(arr.T)[0]
+    eq_idx = get_equal_indices(arr.T)[0]
     return [[k] + v for k, v in eq_idx.items()]
 
 

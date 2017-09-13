@@ -10,8 +10,6 @@ from atsim.readwrite import read_pickle, write_pickle, find_files_in_dir_glob, f
 from atsim import simsio, SET_UP_PATH, SCRIPTS_PATH
 
 
-SCRIPTS_PATH = os.path.dirname(os.path.realpath(__file__))
-SU_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
 def search_database_by_session_id(database, s_id):
 
     base_opt = None

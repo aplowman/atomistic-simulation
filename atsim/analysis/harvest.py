@@ -5,14 +5,11 @@ import json
 import copy
 from pathlib import Path
 from atsim.readwrite import read_pickle, write_pickle, format_list, format_dict
-from atsim import simsio, utils, plotting, vectors
+from atsim import simsio, utils, plotting, vectors, SCRIPTS_PATH, REF_PATH
 from atsim.analysis import compute_funcs
 from atsim.analysis.compute_funcs import get_depends, SINGLE_COMPUTE_LOOKUP, MULTI_COMPUTE_LOOKUP
 from atsim.analysis.postprocess import SINGLE_COMPUTES, MULTICOMPUTE_LOOKUP, compute_gb_energy, dict_from_list, get_required_defn
 from atsim.set_up.harvest_opt import HARVEST_OPT
-
-SCRIPTS_PATH = str(Path(__file__).parents[1])
-REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
 
 
 # List of multi computes which require the common series info list:

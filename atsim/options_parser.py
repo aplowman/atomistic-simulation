@@ -109,6 +109,7 @@ def get_base_structure_defn(opt, opt_lookup):
 
     # Reassign opt:
     opt = {**base_structure, **explicit_opt}
+    return opt
 
 
 def parse_string_as(val, data_type):
@@ -362,8 +363,12 @@ def validate_ms_base_structure(opt, opt_lookup):
         check_invalid_key(csl_params_opt, allowed_keys)
         return csl_params_opt
 
+    print('opt: {}'.format(opt))
+
     if '<<lookup>>' in opt:
         opt = get_base_structure_defn(opt, opt_lookup)
+
+    print('opt: {}'.format(opt))
 
     sup_type = opt['type']
     allowed_keys_all = [

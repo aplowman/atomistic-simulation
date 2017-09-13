@@ -739,8 +739,8 @@ def main(harvest_opt):
     json_path = os.path.join(res_dir, json_fn)
 
     # Save a copy of the input results options
-    src_path = os.path.join(SCRIPTS_PATH, 'set_up', 'opt_test_res.py')
-    dst_path = os.path.join(res_dir, 'opt_test_res.py')
+    src_path = os.path.join(SCRIPTS_PATH, 'set_up', 'harvest_opt.py')
+    dst_path = os.path.join(res_dir, 'harvest_opt.py')
     shutil.copy(src_path, res_dir)
 
     with open(json_path, 'w', encoding='utf-8', newline='') as jf:

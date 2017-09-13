@@ -9,7 +9,7 @@ source: ['makesims_opt.yml']
 
   <a href="{{filePath}}">{{c}}</a>
 
-  ```
+  ```yaml
   {% include_relative {{ filePath }} %}
   ```
 {% endfor %}

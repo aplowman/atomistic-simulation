@@ -1367,7 +1367,9 @@ def main(opt):
     # log.append('Making stage directory at: {}.'.format(stage_path))
     os.makedirs(stage.path, exist_ok=False)
 
-    crys_structs = make_crystal_structures(opt['crystal_structures'])
+    crys_structs = None
+    if opt.get('crystal_structures') is not None:
+        crys_structs = make_crystal_structures(opt['crystal_structures'])
     base_as = make_base_structure(opt['base_structure'], crys_structs)
 
     # Save current options dict

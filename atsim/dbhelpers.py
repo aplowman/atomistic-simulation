@@ -2,9 +2,13 @@ import dropbox
 import os
 import posixpath
 import fnmatch
+from atsim import SET_UP_PATH
 
 
-def get_dropbox(key):
+def get_dropbox():
+    secret_path = os.path.join(SET_UP_PATH, 'secret.txt')
+    with open(secret_path, 'r') as f:
+        key = f.readline().strip()
     return dropbox.Dropbox(key)
 
 

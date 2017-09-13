@@ -1255,7 +1255,7 @@ def make_series_structure(ss_opt, crystal_structures):
     return STRUCT_LOOKUP[ss_opt['type']](**srs_struct_opt)
 
 
-def plot_gamma_surface_grids(common_series_info, stage):
+def plot_gamma_surface_grids(opt, common_series_info, stage):
 
     g_preview = []
     cnd = {'series_name': 'gamma_surface'}
@@ -1411,7 +1411,7 @@ def main(opt):
         all_upd, csi = prepare_all_series_updates(srs_df, base_as)
 
         # Plot gamma surface grids:
-        plot_gamma_surface_grids(csi, stage)
+        plot_gamma_surface_grids(opt, csi, stage)
 
     # Generate simulation series:
     num_sims = len(all_upd)

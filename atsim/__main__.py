@@ -1,16 +1,18 @@
 import sys
+import os
+import yaml
+from atsim import readwrite
 
 args = sys.argv
 
 if len(args) == 1 or args[1] == 'make':
     from atsim.simulation import makesims
-    from atsim.set_up.opt import OPT
-    makesims.main(OPT)
+    from atsim import options_parser
 
-elif args[1] == 'harvest':
-    from atsim.analysis import harvest
-    from atsim.set_up.harvest_opt import HARVEST_OPT
-    harvest.main(HARVEST_OPT)
+    opt_fn = 'makesims_opt.yml'
+    opt_lkup_fn = 'makesims_opt_lookup.yml'
+    ms_opt = options_parser.validate_ms_opt(opt_fn, opt_lkup_fn)
+    makesims.main(ms_opt)
 
 elif args[1] == 'process':
     if len(args) != 3:
@@ -23,6 +25,11 @@ elif args[1] == 'submit_process':
         print('Specify SID to process.')
     from atsim.analysis import submit_process
     submit_process.main(args[2])
+
+elif args[1] == 'harvest':
+    from atsim.analysis import harvest
+    from atsim.set_up.harvest_opt import HARVEST_OPT
+    harvest.main(HARVEST_OPT)
 
 elif args[1] == 'series_helper':
     if len(args) != 3:

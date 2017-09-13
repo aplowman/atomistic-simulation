@@ -1167,20 +1167,20 @@ def make_crystal_structures(cs_opt):
 
         cs_params = {}
 
-        if 'from_file' in cs_defn:
+        if 'path' in cs_defn:
 
             cs_params.update({
-                'path': cs_defn['from_file']['path'],
-                **cs_defn['from_file']['lattice'],
+                'path': cs_defn['path'],
+                **cs_defn['lattice'],
             })
+            cs.append(CrystalStructure.from_file(**cs_params))
 
         else:
             cs_params.update({
                 'bravais_lattice': BravaisLattice(**cs_defn['lattice']),
                 'motif': cs_defn['motif'],
             })
-
-        cs.append(CrystalStructure(**cs_params))
+            cs.append(CrystalStructure(**cs_params))
 
     return cs
 
@@ -1377,7 +1377,7 @@ def main(opt):
 
     # Get series definitions:
     srs_df = opt.get('series')
-    is_srs = srs_df is not None and len(srs_df) > 0
+    is_srs = srs_df is not None and srs_df != [[]]
 
     is_struct = []
     if is_srs:

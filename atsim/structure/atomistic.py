@@ -1134,6 +1134,11 @@ class BulkCrystal(AtomisticStructure):
     def __init__(self, crystal_structure, box_lat):
         """Constructor method for BulkCrystal object."""
 
+        # Validation
+        if any([i in vectors.num_equal_cols(box_lat) for i in [2, 3]]):
+            raise ValueError(
+                'Identical columns found in box_lat: \n{}\n'.format(box_lat))
+
         supercell = np.dot(crystal_structure.bravais_lattice.vecs, box_lat)
         cb = CrystalBox(crystal_structure, supercell)
         atom_sites = cb.atom_sites_std

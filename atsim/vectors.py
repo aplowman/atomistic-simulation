@@ -408,3 +408,61 @@ def rotate_2D(vec, angle):
     vec_r = np.dot(r, vec)
 
     return vec_r
+
+
+def find_eq_row(arr):
+    """
+    Get the indices of equal rows in a 2D array.
+
+    Returns
+    -------
+    list of list
+        Each inner list represents the row indices which correspond to an identical row.
+
+    """
+    if arr.ndim != 2:
+        raise ValueError('Array must have 2 dimensions.')
+    eq_idx = vectors.get_equal_indices(arr)[0]
+    return [[k] + v for k, v in eq_idx.items()]
+
+
+def find_eq_col(arr):
+    """
+    Get the indices of equal columns in a 2D array.
+
+    Returns
+    -------
+    list of list
+        Each inner list represents the column indices which correspond to an identical column.
+
+    """
+    if arr.ndim != 2:
+        raise ValueError('Array must have 2 dimensions.')
+    eq_idx = vectors.get_equal_indices(arr.T)[0]
+    return [[k] + v for k, v in eq_idx.items()]
+
+
+def num_equal_rows(arr):
+    """
+    Find the number of equal rows in a 2D array.
+
+    Returns
+    -------
+    tuple
+        Each element represents the number of times a unique row is repeated
+
+    """
+    return [len(i) for i in find_eq_row(arr)]
+
+
+def num_equal_cols(arr):
+    """
+    Find the number of equal columns in a 2D array.
+
+    Returns
+    -------
+    tuple
+        Each element represents the number of times a unique column is repeated
+
+    """
+    return [len(i) for i in find_eq_col(arr)]

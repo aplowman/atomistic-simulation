@@ -280,18 +280,20 @@ def validate_ms_base_structure(opt, opt_lookup):
         elif sup_type == 'bulk':
             lkup_params = lkup_params[1:]
 
-        size_str = lkup_params[-1]
-        size = [int(i) for i in
-                size_str.strip('[').strip(']').split(',')]
-        if len(size) != 3:
-            raise ValueError('size must be of length 3: {}'.format(size_str))
-
         base_structure = {
             'type': sup_type,
             'cs_idx': 0,
         }
 
         if 'csl' in sup_type:
+
+            size_str = lkup_params[-1]
+            size = [int(i) for i in
+                    size_str.strip('[').strip(']').split(',')]
+            if len(size) != 3:
+                raise ValueError(
+                    'size must be of length 3: {}'.format(size_str))
+
             csl_str = lkup_params[0]
             if 'Σ' not in csl_str:
                 raise ValueError(
@@ -312,6 +314,15 @@ def validate_ms_base_structure(opt, opt_lookup):
                 'csl_vecs': csl_vecs,
             })
         elif sup_type == 'bulk':
+
+            size_str = lkup_params[-1]
+            size = np.array([[int(j) for j in i.strip('[').strip(']').split(',')]
+                             for i in size_str.split('_')])
+
+            if size.shape != (3, 3):
+                raise ValueError(
+                    'size must be of shape (3, 3): {}'.format(size_str))
+
             base_structure.update({
                 'box_lat': size,
             })
@@ -402,7 +413,8 @@ def validate_ms_crystal_structures(opt, opt_lookup):
 
     allowed_keys = [
         'lattice',
-        'motif'
+        'motif',
+        'path',
     ]
 
     if not opt:
@@ -443,6 +455,8 @@ def validate_ms_series(opt):
         check_invalid_key(srs_itm, ALLOWED_SERIES_KEYS[srs_nm])
         return srs_itm
 
+    if opt is None:
+        opt = [[]]
     valid_series = []
     for i in opt:
         valid_sub_series = []

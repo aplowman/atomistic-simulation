@@ -22,57 +22,50 @@ def get_base_structure_defn(opt, opt_lookup):
     allowed_sup_type = [
         'csl_bicrystal',
         #'csl_bicrystal_from_structure', add if we have a lookup for this one
-        'csl_bulk_bicrystal_a'
-        'csl_bulk_bicrsytal_b',
+        'csl_bulk_bicrystal_a',
+        'csl_bulk_bicrystal_b',
         'csl_surface_bicrystal_a',
         'csl_surface_bicrystal_b',
         'bulk',
     ]
 
     sup_type = lkup_params[0]
+    base_structure = {}
     if sup_type not in allowed_sup_type:
         raise ValueError('base_structure lookup key supercell type not '
                          'understood. Lookup key must start with one '
                          'of: {}'.format(allowed_sup_type))
 
-    if sup_type == 'csl_bicrystal':
-        lkup_params = lkup_params[1:]
-
-    elif sup_type == 'csl_bulk_bicrystal':
-        if lkup_params[1] == 'a':
+    if 'csl_bulk_bicrystal' in sup_type:
+        if sup_type[-1] == 'a':
             bulk_idx = 0
-        elif lkup_params[1] == 'b':
+        elif sup_type[-1] == 'b':
             bulk_idx = 1
         else:
-            raise ValueError('csl_bulk_bicrystal bulk idx must be a or b.')
-        lkup_params = lkup_params[2:]
+            raise ValueError('csl_bulk_bicrystal bulk_idx must be a or b.')
+        sup_type = 'csl_bulk_bicrystal'
 
-    elif sup_type == 'csl_surface_bicrystal':
-        if lkup_params[1] == 'a':
+    elif 'csl_surface_bicrystal' in sup_type:
+        if sup_type[-1] == 'a':
             surface_idx = 0
-        elif lkup_params[1] == 'b':
+        elif sup_type[-1] == 'b':
             surface_idx = 1
         else:
             raise ValueError(
-                'csl_surface_bicrystal surface idx must be a or b.')
-        lkup_params = lkup_params[2:]
+                'csl_surface_bicrystal surface_idx must be a or b.')
+        sup_type = 'csl_surface_bicrystal'
+        base_structure.update({
+            'surface_idx': surface_idx
+        })
 
-    elif sup_type == 'bulk':
-        lkup_params = lkup_params[1:]
-
-    base_structure = {
+    base_structure.update({
         'type': sup_type,
         'cs_idx': 0,
-    }
+    })
+
+    lkup_params = lkup_params[1:]
 
     if 'csl' in sup_type:
-
-        size_str = lkup_params[-1]
-        size = [int(i) for i in
-                size_str.strip('[').strip(']').split(',')]
-        if len(size) != 3:
-            raise ValueError(
-                'size must be of length 3: {}'.format(size_str))
 
         csl_str = lkup_params[0]
         if 'Σ' not in csl_str:
@@ -81,11 +74,20 @@ def get_base_structure_defn(opt, opt_lookup):
         else:
             sigma = csl_str[-1]
             csl_vecs = opt_lookup['csl_vecs'][csl_str]
+            if sup_type == 'csl_bulk_bicrystal':
+                csl_vecs = csl_vecs[bulk_idx]
 
         gb_type = lkup_params[1]
         allowed_gb_types = ['tilt_A', 'twist']
         if gb_type not in allowed_gb_types:
             raise ValueError('gb_type not allowed: {}'.format(gb_type))
+
+        size_str = lkup_params[2]
+        size = [int(i) for i in
+                size_str.strip('[').strip(']').split(',')]
+        if len(size) != 3:
+            raise ValueError(
+                'size must be of length 3: {}'.format(size_str))
 
         base_structure.update({
             'sigma': sigma,
@@ -93,6 +95,7 @@ def get_base_structure_defn(opt, opt_lookup):
             'gb_size': size,
             'csl_vecs': csl_vecs,
         })
+
     elif sup_type == 'bulk':
 
         size_str = lkup_params[-1]
@@ -388,13 +391,16 @@ def validate_ms_base_structure(opt, opt_lookup):
         'gb_size',
         'csl_vecs',
     ]
+    allowed_keys_csl_surf = allowed_keys_csl + [
+        'surface_idx',
+    ]
     allowed_keys_bulk = allowed_keys_all_with_cs + [
         'box_lat'
     ]
     allowed_keys = {
         'csl_bicrystal': allowed_keys_csl,
         'csl_bulk_bicrystal': allowed_keys_csl,
-        'csl_surface_bicrystal': allowed_keys_csl,
+        'csl_surface_bicrystal': allowed_keys_csl_surf,
         'csl_bicrystal_from_structure': allowed_keys_gb_from_structure,
         'bulk': allowed_keys_bulk,
     }
@@ -411,7 +417,11 @@ def validate_ms_base_structure(opt, opt_lookup):
 
         elif k == 'csl_vecs':
             # Convert csl_vecs to numpy array:
-            valid_csl = [np.array(copy.deepcopy(c)) for c in v]
+            if sup_type in ['csl_bicrystal', 'csl_surface_bicrystal']:
+                valid_csl = [np.array(copy.deepcopy(c)) for c in v]
+            elif sup_type == 'csl_bulk_bicrystal':
+                valid_csl = np.array(v)
+
             valid_bs.update({k: valid_csl})
 
         else:

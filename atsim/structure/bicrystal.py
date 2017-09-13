@@ -609,6 +609,12 @@ def csl_bulk_bicrystal_from_parameters(crystal_structure, csl_vecs,
                                        box_csl=None, gb_type=None,
                                        gb_size=None, edge_conditions=None,
                                        overlap_tol=1, reorient=True):
+    """
+    Parameters
+    ----------
+    csl_vecs: ndarray of int of shape (3, 3)
+
+    """
 
     bc_params = {
         'crystal_structure': crystal_structure,
@@ -621,6 +627,8 @@ def csl_bulk_bicrystal_from_parameters(crystal_structure, csl_vecs,
         'reorient': reorient,
         'wrap': False,
     }
+
+    print('bc_params: \n{}\n'.format(bc_params))
 
     bc = csl_bicrystal_from_parameters(**bc_params)
     bc.meta.update({'supercell_type': ['bulk', 'bulk_bicrystal']})
@@ -636,10 +644,16 @@ def csl_surface_bicrystal_from_parameters(crystal_structure, csl_vecs,
                                           boundary_vac_args=None,
                                           relative_shift_args=None,
                                           surface_idx=0):
+    """
+    Parameters
+    ----------
+    csl_vecs: list of length 2 of ndarray of int of shape (3, 3)
+
+    """
 
     bc_params = {
         'crystal_structure': crystal_structure,
-        'csl_vecs': [csl_vecs, csl_vecs],
+        'csl_vecs': csl_vecs,
         'box_csl': box_csl,
         'gb_type': gb_type,
         'gb_size': gb_size,

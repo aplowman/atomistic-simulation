@@ -1,3 +1,4 @@
+import copy
 import numpy as np
 from atsim import utils
 from atsim.utils import dict_from_list
@@ -10,6 +11,11 @@ PREDEFINED_VARS = {
         'type': 'compute',
         'name': 'gb_area',
         'id': 'gb_area',
+    },
+    'gb_boundary_vac': {
+        'type': 'compute',
+        'name': 'gb_boundary_vac',
+        'id': 'gb_boundary_vac',
     },
     'sup_type': {
         'type': 'compute',
@@ -87,6 +93,7 @@ def get_depends(compute_name, inc_id=True, inc_val=True, **kwargs):
             'energy_src': kwargs['energy_src'],
             'opt_step': kwargs['opt_step'],
             'series_id': kwargs['series_id'],
+            'unit': kwargs['unit'],
         })
         out = (get_depends('energy', inc_id=inc_id, inc_val=inc_val,
                            energy_src=kwargs['energy_src'],
@@ -95,9 +102,6 @@ def get_depends(compute_name, inc_id=True, inc_val=True, **kwargs):
                [PREDEFINED_VARS['gb_area'],
                 PREDEFINED_VARS['sup_type']]
                ) + out
-
-    elif compute_name == 'num_atoms':
-        pass
 
     elif compute_name == 'energy_per_atom':
 
@@ -110,16 +114,65 @@ def get_depends(compute_name, inc_id=True, inc_val=True, **kwargs):
                            energy_src=kwargs['energy_src'],
                            opt_step=kwargs['opt_step']) + out)
 
-    elif compute_name == 'gamma_energy':
+    elif compute_name == 'gamma_surface_info':
 
-        out = get_depends('energy', inc_id=inc_id, inc_val=inc_val,
-                          energy_src=kwargs['energy_src'],
-                          opt_step=kwargs['opt_step']) + out
-        out = [
-            PREDEFINED_VARS['gamma_surface_shape'],
-            PREDEFINED_VARS['gamma_surface_xy'],
-            PREDEFINED_VARS['sup_type'],
-        ] + out
+        d.update({
+            'info_name': kwargs['info_name'],
+        })
+
+        csi_idx = {
+            'name': 'csi_idx',
+            'type': 'series_id',
+            'col_id': 'relative_shift',
+        }
+        grid_idx = {
+            'type': 'series_id',
+            'name': 'grid_idx',
+            'col_id': 'relative_shift'
+        }
+        point_idx = {
+            'type': 'series_id',
+            'name': 'point_idx',
+            'col_id': 'relative_shift'
+        }
+
+        add_out = [csi_idx, grid_idx, point_idx]
+        ids = ['csi_idx', 'grid_idx', 'point_idx']
+        for i, j in zip(add_out, ids):
+            if inc_id:
+                i.update({'id': j})
+
+        out = add_out + out
+
+    elif compute_name == 'master_gamma':
+
+        d.update({
+            'energy_src': kwargs['energy_src'],
+            'opt_step': kwargs['opt_step'],
+            'series_id': kwargs['series_id'],
+            'unit': kwargs['unit'],
+        })
+
+        out = (get_depends('gb_energy', inc_id=inc_id, inv_val=inc_val,
+                           energy_src=kwargs['energy_src'],
+                           opt_step=kwargs['opt_step'],
+                           series_id=kwargs['series_id'],
+                           unit=kwargs['unit']) +
+               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+                           info_name='row_idx') +
+               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+                           info_name='col_idx') +
+               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+                           info_name='x_std_vals') +
+               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+                           info_name='y_std_vals') +
+               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+                           info_name='x_frac_vals') +
+               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+                           info_name='y_frac_vals') +
+               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+                           info_name='grid_shape')
+               ) + [PREDEFINED_VARS['gb_boundary_vac']] + out
 
     elif compute_name == 'energy':
 
@@ -231,6 +284,14 @@ def gb_area(out, sim, sim_idx):
         return None
 
 
+def gb_boundary_vac(out, sim, sim_idx):
+
+    if is_bicrystal(sim):
+        return sim.structure.boundary_vac
+    else:
+        return None
+
+
 def gb_thickness(out, sim, sim_idx):
 
     if is_bicrystal(sim):
@@ -284,7 +345,8 @@ def atoms_gb_dist_change(out, sim, sim_idx):
         return np.array(atoms_gb_dist_final) - np.array(atoms_gb_dist_initial)
 
 
-def gb_energy(out, series_id, energy_src, opt_step, unit='J/m^2'):
+# series_id, energy_src, opt_step, unit='J/m^2'):
+def gb_energy(out, req_vars):
     """
     Computes the grain boundary energy for multiple simulations.
 
@@ -304,19 +366,10 @@ def gb_energy(out, series_id, energy_src, opt_step, unit='J/m^2'):
 
     """
 
-    rv_args = {
-        'compute_name': 'gb_energy',
-        'inc_id': False,
-        'inc_val': False,
-        'energy_src': energy_src,
-        'opt_step': opt_step,
-        'series_id': series_id,
-    }
-    req_vars_defn = get_depends(**rv_args)
-    vrs = out['variables']
-    req_vars = [dict_from_list(vrs, i) for i in req_vars_defn]
     energy, num_atoms, area, sup_type = [req_vars[i]['vals'] for i in range(4)]
     series_names = out['series_name']
+    series_id = req_vars[-1]['series_id']
+    unit = req_vars[-1]['unit']
     sesh_ids = np.array(out['session_id'])[out['session_id_idx']]
     num_sims = len(sesh_ids)
 
@@ -360,6 +413,217 @@ def gb_energy(out, series_id, energy_src, opt_step, unit='J/m^2'):
     req_vars[-1]['vals'] = all_E_gb
 
 
+def gamma_surface_info(out, req_vars, common_series_info):
+
+    all_gamma_infos = {
+        'row_idx': [],
+        'col_idx': [],
+        'x_std_vals': [],
+        'y_std_vals': [],
+        'x_frac_vals': [],
+        'y_frac_vals': [],
+        'x_num_den_vals': [],
+        'y_num_den_vals': [],
+        'grid_shape': [],
+    }
+    allowed_names = list(all_gamma_infos.keys())
+
+    info_name = req_vars[-1]['info_name']
+    if info_name not in all_gamma_infos:
+        raise ValueError('compute_gamma_info: info_name "{}" not understood. '
+                         'Must be one of: {}'.format(info_name, allowed_names))
+
+    sesh_id_idx = out['session_id_idx']
+    csi_idx, grid_idx, point_idx = [req_vars[i]['vals'] for i in range(3)]
+
+    # Loop through each sim, identified by session id to which it belongs
+    for sii_idx, sii in enumerate(sesh_id_idx):
+
+        csi_exists = False
+        try:
+            csi = common_series_info[sii][csi_idx[sii_idx]]
+            csi_exists = True
+        except:
+            pass
+
+        if csi_exists:
+
+            grid_exists = False
+            try:
+                grid = csi['grids'][grid_idx[sii_idx]]
+                grid_exists = True
+            except:
+                pass
+
+            if grid_exists:
+
+                all_ri = grid['row_idx']
+                all_ci = grid['col_idx']
+                shp = grid['shape']
+                all_x_std, all_y_std = grid['grid_points_std']
+                all_x_frac, all_y_frac = grid['grid_points_frac']
+                all_x_num_den, all_y_num_den = grid['grid_points_num_den']
+
+                pnt_idx = point_idx[sii_idx]
+
+                ri = all_ri[pnt_idx]
+                ci = all_ci[pnt_idx]
+                x_std = all_x_std[pnt_idx]
+                y_std = all_y_std[pnt_idx]
+                x_frac = all_x_frac[pnt_idx]
+                y_frac = all_y_frac[pnt_idx]
+                x_num_den = all_x_num_den[pnt_idx]
+                y_num_den = all_y_num_den[pnt_idx]
+
+        if not csi_exists or not grid_exists:
+            shp = None
+            ri = None
+            ci = None
+            x_std = None
+            y_std = None
+            x_frac = None
+            y_frac = None
+            x_num_den = None
+            y_num_den = None
+
+        all_gamma_infos['row_idx'].append(ri)
+        all_gamma_infos['col_idx'].append(ci)
+        all_gamma_infos['x_std_vals'].append(x_std)
+        all_gamma_infos['y_std_vals'].append(y_std)
+        all_gamma_infos['x_frac_vals'].append(x_frac)
+        all_gamma_infos['y_frac_vals'].append(y_frac)
+        all_gamma_infos['x_num_den_vals'].append(x_num_den)
+        all_gamma_infos['y_num_den_vals'].append(y_num_den)
+        all_gamma_infos['grid_shape'].append(shp)
+
+    req_vars[-1]['vals'] = all_gamma_infos[info_name]
+
+
+def master_gamma(out, req_vars):
+
+    (energy, num_atoms, gb_area, sup_type, gb_energy, csi_idx,
+     grid_idx, point_idx, row_idx, col_idx, x_std_vals,
+     y_std_vals, x_frac_vals, y_frac_vals, grid_shape,
+     boundary_vac) = [req_vars[i]['vals'] for i in range(16)]
+
+    print('energy: {}'.format(energy))
+    print('num_atoms: {}'.format(num_atoms))
+    print('gb_area: {}'.format(gb_area))
+    print('sup_type: {}'.format(sup_type))
+    print('gb_energy: {}'.format(gb_energy))
+
+    print('csi_idx: {}'.format(csi_idx))
+    print('grid_idx: {}'.format(grid_idx))
+    print('point_idx: {}'.format(point_idx))
+
+    print('row_idx: {}'.format(row_idx))
+    print('col_idx: {}'.format(col_idx))
+    print('x_std_vals: {}'.format(x_std_vals))
+    print('y_std_vals: {}'.format(y_std_vals))
+    print('x_frac_vals: {}'.format(x_frac_vals))
+    print('y_frac_vals: {}'.format(y_frac_vals))
+    print('grid_shape: {}'.format(grid_shape))
+    print('boundary_vac: {}'.format(boundary_vac))
+
+    num_sims = len(gb_energy)
+
+    # Get first valid gamma shape:
+    for en_idx, en in enumerate(gb_energy):
+        if en is not None:
+            shp = grid_shape[en_idx]
+            break
+
+    all_E = {}
+    X = np.ones(tuple(shp), dtype=float) * np.nan
+    Y = np.ones(tuple(shp), dtype=float) * np.nan
+    XY_frac = np.ones(tuple(shp) + (2,), dtype=float) * np.nan
+    first_en_idx = np.ones(tuple(shp), dtype=float) * np.nan
+
+    for en_idx, en in enumerate(gb_energy):
+
+        if en is None:
+            continue
+
+        ri = row_idx[en_idx]
+        ci = col_idx[en_idx]
+        srs_v = boundary_vac[en_idx]
+        print('srs_v: {}, type(srs_v): {}'.format(srs_v, type(srs_v)))
+
+        if all_E.get(srs_v) is None:
+            blank = np.ones(tuple(shp), dtype=float) * np.nan
+            all_E.update({srs_v: blank})
+
+        all_E[srs_v][ri, ci] = en
+
+        if np.isnan(X[ri][ci]):
+            X[ri, ci] = x_std_vals[en_idx]
+            Y[ri, ci] = y_std_vals[en_idx]
+            XY_frac[ri, ci] = [x_frac_vals[en_idx], y_frac_vals[en_idx]]
+            first_en_idx[ri, ci] = en_idx
+
+    # Fitting
+    nrows = shp[0]
+    ncols = shp[1]
+    fit_grid_E = [[[] for i in range(ncols)] for _ in range(nrows)]
+    fit_grid_vac = [[[] for i in range(ncols)] for _ in range(nrows)]
+
+    fitted_E = np.ones((nrows, ncols), dtype=float) * np.nan
+    fitted_vac = np.ones((nrows, ncols), dtype=float) * np.nan
+    fitted_p1d = np.ones((nrows, ncols, 3), dtype=float) * np.nan
+
+    for ri in range(nrows):
+        for ci in range(ncols):
+            for k, v in sorted(all_E.items()):
+
+                fit_grid_E[ri][ci].append(v[ri][ci])
+                fit_grid_vac[ri][ci].append(k)
+
+            x = np.array(fit_grid_vac[ri][ci])
+            y = np.array(fit_grid_E[ri][ci])
+
+            # Get nonNaN values from y
+            y_fin_idx = np.isfinite(y)
+            y = y[y_fin_idx]
+            x = x[y_fin_idx]
+
+            if len(x) > 2:
+                z = np.polyfit(x, y, 2)
+                p1d = np.poly1d(z)
+                dpdx = np.polyder(p1d)
+                min_x = -dpdx[0] / dpdx[1]
+                min_y = p1d(min_x)
+
+                fitted_vac[ri, ci] = min_x
+                fitted_E[ri, ci] = min_y
+                fitted_p1d[ri, ci] = p1d.coeffs
+
+    first_en_idx = first_en_idx.reshape(-1,).astype(int)
+
+    fitted_p1d = fitted_p1d.reshape(-1, 3)
+    all_fitted_p1d = np.ones((num_sims, 3), dtype=float) * np.nan
+    all_fitted_p1d[first_en_idx] = fitted_p1d
+
+    E_min_flat = fitted_E.reshape(-1)
+    all_E_min_flat = np.ones((num_sims,), dtype=float) * np.nan
+    all_E_min_flat[first_en_idx] = E_min_flat
+
+    vac_min_flat = fitted_vac.reshape(-1)
+    all_vac_min_flat = np.ones((num_sims,), dtype=float) * np.nan
+    all_vac_min_flat[first_en_idx] = vac_min_flat
+
+    req_vars[-1]['vals'] = {
+        'X': X.tolist(),
+        'Y': Y.tolist(),
+        'XY_frac': XY_frac.tolist(),
+        'E': {k: v.tolist() for k, v in all_E.items()},
+        'E_min': fitted_E.tolist(),
+        'vac_min': fitted_vac.tolist(),
+        'fits': all_fitted_p1d.tolist(),
+        'vac_min_flat': all_vac_min_flat.tolist(),
+        'E_min_flat': all_E_min_flat.tolist(),
+    }
+
+
 # Single-compute functions are passed individual AtomisticSimulation objects:
 SINGLE_COMPUTE_LOOKUP = {
     'num_atoms': num_atoms,
@@ -368,6 +632,7 @@ SINGLE_COMPUTE_LOOKUP = {
     'gb_area': gb_area,
     'supercell_type': supercell_type,
     'gb_thickness': gb_thickness,
+    'gb_boundary_vac': gb_boundary_vac,
     'atoms_gb_dist_initial': atoms_gb_dist_initial,
     'atoms_gb_dist_final': atoms_gb_dist_final,
     'atoms_gb_dist_change': atoms_gb_dist_change,
@@ -378,4 +643,6 @@ SINGLE_COMPUTE_LOOKUP = {
 # is being constructed:
 MULTI_COMPUTE_LOOKUP = {
     'gb_energy': gb_energy,
+    'gamma_surface_info': gamma_surface_info,
+    'master_gamma': master_gamma,
 }

@@ -230,6 +230,10 @@ def main(s_id):
     # Find the base options for this sid:
     base_opt = search_database_by_session_id(db, s_id)
 
+    # For compatibility:
+    if base_opt.get('set_up'):
+        base_opt = {**base_opt, **base_opt['set_up']}
+
     src_path = os.path.join(base_opt['scratch']['path'], s_id)
     dst_path = os.path.join(base_opt['archive']['path'], s_id)
     sms_path = os.path.join(src_path, 'sims.pickle')

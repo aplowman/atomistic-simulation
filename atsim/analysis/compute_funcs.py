@@ -345,7 +345,6 @@ def atoms_gb_dist_change(out, sim, sim_idx):
         return np.array(atoms_gb_dist_final) - np.array(atoms_gb_dist_initial)
 
 
-# series_id, energy_src, opt_step, unit='J/m^2'):
 def gb_energy(out, req_vars):
     """
     Computes the grain boundary energy for multiple simulations.

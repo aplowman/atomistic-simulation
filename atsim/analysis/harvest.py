@@ -5,7 +5,8 @@ import json
 import copy
 from pathlib import Path
 from atsim.readwrite import read_pickle, write_pickle, format_list, format_dict
-from atsim import simsio, utils, plotting, vectors, SCRIPTS_PATH, REF_PATH
+from atsim import utils, plotting, vectors, SCRIPTS_PATH, REF_PATH
+from atsim.simsio import castep, lammps
 from atsim.analysis import compute_funcs
 from atsim.analysis.compute_funcs import get_depends, SINGLE_COMPUTE_LOOKUP, MULTI_COMPUTE_LOOKUP
 from atsim.set_up.harvest_opt import HARVEST_OPT
@@ -361,10 +362,10 @@ def read_results(sid, skip_idx=None, overwrite=False, query_all=False):
         calc_path = os.path.join(sid_path, 'calcs', *srs_paths)
 
         if method == 'castep':
-            out = simsio.castep.read_castep_output(calc_path)
+            out = castep.read_castep_output(calc_path)
 
         elif method == 'lammps':
-            out = simsio.lammps.read_lammps_output(calc_path)
+            out = lammps.read_lammps_output(calc_path)
 
         results_exist = False
         if hasattr(sim_i, 'results'):

@@ -748,6 +748,14 @@ def main(harvest_opt):
 
     if skip_idx is None or len(skip_idx) == 0:
         skip_idx = [[] for _ in range(len(sids))]
+    elif len(skip_idx) > 0:
+        no_skips = True
+        for sk in skip_idx:
+            if len(sk) > 0:
+                no_skips = False
+                break
+        if no_skips:
+            skip_idx = [[] for _ in range(len(sids))]
 
     for s_idx, s in enumerate(sids):
         read_results(s, skip_idx=skip_idx[s_idx], overwrite=overwrite)

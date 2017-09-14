@@ -225,8 +225,8 @@ def supercell_type(out, sim, sim_idx):
 
     COMPATIBILITY_LOOKUP = {
         'CSLBicrystal': 'bicrystal',
-        'CSLBulkBicrystal': 'bulk',
-        'CSLSurfaceBicrystal': 'surface',
+        'CSLBulkCrystal': 'bulk',
+        'CSLSurfaceCrystal': 'surface',
         'BulkCrystal': 'bulk',
     }
 

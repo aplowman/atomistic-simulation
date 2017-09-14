@@ -1,0 +1,1949 @@
+"""
+Classes for generating atomistic structures useful for atomistic simulations.
+
+Attributes
+----------
+REF_PATH : str
+    The path of the `ref` directory, which contains reference data.
+
+TODO:
+-   Investigate building a helper class for structure visualisations which can
+    be shared between BravaisLattice, CrystalStructure, CrystalBox etc. Or
+    maybe not a class, but some way of sharing some code at least...
+
+"""
+
+import numpy as np
+import os
+import plotting
+from plotly import graph_objs
+from plotly.offline import plot, iplot, init_notebook_mode
+from crystal import CrystalBox, CrystalStructure
+import simsio
+import geometry
+import vectors
+import mathsutils
+import readwrite
+from mendeleev import element
+import utils
+import spglib
+import gbhelper
+from functools import reduce
+import warnings
+
+REF_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ref')
+
+
+class AtomisticSimulation(object):
+
+    def __init__(self, atomistic_structure, options):
+
+        self.structure = atomistic_structure
+        self.options = options
+
+    def write_input_files(self):
+
+        set_opt = self.options['set_up']
+        common_params = {
+            'supercell': self.structure.supercell,
+            'atom_sites': self.structure.atom_sites,
+            'species': self.structure.all_species,
+            'species_idx': self.structure.all_species_idx,
+            'path': set_opt['stage_series_path'],
+            'atom_constraints': self.options['constraints']['atom'],
+            'cell_constraints': self.options['constraints']['cell'],
+        }
+
+        if self.options['method'] == 'castep':
+
+            cst_opt = self.options['castep']
+            cst_in_params = {
+                'seedname': cst_opt['seedname'],
+                'cell': cst_opt['cell'],
+                'param': cst_opt['param'],
+                'sym_ops': cst_opt['sym_ops'],
+                **common_params
+            }
+
+            simsio.write_castep_inputs(**cst_in_params)
+
+        elif self.options['method'] == 'lammps':
+
+            lmp_opt = self.options['lammps']
+            lmp_in_params = {
+                **lmp_opt,
+                **common_params
+            }
+            simsio.write_lammps_inputs(**lmp_in_params)
+
+
+class AtomisticStructure(object):
+    """
+    Class to represent crystals of atoms
+
+    Attributes
+    ----------
+    atom_sites : ndarray of shape (3, N)
+        Array of column vectors representing the atom positions.
+    supercell : ndarray of shape (3, 3)
+        Array of column vectors representing supercell edge vectors.
+    lattice_sites : ndarray of shape (3, M), optional
+        Array of column vectors representing lattice site positions.
+    crystals : list of dict of (str : ndarray or int), optional
+        Each dict contains at least these keys:
+            `crystal` : ndarray of shape (3, 3)
+                Array of column vectors representing the crystal edge vectors.
+            `origin` : ndarray of shape (3, 1)
+                Column vector specifying the origin of this crystal.
+        Additional keys are:
+            'cs_idx': int
+                Index of `crystal_structures`, defining to which
+                CrystalStructure this crystal belongs.
+            `cs_orientation`: ndarray of shape (3, 3)
+                Rotation matrix which rotates the CrystalStructure lattice
+                unit cell from the initialised BravaisLattice object to some
+                other desired orientation.
+            'cs_origin': list of float or int
+                Origin of the CrystalStructure unit cell in multiples of the
+                CrystalStructure unit cell vectors. For integer values, this
+                will not affect the atomic structure of the crystal. To
+                produce a rigid translation of the atoms within the crystal,
+                non-integer values can be used.
+
+    crystal_structures : list of CrystalStructure, optional
+    crystal_idx : ndarray of shape (N,), optional
+        Defines to which crystal each atom belongs.
+    lat_crystal_idx : ndarray of shape (M,), optional
+        Defines to which crystal each lattice site belongs
+    species_idx : ndarray of shape (N,), optional
+        Defines to which species each atom belongs, indexed within the atom's
+        crystal_structure. For atom index `i`, this indexes
+        `crystal_structures[
+            crystals[crystal_idx[i]]['cs_idx']]['species_set']`
+        Either specify (`all_species` and `all_species_idx`) or (`species_idx`
+        and `motif_idx`), but not both.
+    motif_idx : ndarray of shape (N,), optional
+        Defines to which motif atom each atom belongs, indexed within the
+        atom's crystal_structure. For atom index `i`, this indexes
+        `crystal_structures[
+            crystals[crystal_idx[i]]['cs_idx']]['species_motif']`
+        Either specify (`all_species` and `all_species_idx`) or (`species_idx`
+        and `motif_idx`), but not both.
+    all_species : ndarray of str, optional
+        1D array of strings representing the distinct species. Either specify
+        (`all_species` and `all_species_idx`) or (`species_idx` and
+        `motif_idx`), but not both.
+    all_species_idx : ndarray of shape (N, ), optional
+        Defines to which species each atom belongs, indexed over the whole
+        AtomisticStructure. This indexes `all_species`. Either specify
+        (`all_species` and `all_species_idx`) or (`species_idx` and
+        `motif_idx`), but not both.
+
+    atom_sites_frac
+    num_atoms_per_crystal
+    num_atoms
+    num_crystals
+    reciprocal_supercell
+
+    Methods
+    -------
+    todo
+
+    TODO:
+    -   Think about how some of the methods would work if __init__() takes the
+        bare minimum: supercell and atom_sites, or with some additional params
+        like lattice_sites.
+
+    """
+
+    def __init__(self, atom_sites, supercell, lattice_sites=None,
+                 crystals=None, crystal_structures=None, crystal_idx=None,
+                 lat_crystal_idx=None, species_idx=None, motif_idx=None,
+                 all_species=None, all_species_idx=None, overlap_tol=1):
+        """Constructor method for AtomisticStructure object."""
+
+        # Input validation
+        # ----------------
+        # 1.    Check length of `crystal_idx`, `species_idx`, and `motif_idx`
+        #       match number of atoms in `atom_sites`.
+        # 2.    Check length of 'lat_crystal_idx' matches number of lattice
+        #       sites in `lattice_sites'.
+        # 3.    Check set of indices in `crystal_idx` resolve in `crystals`.
+
+        if crystal_idx is not None:
+            if len(crystal_idx) != atom_sites.shape[1]:
+                raise ValueError('Length of `crystal_idx` must match number '
+                                 'of atoms specified as column vectors in '
+                                 '`atom_sites`.')
+
+            c_idx_set = sorted(list(set(crystal_idx)))
+            if c_idx_set[0] < 0 or c_idx_set[-1] >= len(crystals):
+                raise ValueError('Indices in `crystal_idx` must index elements'
+                                 ' in `crystals`.')
+
+        if lat_crystal_idx is not None:
+            if len(lat_crystal_idx) != lattice_sites.shape[1]:
+                raise ValueError('Length of `lat_crystal_idx` must match '
+                                 'number of lattice sites specified as column '
+                                 'vectors in `lattice_sites`.')
+
+        if [i is None for i in [all_species, all_species_idx]].count(True) == 1:
+            raise ValueError('Must specify both `all_species` and '
+                             '`all_species_idx`.')
+
+        if [i is None for i in [species_idx, motif_idx]].count(True) == 1:
+            raise ValueError('Must specify both `species_idx` and '
+                             '`motif_idx`.')
+
+        if [i is None for i in [species_idx, all_species_idx]].count(True) != 1:
+            raise ValueError('Either specify (`all_species` and '
+                             '`all_species_idx`) or (`species_idx` and '
+                             '`motif_idx`), but not both.')
+
+        if species_idx is not None:
+            if len(species_idx) != atom_sites.shape[1]:
+                raise ValueError('Length of `species_idx` must match number '
+                                 'of atoms specified as column vectors in '
+                                 '`atom_sites`.')
+
+        if motif_idx is not None:
+            if len(motif_idx) != atom_sites.shape[1]:
+                raise ValueError('Length of `motif_idx` must match number '
+                                 'of atoms specified as column vectors in '
+                                 '`atom_sites`.')
+
+        if all_species_idx is not None:
+            if len(all_species_idx) != atom_sites.shape[1]:
+                raise ValueError('Length of `all_species_idx` ({}) must match '
+                                 'number of atoms specified as column vectors '
+                                 'in `atom_sites` ({}).'.format(len(all_species_idx), atom_sites.shape[1]))
+
+        # Set attributes
+        # --------------
+        self.atom_sites = atom_sites
+        self.supercell = supercell
+
+        self.lattice_sites = lattice_sites
+        self.crystals = crystals
+        self.crystal_structures = crystal_structures
+        self.crystal_idx = crystal_idx
+        self.lat_crystal_idx = lat_crystal_idx
+        self.species_idx = species_idx
+        self.motif_idx = motif_idx
+        self._overlap_tol = overlap_tol
+
+        if all_species is None:
+            self._all_species = all_species
+        else:
+            self._all_species = np.array(all_species)
+
+        if all_species_idx is None:
+            self._all_species_idx = all_species_idx
+        else:
+            self._all_species_idx = utils.parse_as_int_arr(all_species_idx)
+
+        self.check_overlapping_atoms(overlap_tol)
+
+    def visualise(self, proj_2d=False, show_iplot=True, save=False,
+                  save_args=None, sym_op=None, wrap_sym_op=False,
+                  atoms_3d=False, ret_fig=False):
+        """
+        Parameters
+        ----------
+        proj_2d : bool
+            If True, 2D plots are also drawn.
+        sym_op : list of ndarrays
+        atoms_3d : bool
+            If True, plots atoms as appropriately sized spheres instead of
+            markers. Not recommended for more than a handful of atoms!
+
+
+        TODO:
+        -   Add 3D arrows/cones to supercell vectors using mesh3D.
+        -   Add lattice vectors/arrows to lattice unit cells
+        -   Add minimums lengths to 2D projection subplots so for very slim
+            supercells, we can still see the shorter directions.
+
+        """
+
+        # Validation:
+        if not show_iplot and not save and not ret_fig:
+            raise ValueError('Visualisation will not be displayed or saved!')
+
+        crystal_cols = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+                        '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+
+        if show_iplot:
+            init_notebook_mode()
+
+        # Get colours for atom species:
+        atom_cols = readwrite.read_pickle(
+            os.path.join(REF_PATH, 'jmol_colours.pickle'))
+
+        if save:
+            if save_args is None:
+                save_args = {
+                    'filename': 'plots.html',
+                    'auto_open': False
+                }
+            elif save_args.get('filename') is None:
+                save_args.update({'filename': 'plots.html'})
+
+        data = []
+        div_2d = ''
+        if proj_2d:
+
+            data_2d = []
+            proj_2d_dirs = [0, 1, 2]
+            vert_space = 0.050
+            hori_space = 0.050
+
+            # Tuples for each projection direction (x, y, z):
+            dirs_2d = ((1, 2), (0, 2), (1, 0))
+            ax_lab_2d = (('x', 'y'), ('x2', 'y'), ('x', 'y3'))
+            show_leg_2d = (True, False, False)
+
+        # Sym ops to atom sites:
+        if sym_op is not None:
+            atom_sites_sym = np.dot(sym_op[0], self.atom_sites)
+            atom_sites_sym += np.dot(self.supercell, sym_op[1])
+
+            if wrap_sym_op:
+                as_sym_frac = np.dot(np.linalg.inv(self.supercell),
+                                     atom_sites_sym)
+                as_sym_frac -= np.floor(as_sym_frac)
+                atom_sites_sym = np.dot(self.supercell, as_sym_frac)
+
+            sym_atom_site_props = {
+                'mode': 'text+markers',
+                'text': np.arange(self.num_atoms),
+                'textposition': 'bottom center',
+                'textfont': {
+                    'color': 'purple',
+                },
+                'marker': {
+                    'symbol': 'x',
+                    'size': 5,
+                    'color': 'purple'
+                },
+                'name': 'Sym op',
+                'legendgroup': 'Sym op',
+            }
+
+            data.append(
+                graph_objs.Scatter3d(
+                    x=atom_sites_sym[0],
+                    y=atom_sites_sym[1],
+                    z=atom_sites_sym[2],
+                    **sym_atom_site_props
+                )
+            )
+
+            # Add lines mapping symmetrically connected atoms:
+            for a_idx, a in enumerate(atom_sites_sym.T):
+                data.append({
+                    'type': 'scatter3d',
+                    'x': [a[0], self.atom_sites.T[a_idx][0]],
+                    'y': [a[1], self.atom_sites.T[a_idx][1]],
+                    'z': [a[2], self.atom_sites.T[a_idx][2]],
+                    'mode': 'lines',
+                    'name': 'Sym op',
+                    'legendgroup': 'Sym op',
+                    'showlegend': False,
+                    'line': {
+                        'color': 'purple',
+                    },
+                })
+
+        # Supercell box
+        sup_xyz = geometry.get_box_xyz(self.supercell)[0]
+        sup_props = {
+            'mode': 'lines',
+            'line': {
+                'color': '#98df8a'
+            }
+        }
+        data.append(
+            graph_objs.Scatter3d(
+                x=sup_xyz[0],
+                y=sup_xyz[1],
+                z=sup_xyz[2],
+                name='Supercell',
+                **sup_props
+            )
+        )
+
+        if proj_2d:
+            for i in proj_2d_dirs:
+                data_2d.append({
+                    'type': 'scatter',
+                    'x': sup_xyz[dirs_2d[i][0]],
+                    'y': sup_xyz[dirs_2d[i][1]],
+                    'xaxis': ax_lab_2d[i][0],
+                    'yaxis': ax_lab_2d[i][1],
+                    'name': 'Supercell',
+                    'legendgroup': 'Supercell',
+                    'showlegend': show_leg_2d[i],
+                    **sup_props
+                })
+
+        # Supercell edge vectors
+        sup_edge_props = {
+            'mode': 'lines',
+            'line': {
+                'color': '#000000',
+                'width': 3
+            }
+        }
+        sup_vec_labs = ['a', 'b', 'c']
+        for i in range(3):
+            data.append(
+                graph_objs.Scatter3d(
+                    x=[0, self.supercell[0, i]],
+                    y=[0, self.supercell[1, i]],
+                    z=[0, self.supercell[2, i]],
+                    name='Supercell vectors',
+                    legendgroup='Supercell vectors',
+                    showlegend=True if i == 0 else False,
+                    **sup_edge_props
+                )
+            )
+            sup_vecs_lab_props = {
+                'mode': 'text',
+                'text': [sup_vec_labs[i]],
+                'legendgroup': 'Supercell vectors',
+                'showlegend': False,
+                'textfont': {
+                    'size': 20
+                }
+            }
+            data.append(
+                graph_objs.Scatter3d(
+                    x=[self.supercell[0, i]],
+                    y=[self.supercell[1, i]],
+                    z=[self.supercell[2, i]],
+                    **sup_vecs_lab_props
+                )
+            )
+            if proj_2d:
+                for j in proj_2d_dirs:
+                    data_2d.append({
+                        'type': 'scatter',
+                        'x': [0, self.supercell[dirs_2d[j][0], i]],
+                        'y': [0, self.supercell[dirs_2d[j][1], i]],
+                        'xaxis': ax_lab_2d[j][0],
+                        'yaxis': ax_lab_2d[j][1],
+                        'name': 'Supercell vectors',
+                        'legendgroup': 'Supercell vectors',
+                        'showlegend': show_leg_2d[j] if i == 0 else False,
+                        'visible': 'legendonly',
+                        **sup_edge_props
+                    })
+                    if i == j:
+                        continue
+                    data_2d.append({
+                        'type': 'scatter',
+                        'x': [self.supercell[dirs_2d[j][0], i]],
+                        'y': [self.supercell[dirs_2d[j][1], i]],
+                        'xaxis': ax_lab_2d[j][0],
+                        'yaxis': ax_lab_2d[j][1],
+                        'visible': 'legendonly',
+                        **sup_vecs_lab_props
+                    })
+
+        if self.crystals is None:
+            # Plot all atoms by species:
+
+            for sp_idx, sp in enumerate(self.all_species):
+
+                atom_idx = np.where(self.all_species_idx == sp_idx)[0]
+                atom_sites_sp = self.atom_sites[:, atom_idx]
+                sp_col = str(atom_cols[sp])
+                trace_name = sp
+
+                atom_site_props = {
+                    'mode': 'markers',
+                    'marker': {
+                        'symbol': 'o',
+                        'size': 7,
+                        'color': 'rgb' + sp_col
+                    },
+                    'name': trace_name,
+                    'legendgroup': trace_name,
+                }
+
+                if atoms_3d:
+                    rad = element(sp).vdw_radius * 0.25 * 1e-2  # in Ang
+                    # Get sphere trace for each atom:
+                    for i in atom_sites_sp.T:
+                        sph_args = {
+                            'radius': rad,
+                            'colour': sp_col,
+                            'origin': i[:, np.newaxis],
+                            'n': 10
+                        }
+                        sph = plotting.get_sphere_plotly(**sph_args)
+                        sph[0].update({
+                            'name': trace_name,
+                            'legendgroup': trace_name,
+                        })
+                        data.append(sph[0])
+
+                else:
+                    data.append(
+                        graph_objs.Scatter3d(
+                            x=atom_sites_sp[0],
+                            y=atom_sites_sp[1],
+                            z=atom_sites_sp[2],
+                            **atom_site_props
+                        )
+                    )
+
+                if proj_2d:
+                    for i in proj_2d_dirs:
+                        data_2d.append({
+                            'type': 'scatter',
+                            'x': atom_sites_sp[dirs_2d[i][0]],
+                            'y': atom_sites_sp[dirs_2d[i][1]],
+                            'xaxis': ax_lab_2d[i][0],
+                            'yaxis': ax_lab_2d[i][1],
+                            'name': trace_name,
+                            'legendgroup': trace_name,
+                            'showlegend': show_leg_2d[i],
+                            **atom_site_props
+                        })
+
+        else:
+
+            ccent = self.crystal_centres
+
+            # Plot atoms by crystal and motif
+            # Crystal boxes and atoms
+            c_prev_num = 0  # Number of atoms in previous crystal
+            for c_idx, c in enumerate(self.crystals):
+
+                # Crystal centres
+                cc_trce_nm = 'Crystal #{} centre'.format(c_idx + 1)
+                cc_props = {
+                    'mode': 'markers',
+                    'marker': {
+                        'color': 'red',
+                        'symbol': 'x',
+                        'size': 3
+                    }
+                }
+                data.append(
+                    graph_objs.Scatter3d(
+                        x=ccent[c_idx][0],
+                        y=ccent[c_idx][1],
+                        z=ccent[c_idx][2],
+                        name=cc_trce_nm,
+                        **cc_props
+                    )
+                )
+                if proj_2d:
+                    for i in proj_2d_dirs:
+                        data_2d.append({
+                            'type': 'scatter',
+                            'x': ccent[c_idx][dirs_2d[i][0]],
+                            'y': ccent[c_idx][dirs_2d[i][1]],
+                            'xaxis': ax_lab_2d[i][0],
+                            'yaxis': ax_lab_2d[i][1],
+                            'name': cc_trce_nm,
+                            'legendgroup': cc_trce_nm,
+                            'showlegend': show_leg_2d[i],
+                            **cc_props
+                        })
+
+                # Crystal boxes
+                c_xyz = geometry.get_box_xyz(
+                    c['crystal'], origin=c['origin'])[0]
+                c_props = {
+                    'mode': 'lines',
+                    'line': {
+                        'color': crystal_cols[c_idx]
+                    }
+                }
+                c_trce_nm = 'Crystal #{}'.format(c_idx + 1)
+                data.append(
+                    graph_objs.Scatter3d(
+                        x=c_xyz[0],
+                        y=c_xyz[1],
+                        z=c_xyz[2],
+                        name=c_trce_nm,
+                        **c_props
+                    )
+                )
+                if proj_2d:
+                    for i in proj_2d_dirs:
+                        data_2d.append({
+                            'type': 'scatter',
+                            'x': c_xyz[dirs_2d[i][0]],
+                            'y': c_xyz[dirs_2d[i][1]],
+                            'xaxis': ax_lab_2d[i][0],
+                            'yaxis': ax_lab_2d[i][1],
+                            'name': c_trce_nm,
+                            'legendgroup': c_trce_nm,
+                            'showlegend': show_leg_2d[i],
+                            **c_props
+                        })
+
+                # Get CrystalStructure associated with this crystal:
+                has_cs = False
+                if c.get('cs_idx') is not None:
+                    has_cs = True
+
+                if has_cs:
+                    cs = self.crystal_structures[c['cs_idx']]
+
+                # Lattice unit cell, need to rotate by given orientation
+                if ((c.get('cs_orientation') is not None) and 
+                    (c.get('cs_origin') is not None)):
+                
+                    unit_cell = np.dot(c['cs_orientation'],
+                                    cs.bravais_lattice.vecs)
+
+                    cs_origin = np.dot(unit_cell, c['cs_origin'])
+                    uc_origin = c['origin'] + cs_origin[:, np.newaxis]
+                    uc_xyz = geometry.get_box_xyz(unit_cell, origin=uc_origin)[0]
+
+                    uc_trace_name = 'Unit cell (crystal #{})'.format(c_idx + 1)
+                    uc_props = {
+                        'mode': 'lines',
+                        'line': {
+                            'color': 'gray'
+                        },
+                        'name': uc_trace_name,
+                        'legendgroup': uc_trace_name,
+                        'visible': 'legendonly'
+                    }
+                    data.append(
+                        graph_objs.Scatter3d(
+                            x=uc_xyz[0],
+                            y=uc_xyz[1],
+                            z=uc_xyz[2],
+                            **uc_props
+                        )
+                    )
+                    if proj_2d:
+                        for i in proj_2d_dirs:
+                            data_2d.append({
+                                'type': 'scatter',
+                                'x': uc_xyz[dirs_2d[i][0]],
+                                'y': uc_xyz[dirs_2d[i][1]],
+                                'xaxis': ax_lab_2d[i][0],
+                                'yaxis': ax_lab_2d[i][1],
+                                'name': uc_trace_name,
+                                'legendgroup': uc_trace_name,
+                                'showlegend': show_leg_2d[i],
+                                **uc_props
+                            })
+
+                # Lattice sites
+                if self.lattice_sites is not None:
+                    ls_idx = np.where(self.lat_crystal_idx == c_idx)[0]
+                    ls = self.lattice_sites[:, ls_idx]
+                    ls_trace_name = 'Lattice sites (crystal #{})'.format(c_idx + 1)
+                    lat_site_props = {
+                        'mode': 'markers',
+                        'marker': {
+                            'symbol': 'x',
+                            'size': 5,
+                            'color': crystal_cols[c_idx]
+                        },
+                        'name': ls_trace_name,
+                        'legendgroup': ls_trace_name,
+                        'visible': 'legendonly',
+                    }
+                    data.append(
+                        graph_objs.Scatter3d(
+                            x=ls[0],
+                            y=ls[1],
+                            z=ls[2],
+                            **lat_site_props
+                        )
+                    )
+                    if proj_2d:
+                        for i in proj_2d_dirs:
+                            data_2d.append({
+                                'type': 'scatter',
+                                'x': ls[dirs_2d[i][0]],
+                                'y': ls[dirs_2d[i][1]],
+                                'xaxis': ax_lab_2d[i][0],
+                                'yaxis': ax_lab_2d[i][1],
+                                'showlegend': show_leg_2d[i],
+                                **lat_site_props
+                            })
+
+                # Get indices of atoms in this crystal
+                crys_atm_idx = np.where(self.crystal_idx == c_idx)[0]
+
+                if has_cs:
+                    # Get motif associated with this crystal:
+                    sp_motif = cs.species_motif
+
+                    # Atoms by species
+                    # TODO: Add traces for atom numbers
+                    for sp_idx, sp_name in enumerate(sp_motif):
+
+                        atom_idx = np.where(
+                            self.motif_idx[crys_atm_idx] == sp_idx)[0]
+                        atom_sites_sp = self.atom_sites[:, crys_atm_idx[atom_idx]]
+                        sp_i = cs.motif['species'][sp_idx]
+                        sp_col = 'rgb' + str(atom_cols[sp_i])
+
+                        trace_name = sp_name + ' (crystal #{})'.format(c_idx + 1)
+                        num_trace_name = 'Atom index (crystal #{})'.format(c_idx + 1)
+
+                        atom_site_props = {
+                            'mode': 'markers',
+                            'marker': {
+                                'symbol': 'o',
+                                'size': 7,
+                                'color': sp_col
+                            },
+                            'name': trace_name,
+                            'legendgroup': trace_name,
+                        }
+                        # Add traces for atom numbers
+                        data.append(
+                            graph_objs.Scatter3d({
+                                'x': atom_sites_sp[0],
+                                'y': atom_sites_sp[1],
+                                'z': atom_sites_sp[2],
+                                'mode': 'text',
+                                'text': [str(i + c_prev_num) for i in atom_idx],
+                                'name': num_trace_name,
+                                'legendgroup': num_trace_name,
+                                'showlegend': True if sp_idx == 0 else False,
+                                'visible': 'legendonly',
+                            })
+                        )
+                        if atoms_3d:
+                            rad = element(sp_i).vdw_radius * 0.25 * 1e-2  # in Ang
+                            # Get sphere trace for each atom:
+                            for i in atom_sites_sp.T:
+                                sph_args = {
+                                    'radius': rad,
+                                    'colour': sp_col,
+                                    'origin': i[:, np.newaxis],
+                                    'n': 10
+                                }
+                                sph = plotting.get_sphere_plotly(**sph_args)
+                                sph[0].update({
+                                    'name': trace_name,
+                                    'legendgroup': trace_name,
+                                })
+                                data.append(sph[0])
+
+                        else:
+                            data.append(
+                                graph_objs.Scatter3d(
+                                    x=atom_sites_sp[0],
+                                    y=atom_sites_sp[1],
+                                    z=atom_sites_sp[2],
+                                    **atom_site_props
+                                )
+                            )
+                        if proj_2d:
+                            for i in proj_2d_dirs:
+                                data_2d.append({
+                                    'type': 'scatter',
+                                    'x': atom_sites_sp[dirs_2d[i][0]],
+                                    'y': atom_sites_sp[dirs_2d[i][1]],
+                                    'xaxis': ax_lab_2d[i][0],
+                                    'yaxis': ax_lab_2d[i][1],
+                                    'showlegend': show_leg_2d[i],
+                                    **atom_site_props
+                                })
+                else:
+                    # crystals but no crystal structure
+                    for sp_idx, sp in enumerate(self.all_species):
+
+                        atom_idx = np.where(self.all_species_idx[crys_atm_idx] == sp_idx)[0]
+                        atom_sites_sp = self.atom_sites[:, crys_atm_idx[atom_idx]]
+                        sp_col = str(atom_cols[sp])
+                        trace_name = sp + ' (Crystal #{})'.format(c_idx + 1)
+
+                        atom_site_props = {
+                            'mode': 'markers',
+                            'marker': {
+                                'symbol': 'o',
+                                'size': 7,
+                                'color': 'rgb' + sp_col
+                            },
+                            'name': trace_name,
+                            'legendgroup': trace_name,
+                        }
+                        data.append(
+                            graph_objs.Scatter3d(
+                                x=atom_sites_sp[0],
+                                y=atom_sites_sp[1],
+                                z=atom_sites_sp[2],
+                                **atom_site_props
+                            )
+                        )   
+                        if proj_2d:
+                            for i in proj_2d_dirs:
+                                data_2d.append({
+                                    'type': 'scatter',
+                                    'x': atom_sites_sp[dirs_2d[i][0]],
+                                    'y': atom_sites_sp[dirs_2d[i][1]],
+                                    'xaxis': ax_lab_2d[i][0],
+                                    'yaxis': ax_lab_2d[i][1],
+                                    'showlegend': show_leg_2d[i],
+                                    **atom_site_props
+                                })                                                    
+
+                c_prev_num = len(crys_atm_idx)
+
+        layout = graph_objs.Layout(
+            width=1000,
+            height=800,
+            scene={
+                'aspectmode': 'data'
+            }
+        )
+
+        fig_2d = None
+        if proj_2d:
+            # Get approximate ratio of y1 : y3
+            sup_z_rn = np.max(sup_xyz[2]) - np.min(sup_xyz[2])
+            sup_x_rn = np.max(sup_xyz[0]) - np.min(sup_xyz[0])
+            sup_tot_rn_vert = sup_z_rn + sup_x_rn
+
+            # Get ratio of x1 : x2
+            sup_y_rn = np.max(sup_xyz[1]) - np.min(sup_xyz[1])
+            sup_tot_rn_hori = sup_y_rn + sup_x_rn
+            y1_frac = sup_z_rn / sup_tot_rn_vert
+            y3_frac = sup_x_rn / sup_tot_rn_vert
+            x1_frac = sup_y_rn / sup_tot_rn_hori
+            x2_frac = sup_x_rn / sup_tot_rn_hori
+
+            layout_2d = {
+                'height': 1000,
+                'width': 1000,
+
+                'xaxis': {
+                    'domain': [0, x1_frac - hori_space / 2],
+                    'anchor': 'y',
+                    'scaleanchor': 'y',
+                    'side': 'top',
+                    'title': 'y',
+                },
+                'yaxis': {
+                    'domain': [y3_frac + vert_space / 2, 1],
+                    'anchor': 'x',
+                    'title': 'z',
+                },
+
+                'xaxis2': {
+                    'domain': [x1_frac + hori_space / 2, 1],
+                    'anchor': 'y',
+                    'side': 'top',
+                    'scaleanchor': 'y',
+                    'title': 'x',
+                },
+                'yaxis3': {
+                    'domain': [0, y3_frac - vert_space / 2],
+                    'anchor': 'x',
+                    'scaleanchor': 'x',
+                    'title': 'x',
+                },
+            }
+
+            fig_2d = graph_objs.Figure(data=data_2d, layout=layout_2d)
+            if show_iplot:
+                iplot(fig_2d)
+            if save:
+                div_2d = plot(fig_2d, **save_args,
+                              output_type='div', include_plotlyjs=False)
+
+        fig = graph_objs.Figure(data=data, layout=layout)
+
+        if show_iplot:
+            iplot(fig)
+        if save:
+            div_3d = plot(fig, **save_args, output_type='div',
+                          include_plotlyjs=True)
+
+            html_all = div_3d + div_2d
+            with open(save_args.get('filename'), 'w') as plt_file:
+                plt_file.write(html_all)
+
+        if ret_fig:
+            return (fig, fig_2d)
+
+    def reorient_to_lammps(self):
+        """
+        Reorient the supercell and its contents to a LAMMPS-compatible
+        orientation.
+
+        Returns
+        -------
+        ndarray of shape (3, 3)
+            Rotation matrix used to reorient the supercell and its contents
+
+        """
+
+        # Reorient supercell
+        sup_inv = np.linalg.inv(self.supercell)
+        sup_lmps = simsio.get_LAMMPS_compatible_box(self.supercell)
+        R = np.dot(sup_lmps, sup_inv)
+        self.supercell = sup_lmps
+
+        # Reorient atom sites
+        self.atom_sites = np.dot(R, self.atom_sites)
+
+        # Reorient lattice sites
+        if self.lattice_sites is not None:
+            self.lattice_sites = np.dot(R, self.lattice_sites)
+
+        # Reorient CrystalStructure lattice objects
+        for c_idx in range(len(self.crystals)):
+
+            c = self.crystals[c_idx]
+            c['crystal'] = np.dot(R, c['crystal'])
+            c['origin'] = np.dot(R, c['origin'])
+            cs_orient = c.get('cs_orientation')
+            if cs_orient is not None:
+                c['cs_orientation'] = np.dot(R, c['cs_orientation'])
+
+        return R
+
+    def wrap_atoms_to_supercell(self, dirs=None, wrap_lattice_sites=False):
+        """
+        Wrap atoms to within the supercell.
+
+        Parameters
+        ----------
+        dirs : list of int, optional
+            Supercell direction indices to apply wrapping. Default is None, in
+            which case atoms are wrapped in all directions.
+        wrap_lattice_sites : bool, optional
+            If True, lattice sites are also wrapped. Default is False.
+
+        TODO:
+        -   Implement `wrap_lattice_sites`.
+
+        """
+
+        # Validation
+        if dirs is not None:
+            if len(set(dirs)) != len(dirs):
+                raise ValueError('Indices in `dirs` must not be repeated.')
+
+            if len(dirs) not in [1, 2, 3]:
+                raise ValueError('`dirs` must be a list of length 1, 2 or 3.')
+
+            for d in dirs:
+                if d not in [0, 1, 2]:
+                    raise ValueError('`dirs` must be a list whose elements are'
+                                     '0, 1 or 2.')
+
+        # Get atom sites in supercell basis:
+        sup_inv = np.linalg.inv(self.supercell)
+        as_sup = np.dot(sup_inv, self.atom_sites)
+
+        # Wrap atoms:
+        as_sup_wrp = np.copy(as_sup)
+        as_sup_wrp[dirs] -= np.floor(as_sup_wrp[dirs])
+
+        # Snap to 0:
+        as_sup_wrp = vectors.snap_arr_to_val(as_sup_wrp, 0, 1e-12)
+
+        # Convert back to Cartesian basis
+        as_std_wrp = np.dot(self.supercell, as_sup_wrp)
+
+        # Update attributes:
+        self.atom_sites = as_std_wrp
+
+    @property
+    def atom_sites_frac(self):
+        return np.dot(np.linalg.inv(self.supercell), self.atom_sites)
+
+    @property
+    def spglib_cell(self):
+        """Returns a tuple representing valid input for the spglib library."""
+
+        cell = (self.supercell.T,
+                self.atom_sites_frac.T,
+                [element(i).atomic_number
+                 for i in self.all_species[self.all_species_idx]])
+        return cell
+
+    @property
+    def num_atoms_per_crystal(self):
+        """Computes number of atoms in each crystal, returns a list."""
+        na = []
+        for c_idx in range(len(self.crystals)):
+            na.append(np.where(self.crystal_idx == c_idx)[0].shape[0])
+
+        return na
+
+    @property
+    def num_atoms(self):
+        """Computes total number of atoms."""
+        return self.atom_sites.shape[1]
+
+    @property
+    def num_crystals(self):
+        """Returns number of crystals."""
+        return len(self.crystals)
+
+    @property
+    def reciprocal_supercell(self):
+        """Returns the reciprocal supercell as array of column vectors."""
+
+        v = self.supercell
+        cross_1 = np.cross(v[:, 1], v[:, 2])
+        cross_2 = np.cross(v[:, 0], v[:, 2])
+        cross_3 = np.cross(v[:, 0], v[:, 1])
+
+        B = np.zeros((3, 3))
+        B[:, 0] = 2 * np.pi * cross_1 / (np.dot(v[:, 0], cross_1))
+        B[:, 1] = 2 * np.pi * cross_2 / (np.dot(v[:, 1], cross_2))
+        B[:, 2] = 2 * np.pi * cross_3 / (np.dot(v[:, 2], cross_3))
+
+        return B
+
+    def get_kpoint_grid(self, separation):
+        """
+        Get the MP kpoint grid size for a given kpoint separation.
+
+        Parameters
+        ----------
+        separation : float or int or ndarray of shape (3, )
+            Maximum separation between kpoints, in units of inverse Angstroms.
+            If an array, this is the separations in each reciprocal supercell
+            direction.
+
+        Returns
+        -------
+        ndarray of int of shape (3, )
+            MP kpoint grid dimensions along each reciprocal supercell
+            direction.
+
+        """
+
+        recip = self.reciprocal_supercell
+        grid = np.ceil(np.round(
+            np.linalg.norm(recip, axis=0) / (separation * 2 * np.pi),
+            decimals=8)
+        ).astype(int)
+
+        return grid
+
+    def get_kpoint_spacing(self, grid):
+        """
+        Get the kpoint spacing given an MP kpoint grid size.
+
+        Parameters
+        ----------
+        grid : list of length 3
+            Grid size in each of the reciprocal supercell directions.
+
+        Returns
+        -------
+        ndarray of shape (3, )
+            Separation between kpoints in each of the reciprocal supercell
+            directions.
+
+        """
+
+        recip = self.reciprocal_supercell
+        seps = np.linalg.norm(recip, axis=0) / (np.array(grid) * 2 * np.pi)
+
+        return seps
+
+
+
+    def get_all_species(self):
+
+        all_sp = []
+        all_sp_idx = []
+        all_sp_count = 0
+
+        for c_idx in range(len(self.crystals)):
+
+            cs = self.crystal_structures[self.crystals[c_idx]['cs_idx']]
+
+            # Local species for this crystal:
+            cs_sp = cs.motif['species']
+
+            # Local species index for this crystal:
+            c_sp_idx_old = self.species_idx[np.where(self.crystal_idx == c_idx)[0]]
+            c_sp_idx_new = np.array([None] * len(c_sp_idx_old))
+
+            # Need to map the indices from local CrystalStructure to global
+            # AtomisticStructure
+
+            cs_sp = reduce(lambda l, x: l if x in l else l + [x], cs_sp, [])
+
+            for sp_idx, sp in enumerate(cs_sp):
+
+                if sp not in all_sp:
+
+                    new_sp_idx = all_sp_count
+                    all_sp.append(sp)
+                    all_sp_count += 1
+
+                else:
+                    new_sp_idx = all_sp.index(sp)
+
+                w = np.where(c_sp_idx_old == sp_idx)[0]
+                c_sp_idx_new[w] = new_sp_idx
+
+            all_sp_idx.extend(c_sp_idx_new)
+
+        all_sp = np.array(all_sp)
+        all_sp_idx = np.array(all_sp_idx)
+
+        return all_sp, all_sp_idx
+
+
+    @property
+    def all_species(self):
+        """"""
+
+        if self.species_idx is None:
+            return self._all_species
+
+        else:
+            all_sp, _ = self.get_all_species()
+            return all_sp
+
+    @property
+    def all_species_idx(self):
+        """"""
+
+        if self.species_idx is None:
+            return self._all_species_idx
+
+        else:
+            _, all_sp_idx = self.get_all_species()
+            return all_sp_idx
+
+    @property
+    def crystal_centres(self):
+        """Get the midpoints of each crystal in the structure."""
+
+        return [geometry.get_box_centre(c['crystal'], origin=c['origin'])
+                for c in self.crystals]
+
+    def get_tiled_atoms(self, tiles):
+        """
+        Get atom sites tiled by some integer factors in each supercell
+        direction.
+
+        Atoms are tiled in the positive supercell directions.
+
+        Parameters
+        ----------
+        tiles : tuple or list of length 3
+            Number of repeats in each supercell direction.
+
+        Returns
+        -------
+        ndarray
+
+        """
+
+        invalid_msg = ('`tiles` must be a tuple or list of 3 integers greater'
+                       ' than 0.')
+        if len(tiles) != 3:
+            raise ValueError(invalid_msg)
+
+        as_tiled = np.copy(self.atom_sites)
+        for t_idx, t in enumerate(tiles):
+
+            if t == 1:
+                continue
+
+            if not isinstance(t, int) or t == 0:
+                raise ValueError(invalid_msg)
+
+            v = self.supercell[:, t_idx:t_idx + 1]
+            all_t = (v * np.arange(1, t)).T[:, :, np.newaxis]
+            as_tiled_t = np.hstack(all_t + as_tiled)
+            as_tiled = np.hstack([as_tiled, as_tiled_t])
+
+        return as_tiled
+
+    def get_interatomic_dist(self, periodic=True):
+        """
+        Find the distances between unique atom pairs across the whole
+        structure.
+
+        Parameters
+        ----------
+        periodic : bool
+            If True, the atom sites are first tiled in each supercell direction
+            to ensure that distances between periodic cells are considered.
+            Currently, this is crude, and so produces interatomic distances
+            between like atoms (i.e. of one supercell vector length).
+
+        Returns
+        ------
+        ndarray of shape (N,)
+
+        TODO:
+        -   Improve consideration of periodicity. Maybe instead have a function
+            `get_min_interatomic_dist` which gets the minimum distances of each
+            atom and every other atom, given periodicity.
+
+        """
+        if periodic:
+            atms = self.get_tiled_atoms([2, 2, 2])
+        else:
+            atms = self.atom_sites
+
+        return vectors.get_vec_distances(atms)
+
+    def check_overlapping_atoms(self, tol):
+        """
+        Returns True if any atoms are overlapping within a tolerance.abs
+
+        Parameters
+        ----------
+        tol : float
+            Distance below which atoms are considered to be overlapping.abs
+
+        Raises
+        ------
+        ValueError
+            If any atoms are found to overlap.
+
+        Returns
+        -------
+        None
+
+        """
+        dist = self.get_interatomic_dist()
+        if np.any(dist < tol):
+            raise ValueError('Found overlapping atoms. Minimum separation: '
+                             '{:.3f}'.format(np.min(dist)))
+
+    def get_sym_ops(self):
+        return spglib.get_symmetry(self.spglib_cell)
+
+    # def __str__(self):
+    #     pass
+
+    # def __repr__(self):
+    #     pass
+
+
+class BulkCrystal(AtomisticStructure):
+    """
+
+    Attributes
+    ----------
+    crystal_structure : CrystalStructure
+
+    TODO:
+    -   Add proper support for cs_orientation and cs_origin. Maybe allow one of
+        `box_lat` or `box_std` for the more general case.
+
+    """
+
+    def __init__(self, crystal_structure, box_lat):
+        """Constructor method for BulkCrystal object."""
+
+        supercell = np.dot(crystal_structure.bravais_lattice.vecs, box_lat)
+        cb = CrystalBox(crystal_structure, supercell)
+        atom_sites = cb.atom_sites_std
+        lattice_sites = cb.lat_sites_std
+        crystal_idx = np.zeros(atom_sites.shape[1])
+        lat_crystal_idx = np.zeros(lattice_sites.shape[1])
+        crystals = [{
+            'crystal': supercell,
+            'origin': np.zeros((3, 1)),
+            'cs_idx': 0,
+            'cs_orientation': np.eye(3),
+            'cs_origin': [0, 0, 0]
+        }]
+
+        super().__init__(atom_sites,
+                         supercell,
+                         lattice_sites=lattice_sites,
+                         crystals=crystals,
+                         crystal_structures=[crystal_structure],
+                         crystal_idx=crystal_idx,
+                         lat_crystal_idx=lat_crystal_idx,
+                         species_idx=cb.species_idx,
+                         motif_idx=cb.motif_idx)
+
+    # def __str__(self):
+    #     pass
+
+    # def __repr__(self):
+    #     pass
+
+
+class CSLBicrystal(AtomisticStructure):
+    """
+    Class to represent a bicrystal supercell constructed using CSL vectors.
+
+    Attributes
+    ----------
+    GB_TYPES : dict of str : ndarray of shape (3, 3)
+        Some
+    atoms_gb_dist : ndarray of shape (N,)
+        Perpendicular distances of each atom from the origin boundary plane
+
+    Parameters
+    ----------
+    crystal_structure : CrystalStructure
+    csl_vecs : list of length 2 of ndarray of shape (3, 3)
+        List of two arrays of three column vectors representing CSL vectors
+        in the lattice basis. The two CSL unit cells defined here rotate onto
+        each other by the CSL rotation angle. The rotation axis is taken as the
+        third vector, which must therefore be the same for both CSL unit cells.
+    box_csl : ndarray of shape (3, 3), optional
+        The linear combination of CSL unit vectors defined in `csl_vecs` used
+        to construct each half of the bicrystal. The first two columns
+        represent vectors defining the boundary plane. The third column
+        represents a vector in the out-of-boundary direction. Only one of
+        `box_csl` and `gb_type` may be specified.
+    gb_type : str, optional
+        Default is None. Must be one of 'tilt_A', 'tilt_B', 'twist' or
+        'mixed_A'. Only one of `box_csl` and `gb_type` may be specified.
+    gb_size : ndarray of shape (3,) of int, optional
+        If `gb_type` is specified, the unit grain vectors associated with that
+        `gb_type` are scaled by these integers. Default is None, in which case
+        it is set to np.array([1, 1, 1]).
+    edge_conditions : list of list of str
+        Edge conditions for each grain in the bicrystal. See `CrystalBox` for
+        details.
+    maintain_inv_sym : bool, optional
+        If True, the supercell atoms will be checked for inversion symmetry
+        through the centres of both crystals. This check will be repeated
+        following methods which manipulate atom positions. In this way, the two
+        grain boundaries in the bicrystal are ensured to be identical.
+    reorient : bool, optional
+        If True, after construction of the boundary, reorient_to_lammps() is
+        invoked. Default is True.
+    boundary_vac_args : dict, optional
+        If not None, after construction of the boundary, apply_boundary_vac()
+        is invoked with this dict as keyword arguments. Default is None.
+    relative_shift_args : dict, optional
+        If not None, after construction of the boundary, apply_relative_shift()
+        is invoked with this dict as keyword arguments. Default is None.
+    wrap : bool, optional
+        If True, after construction of the boundary, wrap_atoms_to_supercell()
+        is invoked. Default is True.
+
+    Notes
+    -----
+    Algorithm proceeds as follows:
+    1.  Apply given linear combinations of given CSL unit vectors to form grain
+        vectors of the bicrystal.
+    2.  Multiply the out-of-boundary vector of the second grain by -1, such
+        that rotation of the second grain by the CSL rotation angle will form a
+        bicrystal of two grains.
+    3.  Check grain A is formed from a right-hand basis - since we want the
+        supercell vectors to be formed from a right-hand basis. If not, for
+        both grain A and B, swap the first and second vectors to do this.
+    4.  Fill the two grains with atoms
+
+    TODO:
+    -   Sort out lattice sites in apply_boundary_vac() & apply_relative_shift()
+    -   Rename wrap_atoms_to_supercell to wrap_to_supercell and apply wrapping
+        to lattice sites, and crystal boxes as well.
+
+    """
+
+    GB_TYPES = {
+        'tilt_A': np.array([
+            [1, 0, 0],
+            [0, 0, 1],
+            [0, 1, 0]
+        ]),
+        'tilt_B': np.array([
+            [1, 0, 0],
+            [1, 0, 1],
+            [0, 1, 0]
+        ]),
+        'twist': np.array([
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1]
+        ]),
+        'mixed_A': np.array([
+            [1, 0, 0],
+            [0, 1, 0],
+            [1, 0, 1]
+        ])
+    }
+
+    @classmethod
+    def from_parameters(cls, crystal_structure, csl_vecs, box_csl=None,
+                        gb_type=None, gb_size=None, edge_conditions=None,
+                        overlap_tol=1, maintain_inv_sym=False, reorient=True, 
+                        boundary_vac_args=None, relative_shift_args=None, wrap=True):
+        
+        """Constructor method for CSLBicrystal object."""
+        
+        if np.all(csl_vecs[0][:, 2] != csl_vecs[1][:, 2]):
+            raise ValueError('Third vectors in `csl_vecs[0]` and csl_vecs[1] '
+                             'represent the CSL rotation axis and must '
+                             'therefore be equal.')
+
+        if box_csl is not None and gb_type is not None:
+            raise ValueError('Only one of `box_csl` and `gb_type` may be '
+                             'specified.')
+
+        if box_csl is None and gb_type is None:
+            raise ValueError('Exactly one of `box_csl` and `gb_type` must be '
+                             'specified.')
+
+        if gb_type is not None:
+
+            if gb_size is None:
+                gb_size = np.array([1, 1, 1])
+
+            if gb_type not in CSLBicrystal.GB_TYPES:
+                raise ValueError(
+                    'Invalid `gb_type`: {}. Must be one of {}'.format(
+                        gb_type, list(CSLBicrystal.GB_TYPES.keys())))
+
+            box_csl = CSLBicrystal.GB_TYPES.get(gb_type) * gb_size
+
+
+        lat_vecs = crystal_structure.bravais_lattice.vecs
+        rot_ax_std = np.dot(lat_vecs, csl_vecs[0][:, 2:3])
+        csl_vecs_std = [np.dot(lat_vecs, c) for c in csl_vecs]
+
+        # Non-boundary (column) index of `box_csl` and grain arrays:
+        NBI = 2
+        BI = [0, 1]
+
+        # Enforce a rule that out of boundary grain vector has to be
+        # (a multiple of) a single CSL unit vector. This reduces the
+        # potential "skewness" of the supercell.
+        if np.count_nonzero(box_csl[:, NBI]) > 1:
+            raise ValueError('The out of boundary vector, `box_csl[:, {}]`'
+                             ' must have exactly one non-zero '
+                             'element.'.format(NBI))
+
+        # Scale grains in lattice basis
+        grn_a_lat = np.dot(csl_vecs[0], box_csl)
+        grn_b_lat = np.dot(csl_vecs[1], box_csl)
+        grn_b_lat[:, NBI] *= -1
+
+        # Get grain vectors in standard Cartesian basis
+        grn_a_std = np.dot(lat_vecs, grn_a_lat)
+        grn_b_std = np.dot(lat_vecs, grn_b_lat)
+
+        # Get rotation matrix for rotating grain B onto grain A
+        if np.all(csl_vecs[0] == csl_vecs[1]):
+            rot_angles = [0, 0, 0]
+            rot_mat = np.eye(3)
+
+        else:
+            rot_angles = vectors.col_wise_angles(
+                csl_vecs_std[0], csl_vecs_std[1])
+
+            if not np.isclose(*rot_angles[0:2]):
+                raise ValueError('Non-equivalent rotation angles found '
+                                 'between CSL vectors.')
+
+            rot_mat = vectors.rotation_matrix(
+                rot_ax_std[:, 0], rot_angles[0])[0]
+
+        rot_angle_deg = np.rad2deg(rot_angles[0])
+        grn_vols = [np.dot(np.cross(g[:, 0], g[:, 1]), g[:, 2])
+                    for g in (grn_a_std, grn_b_std)]
+
+        # Check grain volumes are the same:
+        if not np.isclose(*np.abs(grn_vols)):
+            raise ValueError('Grain A and B have different volumes.')
+
+        # Check if grain A forms a right-handed coordinate system:
+        if grn_vols[0] < 0:
+            # Swap boundary vectors to make a right-handed coordinate system:
+            grn_a_lat[:, [0, 1]] = grn_a_lat[:, [1, 0]]
+            grn_b_lat[:, [0, 1]] = grn_b_lat[:, [1, 0]]
+            grn_a_std[:, [0, 1]] = grn_a_std[:, [1, 0]]
+            grn_b_std[:, [0, 1]] = grn_b_std[:, [1, 0]]
+            box_csl[0, 1] = box_csl[1, 0]
+
+        # Specify bounding box edge conditions for including atoms:
+        if edge_conditions is None:
+            edge_conditions = [
+                ['10', '10', '10'],
+                ['10', '10', '10']
+            ]
+            edge_conditions[1][NBI] = '01'
+
+        # Make two crystal boxes:
+        crys_a = CrystalBox(crystal_structure, grn_a_std,
+                            edge_conditions=edge_conditions[0])
+        crys_b = CrystalBox(crystal_structure, grn_b_std,
+                            edge_conditions=edge_conditions[1])
+
+        # Get atom and lattice sites from crystal boxes:
+        as_a = crys_a.atom_sites_std
+        as_b = crys_b.atom_sites_std
+        ls_a = crys_a.lat_sites_std
+        ls_b = crys_b.lat_sites_std
+
+        # Rotate crystal B onto A:
+        as_b_rot = np.dot(rot_mat, as_b)
+        ls_b_rot = np.dot(rot_mat, ls_b)
+        grn_b_rot_std = np.dot(rot_mat, grn_b_std)
+
+        # Shift crystals to form a supercell at the origin
+        zs_std = - grn_b_rot_std[:, NBI:NBI + 1]
+        as_a_zs = as_a + zs_std
+        as_b_zs = as_b_rot + zs_std
+        ls_a_zs = ls_a + zs_std
+        ls_b_zs = ls_b_rot + zs_std
+
+        crystal_idx = np.array([0] * as_a_zs.shape[1] + [1] * as_b_zs.shape[1])
+        lat_crystal_idx = np.array(
+            [0] * ls_a_zs.shape[1] + [1] * ls_b_zs.shape[1])
+        atom_sites = np.hstack([as_a_zs, as_b_zs])
+        lattice_sites = np.hstack([ls_a_zs, ls_b_zs])
+
+        # Define the supercell:
+        sup_std = np.copy(grn_a_std)
+        sup_std[:, NBI] = grn_a_std[:, NBI] - grn_b_rot_std[:, NBI]
+
+        crystals = [
+            {
+                'crystal': grn_a_std,
+                'origin': zs_std,
+                'cs_idx': 0,
+                'cs_orientation': np.eye(3),
+                'cs_origin': [0, 0, 0]
+            },
+            {
+                'crystal': grn_b_rot_std,
+                'origin': zs_std,
+                'cs_idx': 0,
+                'cs_orientation': rot_mat,
+                'cs_origin': [0, -1, 0]
+            }
+        ]
+
+        species_idx = np.hstack([crys_a.species_idx, crys_b.species_idx])
+        motif_idx = np.hstack([crys_a.motif_idx, crys_b.motif_idx])
+        
+        # AtomisticStructure parameters
+        as_params = {
+                'atom_sites' : atom_sites,
+                'supercell' : sup_std,
+                'lattice_sites' : lattice_sites,
+                'crystals' : crystals,
+                'crystal_structures' : [crystal_structure],
+                'crystal_idx' : crystal_idx,
+                'lat_crystal_idx' : lat_crystal_idx,
+                'species_idx' : species_idx,
+                'motif_idx' : motif_idx,
+                'overlap_tol' : overlap_tol,
+            }
+        
+
+        return cls(as_params, maintain_inv_sym=maintain_inv_sym, reorient=reorient, 
+                   boundary_vac_args=boundary_vac_args, 
+                   relative_shift_args=relative_shift_args, wrap=wrap, nbi=2)
+  
+    @classmethod
+    def from_structure(cls, csl, csl_params,
+                       overlap_tol=0.1, maintain_inv_sym=False, reorient=False, 
+                       boundary_vac_args=None, relative_shift_args=None, wrap=False,
+                       **kwargs):
+        """
+        Create a CSLBicrystal from structure.
+        
+        Parameters
+        ----------
+        struct_params : dict of dict
+            `csl` : string
+                '[angle_axis_structure]' to be constructed using a method 
+                defined as 'construct_'in gbhelper.py.
+                (for example '180_001_mZrO2').
+            `csl_params` : dict of (str : string or ndarray or int)
+                Parameters needed to construct `csl`. Vary depending on method.
+        Notes
+        -----
+        `reorient`=True doesn't work since no lattice_sites are passed.
+        `crystals` not yet available.
+        
+        """
+
+        # csl = struct_params['csl']
+        create_bound = getattr(gbhelper, 'construct_' + csl)
+        # bound_struct = create_bound(**struct_params['csl_params'])
+        bound_struct = create_bound(**csl_params)
+        # AtomisticStructure parameters
+        as_params = {
+                    'atom_sites'  : bound_struct['atom_sites'],
+                    'supercell'   : bound_struct['supercell'],
+                    'all_species' : bound_struct['all_species'],
+                    'all_species_idx' : bound_struct['all_species_idx'],
+                    'overlap_tol' : overlap_tol,
+                    'crystals'    : bound_struct['crystals'],
+                #     'crystal_structures' : crystal_structures,
+                    'crystal_idx' : bound_struct['crystals_idx'],
+                }
+        
+
+        return cls(as_params, maintain_inv_sym=maintain_inv_sym, reorient=reorient, 
+                   boundary_vac_args=boundary_vac_args, 
+                   relative_shift_args=relative_shift_args, wrap=wrap, nbi=0)
+        
+        
+    def __init__(self, as_params, maintain_inv_sym=False, reorient=False,
+                 boundary_vac_args=None, relative_shift_args=None,
+                 wrap=True, nbi=None):
+
+        # Call parent constructor
+        super().__init__(**as_params)
+        
+        # Non-boundary (column) index of `box_csl` and grain arrays
+        NBI = nbi
+        BI = [0, 1, 2]
+        BI.remove(nbi)
+
+        # Boundary normal vector:
+        n = np.cross(self.supercell[:, BI[0]], self.supercell[:, BI[1]])[:, np.newaxis]
+        n_unit = n / np.linalg.norm(n)
+
+        # Non-boundary supercell unit vector
+        u = self.supercell[:, NBI:NBI + 1]
+        u_unit = u / np.linalg.norm(u)
+        
+        # Set instance CSLBicrystal-specific attributes:
+        self.maintain_inv_sym = maintain_inv_sym
+        self.n_unit = n_unit
+        self.u_unit = u_unit
+        self.non_boundary_idx = NBI
+        self.boundary_idx = BI
+        self.boundary_vac = 0
+        self.relative_shift = [0, 0]
+        
+        self.check_inv_symmetry()
+        
+        # Invoke additional methods:
+        if reorient:
+            self.reorient_to_lammps()
+
+        if boundary_vac_args is not None:
+            self.apply_boundary_vac(**boundary_vac_args)
+
+        if relative_shift_args is not None:
+            self.apply_relative_shift(**relative_shift_args)
+
+        if wrap:
+            self.wrap_atoms_to_supercell()
+
+
+    @property
+    def bicrystal_thickness(self):
+        """Computes bicrystal thickness in grain boundary normal direction."""
+
+        nbi = self.non_boundary_idx
+        sup_nb = self.supercell[:, nbi:nbi + 1]
+        return np.einsum('ij,ij', sup_nb, self.n_unit)
+
+    @property
+    def boundary_area(self):
+        """Computes the grain boundary area, in square Angstroms."""
+        bv = self.boundary_vecs
+        return np.linalg.norm(np.cross(bv[:, 0], bv[:, 1]))
+
+    @property
+    def boundary_vecs(self):
+        bi = self.boundary_idx
+        s = self.supercell
+        return np.vstack([s[:, bi[0]], s[:, bi[1]]]).T
+
+    @property
+    def atoms_gb_dist(self):
+        """
+        Computes the distance from each atom to the origin grain boundary
+        plane.
+
+        """
+        return np.einsum('jk,jl->k', self.atom_sites, self.n_unit)
+
+    def reorient_to_lammps(self):
+
+        R = super().reorient_to_lammps()
+
+        # Reorient objects which are CSLBicrystal specific
+        self.n_unit = np.dot(R, self.n_unit[:, 0])[:, np.newaxis]
+        self.u_unit = np.dot(R, self.u_unit[:, 0])[:, np.newaxis]
+
+        return R
+
+    def apply_boundary_vac(self, vac_thickness, sharpness=1):
+        """
+        Apply boundary vacuum to the supercell, atoms and grains according
+        to a sigmoid function.
+
+        TODO:
+        -   Understand/fix behaviour for negative vac_thick
+        -   Also apply to lattice sites
+
+        """
+
+        vt = vac_thickness
+
+        # For convenience:
+        grn_a = self.crystals[0]
+        grn_b = self.crystals[1]
+        bt = self.bicrystal_thickness
+        grn_a_org = grn_a['origin']
+        grn_b_org = grn_b['origin']
+        grn_a_full = grn_a['crystal'] + grn_a_org
+        grn_b_full = grn_b['crystal'] + grn_b_org
+        nbi = self.non_boundary_idx
+
+        # Get perpendicular distances from the origin boundary plane:
+        grn_a_gb_dist = np.einsum('ij,ik->j', grn_a_full, self.n_unit)
+        grn_b_gb_dist = np.einsum('ij,ik->j', grn_b_full, self.n_unit)
+        grn_a_org_gb_dist = np.einsum('ij,ik->j', grn_a_org, self.n_unit)
+        grn_b_org_gb_dist = np.einsum('ij,ik->j', grn_b_org, self.n_unit)
+
+        # Set which Sigmoid function to use:
+        if self.maintain_inv_sym:
+            sig_fnc = mathsutils.double_sigmoid
+        else:
+            sig_fnc = mathsutils.single_sigmoid
+
+        # Get displacements in the boundary normal directions according
+        # to a Sigmoid function:
+        as_dx = sig_fnc(self.atoms_gb_dist, vt, sharpness, bt)
+        grn_a_dx = sig_fnc(grn_a_gb_dist, vt, sharpness, bt)
+        grn_b_dx = sig_fnc(grn_b_gb_dist, vt, sharpness, bt)
+        grn_a_org_dx = sig_fnc(grn_a_org_gb_dist, vt, sharpness, bt)
+        grn_b_org_dx = sig_fnc(grn_b_org_gb_dist, vt, sharpness, bt)
+
+        # Snap atoms close to zero
+        as_dx = vectors.snap_arr_to_val(as_dx, 0, 1e-14)
+
+        # Find new positions with vacuum applied:
+        as_vac = self.atom_sites + (as_dx * self.n_unit)
+        grn_a_org_vac = grn_a_org + (grn_a_org_dx * self.n_unit)
+        grn_b_org_vac = grn_b_org + (grn_b_org_dx * self.n_unit)
+        grn_a_vac = grn_a_full + (grn_a_dx * self.n_unit) - grn_a_org_vac
+        grn_b_vac = grn_b_full + (grn_b_dx * self.n_unit) - grn_b_org_vac
+
+        # Apply vacuum to the supercell
+        if self.maintain_inv_sym:
+            sup_gb_dist = np.einsum('ij,ik->j', self.supercell, self.n_unit)
+            sup_dx = sig_fnc(sup_gb_dist, vt, sharpness, bt)
+            sup_vac = self.supercell + (sup_dx * self.n_unit)
+
+        else:
+            vac_add = (self.u_unit * vt) / \
+                np.einsum('ij,ij->', self.n_unit, self.u_unit)
+            sup_vac = np.copy(self.supercell)
+            sup_vac[:, nbi:nbi + 1] += vac_add
+
+        # Add new attributes:
+        self.atoms_gb_dist_old = self.atoms_gb_dist
+        self.atoms_gb_dist_δ = as_dx
+
+        if self.boundary_vac != 0:
+            warnings.warn('`boundary_vac` is already non-zero. Resetting to '
+                          'new value.')
+
+        self.boundary_vac = vac_thickness
+
+        # Update attributes:
+        self.atom_sites = as_vac
+        self.supercell = sup_vac
+        self.crystals[0].update({
+            'crystal': grn_a_vac,
+            'origin': grn_a_org_vac
+        })
+        self.crystals[1].update({
+            'crystal': grn_b_vac,
+            'origin': grn_b_org_vac
+        })
+
+        self.check_overlapping_atoms(self._overlap_tol)
+        self.check_inv_symmetry()
+
+    def apply_relative_shift(self, shift):
+        """
+        Apply in-boundary-plane shifts to the grain further away from the origin 
+        (right hand side of boundary) to explore the microscopic degrees of freedom.
+
+        `shift` is a 2 element array whose elements are the
+        relative shift in fractional coords of the boundary area.
+
+        TODO:
+        -   Also apply to lattice sites
+
+        """
+
+        if isinstance(shift, np.ndarray):
+            if shift.shape[0] == 1:
+                shift = shift[0]
+        else:
+            shift = np.array(shift)
+        if np.any(shift < -1) or np.any(shift > 1):
+            raise ValueError('Elements of `shift` should be between -1 and 1.')
+
+        # Convenience:
+        nbi = self.non_boundary_idx
+        bi = self.boundary_idx
+        sup_nb = self.supercell[:, nbi:nbi + 1]
+
+        # Find the right grain to shift
+        # Crystals origins
+        crys_orgns = np.array([self.crystals[i]['origin'] for i in range(2)])
+        # Find crystals with origin at supercell origin if any
+        crys_sup_orgn = np.all((crys_orgns==0.0), axis=1)
+
+        if len(np.where(crys_sup_orgn==False)[0])==1:
+            sh_idx = np.where(crys_sup_orgn==False)[0][0] 
+        else:
+            for i in range(2):
+                if gb.crystals[i]['crystal'][:,nbi][nbi] > 0:
+                    sh_idx = i 
+        grn_sh = self.crystals[sh_idx]
+
+        shift_gb = np.zeros((3, 1))
+        shift_gb[bi] = shift[:, np.newaxis]
+        shift_std = np.dot(grn_sh['crystal'], shift_gb)
+
+        # Translate grain A atoms:
+        as_shift = np.copy(self.atom_sites)
+        as_shift[:, np.where(self.crystal_idx == 1)[0]] += shift_std
+
+        # Translate grain A origin:
+        grn_sh_org_shift = grn_sh['origin'] + shift_std
+
+        # Update attributes:
+        self.atom_sites = as_shift
+        self.crystals[1].update({
+            'origin': grn_sh_org_shift
+        })
+
+        if self.relative_shift != [0, 0]:
+            warnings.warn('`relative_shift` is already non-zero. Resetting to '
+                          'new value.')
+        self.relative_shift = [i + j for i,
+                               j in zip(shift.tolist(), self.relative_shift)]
+
+        if self.maintain_inv_sym:
+            # Modify out-of-boundary supercell vector
+            sup_shift = np.copy(self.supercell)
+            sup_shift[:, nbi:nbi + 1] += (2 * shift_std)
+
+            # Update attribute:
+            self.supercell = sup_shift
+
+        self.check_overlapping_atoms(self._overlap_tol)
+        self.check_inv_symmetry()
+
+    def wrap_atoms_to_supercell(self):
+        """
+        Wrap atoms to within the boundary plane as defined by the supercell.
+
+        """
+
+        super().wrap_atoms_to_supercell(dirs=self.boundary_idx)
+        self.check_inv_symmetry()
+
+    def check_inv_symmetry(self):
+        """
+        Check atoms exhibit inversion symmetry through the two crystal centres,
+        if `self.maintain_inv_sym` is True.
+
+        """
+
+        if self.maintain_inv_sym:
+
+            sym_ops = spglib.get_symmetry(self.spglib_cell)
+            sym_rots = sym_ops['rotations']
+            sym_trans = sym_ops['translations']
+            inv_sym_rot = -np.eye(3, dtype=int)
+            inv_sym = np.where(np.all(sym_rots == inv_sym_rot, axis=(1, 2)))[0]
+            print(inv_sym)
+            if len(inv_sym) == 0:
+                raise ValueError('The bicrystal does not have inversion '
+                                 'symmetry.')
+
+
+class CSLBulkCrystal(CSLBicrystal):
+    """
+    Class to represent a bulk crystal constructed in a similar way to a
+    CSLBicrystal object.
+
+    This is a convenience class to generate complimentary bulk supercells for a
+    given CSLBicrystal supercell.
+
+    """
+
+    def __init__(self, crystal_structure, csl_vecs, box_csl=None,
+                 gb_type=None, gb_size=None, edge_conditions=None,
+                 reorient=True, overlap_tol=1):
+        """Constructor method for CSLBulkCrystal object."""
+
+        super().__init__(crystal_structure, [csl_vecs, csl_vecs],
+                         box_csl=box_csl, gb_type=gb_type, gb_size=gb_size,
+                         edge_conditions=edge_conditions, reorient=reorient,
+                         wrap=False, overlap_tol=overlap_tol)
+
+    def apply_boundary_vac(self, *args, **kwargs):
+
+        raise NotImplementedError(
+            'Cannot apply boundary vacuum to a CSLBulkCrystal.')
+
+    def apply_relative_shift(self, *args, **kwargs):
+
+        raise NotImplementedError(
+            'Cannot apply relative shift to a CSLBulkCrystal.')
+
+    def wrap_atoms_to_supercell(self, *args, **kwargs):
+
+        raise NotImplementedError(
+            'Cannot wrap atoms within supercell in a CSLBulkCrystal.')
+
+
+class CSLSurfaceCrystal(CSLBicrystal):
+    """
+    Class to represent a surface crystal constructed in a similar way to a
+    CSLBicrystal object.
+
+    This is a convenience class to generate complimentary surface supercells
+    for a given CSLBicrystal supercell.
+
+    """
+
+    def __init__(self, crystal_structure, csl_vecs, box_csl=None,
+                 gb_type=None, gb_size=None, edge_conditions=None,
+                 maintain_inv_sym=False, reorient=True, boundary_vac_args=None,
+                 relative_shift_args=None, wrap=True, surface_idx=0, overlap_top=1):
+        """Constructor method for CSLSurfaceCrystal object."""
+
+        super().__init__(crystal_structure, [csl_vecs, csl_vecs],
+                         box_csl=box_csl, gb_type=gb_type, gb_size=gb_size,
+                         edge_conditions=edge_conditions,
+                         maintain_inv_sym=maintain_inv_sym,
+                         reorient=reorient,
+                         boundary_vac_args=boundary_vac_args,
+                         relative_shift_args=relative_shift_args,
+                         wrap=wrap,
+                         overlap_tol=overlap_top,
+                         )
+
+        # Remove atoms from removed crystal
+        atoms_keep = np.where(self.crystal_idx == surface_idx)[0]
+        self.atom_sites = self.atom_sites[:, atoms_keep]
+        self.species_idx = self.species_idx[atoms_keep]
+        self.motif_idx = self.motif_idx[atoms_keep]
+        self.crystal_idx = self.crystal_idx[atoms_keep]
+
+        # Remove lattice sites from removed crystal
+        lat_keep = np.where(self.lat_crystal_idx == surface_idx)[0]
+        self.lattice_sites = self.lattice_sites[:, lat_keep]
+        self.lat_crystal_idx = self.lat_crystal_idx[lat_keep]

@@ -7,7 +7,8 @@ import subprocess
 
 import atsim.dbhelpers as dbh
 from atsim.readwrite import read_pickle, write_pickle, find_files_in_dir_glob, factor_common_files
-from atsim import simsio, SET_UP_PATH, SCRIPTS_PATH
+from atsim import SET_UP_PATH, SCRIPTS_PATH
+from atsim.simsio import castep, lammps
 
 
 def search_database_by_session_id(database, s_id):
@@ -56,10 +57,10 @@ def check_errors(sms_path, src_path, skip_idx=None):
         calc_path = os.path.join(src_path, 'calcs', *srs_paths)
 
         if method == 'castep':
-            out = simsio.castep.read_castep_output(calc_path)
+            out = castep.read_castep_output(calc_path)
 
         elif method == 'lammps':
-            out = simsio.lammps.read_lammps_output(calc_path)
+            out = lammps.read_lammps_output(calc_path)
 
         if len(out['errors']) > 0:
             error_paths.extend(srs_paths)

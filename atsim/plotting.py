@@ -685,6 +685,8 @@ def plot_many_mpl(figs, save_dir=None):
             except:
                 ax = all_ax
 
+            all_labels = []
+
             for t in s['traces']:
 
                 for sub_t in t:
@@ -697,10 +699,12 @@ def plot_many_mpl(figs, save_dir=None):
                     y_arr = np.array(yv)
 
                     plt_type = sub_t['type']
-                    label = sub_t['name']
+                    label = sub_t.get('name', None)
 
-                    if sub_t.get('title') is not None:
-                        label += ' ' + sub_t['title']
+                    if label is not None:
+                        if sub_t.get('title') is not None:
+                            label += ' ' + sub_t['title']
+                        all_labels.append(label)
 
                     if plt_type == 'marker':
                         size = sub_t['marker'].get('size')
@@ -760,8 +764,6 @@ def plot_many_mpl(figs, save_dir=None):
                         cax = ax.contourf(X, Y, Z, cmap=cmap)
                         ax.set_aspect('equal')
 
-                        ax.set_xlabel(x['label'])
-                        ax.set_ylabel(y['label'])
                         ax.set_xlim([minX, maxX])
                         ax.set_ylim([minY, maxY])
 
@@ -772,13 +774,18 @@ def plot_many_mpl(figs, save_dir=None):
                         if sub_t.get('show_xy'):
                             ax.scatter(x_arr, y_arr, c='black', s=2)
 
+                    ax.set_xlabel(x['label'])
+                    ax.set_ylabel(y['label'])
+
                     if x.get('reverse'):
                         ax.invert_xaxis()
 
                     if y.get('reverse'):
                         ax.invert_yaxis()
 
-            ax.legend()
+            if len(all_labels) > 0:
+                ax.legend()
+
             ax.set_title(s['title'])
 
         f_i.suptitle(f['title'])

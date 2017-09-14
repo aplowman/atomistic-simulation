@@ -303,7 +303,7 @@ def make_plots(out):
 
                 subplots.append({
                     'traces': traces,
-                    'title': format_title(subplot_srs, unique_ssv[s_idx]),
+                    'title': format_title(subplot_srs, unique_ssv[s_idx]) or pl['filename'],
                 })
 
             figs.append({
@@ -313,7 +313,8 @@ def make_plots(out):
             })
 
         if pl['lib'] == 'mpl':
-            plotting.plot_many_mpl(figs, save_dir=out['output_path'])
+            save_dir = os.path.join(out['output_path'], out['rid'])
+            plotting.plot_many_mpl(figs, save_dir=save_dir)
         else:
             raise NotImplementedError(
                 'Library "{}" not supported.'.format(pl['lib']))

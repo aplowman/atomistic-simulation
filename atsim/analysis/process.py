@@ -68,112 +68,6 @@ def check_errors(sms_path, src_path, skip_idx=None):
     return error_paths
 
 
-def modernise_pickle(sms_path):
-    """
-    References
-    ----------
-    [1] http://mywiki.wooledge.org/glob
-
-    """
-
-    modernise = False
-
-    # Copy the first sims options into a top level 'base_options':
-    sms = read_pickle(sms_path)
-    bo = deepcopy(sms['all_sims'][0].options)
-
-    # Make sure offline_files are glob [1] matches with asterisk:
-    off_fls = bo['set_up']['scratch'].get('offline_files')
-    if off_fls is not None:
-        off_fls_types = off_fls['file_types']
-        for ft_idx, ft in enumerate(off_fls_types):
-            if '*' not in ft:
-                modernise = True
-                print('Adding wildcard to offline file types.')
-                off_fls_types[ft_idx] = '*' + ft
-
-    # Strip single quotes from set_up->common_files
-    cmn_fls = bo['set_up'].get('common_files')
-    if cmn_fls is not None:
-        for cf_idx, cf in enumerate(cmn_fls):
-            if "'" in cf:
-                modernise = True
-                print('Removing single quotes from `common_files`.')
-                bo['set_up']['common_files'][cf_idx] = cf.strip("'")
-    else:
-        cmn_fls = [
-            '*.cell',
-            '*.param',
-            '*.usp',
-            '*-out.cell',
-            '*.bib'
-        ]
-        bo['set_up']['common_files'] = cmn_fls
-        modernise = True
-
-    # Change series to a list of lists
-    new_series = None
-    if bo.get('series') is not None and len(bo.get('series')) > 0:
-        print('series is non-None: {}, len: {}'.format(bo.get('series'),
-                                                       len(bo.get('series'))))
-        if len(bo['series']) == 1 and isinstance(bo['series'][0], dict):
-            print('Changing series to a list of lists in `base_options`.')
-            new_series = [
-                [bo['series'][0]]
-            ]
-            modernise = True
-            bo['series'] = new_series
-
-        if bo.get('series_id') is not None:
-            modernise = True
-            del bo['series_id']
-
-    sms['base_options'] = bo
-
-    # Change series_id
-    sim_0_opt = sms['all_sims'][0].options
-    sim_0_sid = sim_0_opt.get('series_id')
-    if sim_0_sid is not None and isinstance(sim_0_sid, dict):
-
-        modernise = True
-        # For each sim, change series_id to a list of lists
-        for s_idx, s in enumerate(sms['all_sims']):
-
-            sms['all_sims'][s_idx].options['set_up']['common_files'] = cmn_fls
-
-            if off_fls is not None:
-                sms['all_sims'][s_idx].options['set_up']['scratch']['offline_files'] = off_fls
-
-            if new_series is not None:
-                sms['all_sims'][s_idx].options['series'] = new_series
-
-            if len(s.options['series_id']) == 1:
-                new_series_id = []
-                for k, v in s.options['series_id'].items():
-                    new_series_id.append([
-                        {
-                            'name': k,
-                            **v,
-                        }
-                    ])
-                sms['all_sims'][s_idx].options['series_id'] = new_series_id
-
-    if modernise:
-        print('Modernising `sims.pickle`.')
-        # Rename original sims.pickle:
-        print('Renaming old `sims.pickle`.')
-        home_path, sms_fn = os.path.split(sms_path)
-        sms_path_old = os.path.join(home_path, sms_fn + '_old')
-        os.rename(sms_path, sms_path_old)
-
-        # Write the modernised sims.pickle back to disk:
-        print('Writing new `sims.pickle`.')
-        write_pickle(sms, sms_path)
-
-    else:
-        print('Modernisation of `sims.pickle` is not neccessary.')
-
-
 def move_offline_files(s_id, src_path, offline_files):
 
     arch_dir = offline_files['path']
@@ -239,17 +133,15 @@ def main(s_id):
     dst_path = os.path.join(base_opt['archive']['path'], s_id)
     sms_path = os.path.join(src_path, 'sims.pickle')
 
-    print('s_id: {}'.format(s_id))
-    print('src_path: {}'.format(src_path))
-    print('dst_path: {}'.format(dst_path))
+    print('session_id: {}'.format(s_id))
+    print('Source path: {}'.format(src_path))
+    print('Destination path: {}'.format(dst_path))
 
     error_paths = check_errors(sms_path, src_path)
     if len(error_paths) > 0:
         raise ValueError('Errors found! Exiting process.py.')
 
-    # Get base options from the modernised pickle:
     sms = read_pickle(sms_path)
-    base_opt = sms['base_options']
     off_fls = base_opt['scratch']['offline_files']
     move_offline_files(s_id, src_path, off_fls)
 
@@ -262,6 +154,7 @@ def main(s_id):
     if is_dropbox is True:
         print('Uploading completed sims to dropbox...')
         dbh.upload_dropbox_dir(dbx, src_path, dst_path)
+        print('Upload finished.')
     else:
         # If Archive is not on Dropbox, assume it is on the scratch machine
         # i.e. the one from which this script (process.py) is run.

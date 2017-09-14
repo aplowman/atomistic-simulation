@@ -27,9 +27,7 @@ crystal_structures:
       - [3/4, 1/4]
     motif.species: [Zr, Zr]
     lattice.a: 3.23406
-    lattice.c: 5.16765    
-
-  - <<α_Zr_MA#3_opt>>
+    lattice.c: 5.16765
  
 base_structure.type: csl_bicrystal
 base_structure.gb_type: tilt_A
@@ -44,25 +42,25 @@ base_structure.csl_vecs:
     - [-1, 2, 0]
     - [0, 0, 1]
 
-# base_structure.type: csl_bicrystal_from_structure
-# base_structure.csl: 180_001_mZrO2
-# base_structure.csl_params.cellfile: 'C:/Users/adamj/Dropbox (Research Group)/Canary/Random/calc-out.cell'
-# base_structure.csl_params.repeats: [3, 1, 1]
-# base_structure.csl_params.bound_vac: 0.2
-# base_structure.csl_params.transls: [0.0, 0.0]
-# base_structure.csl_params.term_plns: ['100', '100']
 
-constraints.cell: <<fix_all_cell>>
-constraints.atom: <<fix_all_xy>>
+constraints.cell.fix_angles: all
+constraints.cell.fix_lengths: all
+constraints.cell.lengths_equal: none
+constraints.cell.angles_equal: none
 
-# castep.find_inv_sym: True
-# castep.seedname: 'sim'
-# castep.checkpoint: True
+constraints.atom.fix_xy_idx: all
+constraints.atom.fix_xyz_idx: none
 
-# castep.cell.kpoint_mp_spacing: 0.040
-
-# castep.param: <<default_go>>
-# castep.param.cut_off_energy: 360 eV
-# castep.param.xc_functional: PBE
-
-lammps: <<default>>
+lammps.parameters: 
+  - 'units        metal'
+  - 'dimension    3'
+  - 'boundary     p p p'
+  - 'box          tilt large'
+lammps.atom_style: atomic
+lammps.atoms_file: atoms.lammps
+lammps.interactions:
+  - 'pair_style eam/fs'
+  - 'pair_coeff * * <FILENAME> Zr'
+lammps.potential_files: 
+  <FILENAME>: Zr_3.eam.fs
+lammps.dump_dt: 100

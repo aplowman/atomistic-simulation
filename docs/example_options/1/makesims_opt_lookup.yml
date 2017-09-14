@@ -1,0 +1,175 @@
+csl_vecs:
+  hex_0001_Σ7:
+    - - [3, 2, 0]
+      - [1, 3, 0]
+      - [0, 0, 1]
+    - - [2, 3, 0]
+      - [-1, 2, 0]
+      - [0, 0, 1] 
+
+# Stage lookups
+stage:
+  adam-desktop: 
+    path: 'C:/calcs_stage/'
+  adam-laptop:
+    path: 'D:/cs/'
+
+# Database lookup:
+database:
+  default:
+    dropbox: True
+    path: /calcs/db.pickle
+
+# Archive lookup:
+archive:
+  default:
+    dropbox: True
+    path: /calcs
+
+# Scratch lookups
+scratch:
+  castep_common: &castep_common
+    offline_files.match: ['*.check', '*.check_bak']
+
+  lammps_common: &lammps_common
+    offline_files.match: []
+
+  castep_smp_common: &castep_smp_common
+    module_load: apps/intel-14.0/castep/17.2-avx2
+    parallel_env: smp.pe
+    <<: *castep_common
+    
+  castep_orte_common: &castep_orte_common
+    module_load: apps/intel-14.0/castep/17.2-avx2-ib
+    parallel_env: orte-24-ib.pe 
+    <<: *castep_common
+
+  csf_common: &csf_common
+    offline_files.path: /mnt/iusers01/cr01/mbdxqap3/calcs_offline
+    path: /mnt/lustre/mbdxqap3/dated
+    remote: True
+    host: csf
+    os_name: posix
+    sge: True
+    job_array: True    
+  
+  local_common: &local_common
+    path: 'C:\calcs_scratch'
+    remote: False
+    offline_files.path: 'C:\calcs_offline'
+
+  castep_csf_smp_common: &castep_csf_smp_common    
+    <<: *csf_common
+    <<: *castep_smp_common
+
+  castep_csf_orte_common: &castep_csf_orte_common
+    <<: *csf_common
+    <<: *castep_orte_common    
+
+  castep-csf-2:
+    <<: *castep_csf_smp_common
+    num_cores: 2
+
+  castep-csf-4:
+    <<: *castep_csf_smp_common
+    num_cores: 4
+
+  castep-csf-48:
+    <<: *castep_csf_orte_common
+    num_cores: 48
+    
+  castep-csf-72:
+    <<: *castep_csf_orte_common
+    num_cores: 72 
+
+  lammps-local-1:
+    <<: *local_common
+    <<: *lammps_common
+    num_cores: 1
+    
+# crystal_structures helper:
+crystal_structures:
+
+  α_Zr: &alpha_Zr
+    lattice.system: hexagonal
+    lattice.centring: P
+    motif.atom_sites:
+      - [2/3, 1/3]
+      - [1/3, 2/3]
+      - [3/4, 1/4]
+    motif.species: [Zr, Zr]
+
+  α_Zr_DFT_opt:
+    <<: *alpha_Zr
+    lattice.a: 3.2301
+    lattice.c: 5.1641
+
+  α_Zr_MA#3_opt:
+    <<: *alpha_Zr
+    lattice.a: 3.23406
+    lattice.c: 5.16765
+
+  α_Zr_exp:
+    <<: *alpha_Zr
+    lattice.a: 3.2316
+    lattice.c: 5.1475
+    
+  mon_ZrO2_DFT_opt:
+    lattice.system: monoclinic
+    lattice.centring: P
+    path: '/Users/Maria/Dropbox (Research Group)/Calculations-Code/Code/python-scripts/atomistic-simulation/atsim/ref/structures/mZrO2/2017-06-11/calc-out.cell'  
+    
+cell_constraints:
+  fix_all_cell:
+    fix_angles: all
+    fix_lengths: all
+    lengths_equal: none
+    angles_equal: none
+
+atom_constraints:
+  fix_all_xy:
+    fix_xy_idx: all
+    fix_xyz_idx: none
+  fix_all_xyz:
+    fix_xy_idx: none
+    fix_xyz_idx: all  
+
+castep.param:
+  misc_defaults: &misc_defaults
+    elec_energy_tol: 1e-5 eV
+    max_scf_cycles: 200    
+    metals_method: DM
+    mixing_scheme: Pulay
+    opt_strategy: memory    
+    smearing_width: 0.1 eV
+    write_cell_structure: True  
+
+  default_go:       
+    task: GeometryOptimisation
+    geom_max_iter: 200
+    geom_method: LBFGS
+    <<: *misc_defaults
+
+  default_sp:
+    task: SinglePoint
+    <<: *misc_defaults
+
+lammps:
+  default:
+    parameters: 
+      - 'units        metal'
+      - 'dimension    3'
+      - 'boundary     p p p'
+      - 'box          tilt large'
+    atom_style: atomic
+    atoms_file: atoms.lammps
+    interactions:
+      - 'pair_style eam/fs'
+      - 'pair_coeff * * <FILENAME> Zr'
+    potential_files: 
+      <FILENAME>: Zr_3.eam.fs
+    dump_dt: 100
+
+
+    
+     

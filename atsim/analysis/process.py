@@ -108,19 +108,21 @@ def move_offline_files(s_id, src_path, offline_files):
         print('No offline files found.')
 
 
-def main(s_id):
+def main(opt, s_id):
 
-    # Download database file:
-    dbx = dbh.get_dropbox()
-    tmp_db_path = os.path.join(SET_UP_PATH, 'temp_db')
-    db_path = '/calcs/db.pickle'
-    db_exists = dbh.check_dropbox_file_exist(dbx, db_path)
-    if not db_exists:
-        raise ValueError('Cannot find database on Dropbox. Exiting.')
-    dbh.download_dropbox_file(dbx, db_path, tmp_db_path)
+    if opt['database']['dropbox']:
+        # Download database file:
+        dbx = dbh.get_dropbox()
+        tmp_db_path = os.path.join(SET_UP_PATH, 'temp_db')
+        db_path = opt['database']['path']
+        db_exists = dbh.check_dropbox_file_exist(dbx, db_path)
+        if not db_exists:
+            raise ValueError('Cannot find database on Dropbox. Exiting.')
+        dbh.download_dropbox_file(dbx, db_path, tmp_db_path)
+        db = read_pickle(tmp_db_path)
 
-    # Open database file:
-    db = read_pickle(tmp_db_path)
+    else:
+        db = read_pickle(opt['database']['path'])
 
     # Find the base options for this sid:
     base_opt = search_database_by_session_id(db, s_id)

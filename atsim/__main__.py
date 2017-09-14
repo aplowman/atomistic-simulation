@@ -18,7 +18,11 @@ elif args[1] == 'process':
     if len(args) != 3:
         print('Specify SID to process.')
     from atsim.analysis import process
-    process.main(args[2])
+    from atsim import options_parser
+    opt_fn = 'process_opt.yml'
+    opt_lkup_fn = 'makesims_opt_lookup.yml'
+    ps_opt = options_parser.validate_ps_opt(opt_fn, opt_lkup_fn)
+    process.main(ps_opt, args[2])
 
 elif args[1] == 'submit_process':
     if len(args) != 3:

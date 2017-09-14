@@ -256,7 +256,7 @@ def validate_ms_opt(opt_fn, lookup_opt_fn):
             valid_opt.update({k: validate_ms_stage(v, opt_lookup)})
 
         elif k == 'database':
-            valid_opt.update({k: validate_ms_database(v, opt_lookup)})
+            valid_opt.update({k: validate_database(v, opt_lookup)})
 
         elif k == 'scratch':
             method = opt_unflat['method']
@@ -301,7 +301,7 @@ def validate_ms_stage(opt, opt_lookup):
     return opt
 
 
-def validate_ms_database(opt, opt_lookup):
+def validate_database(opt, opt_lookup):
     opt = check_lookup('database', opt, opt_lookup) or opt
     allowed_keys = ['dropbox', 'path']
     check_invalid_key(opt, allowed_keys)
@@ -619,3 +619,38 @@ def validate_ms_lammps(opt, opt_lookup):
     ]
     check_invalid_key(opt, allowed_keys)
     return opt
+
+
+def validate_ps_opt(opt_fn, lookup_opt_fn):
+    opt_path = os.path.join(SET_UP_PATH, opt_fn)
+    opt_lookup_path = os.path.join(SET_UP_PATH, lookup_opt_fn)
+
+    with open(opt_path, 'r', encoding='utf-8') as f:
+        opt = yaml.load(f)
+
+    with open(opt_lookup_path, 'r', encoding='utf-8') as f:
+        opt_lookup = yaml.load(f)
+
+    deep_keys = [
+        'database',
+    ]
+    for dk in deep_keys:
+        if opt.get(dk) is not None:
+            opt[dk + '.<<lookup>>'] = opt.pop(dk)
+
+    opt_unflat = utils.unflatten_dict_keys(opt)
+
+    allowed_keys = [
+        'database',
+    ]
+
+    check_invalid_key(opt_unflat, allowed_keys)
+
+    valid_opt = {}
+    for k, v in opt_unflat.items():
+        if k == 'database':
+            valid_opt.update({k: validate_database(v, opt_lookup)})
+        else:
+            valid_opt.update({k: v})
+
+    return valid_opt

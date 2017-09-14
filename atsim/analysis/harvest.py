@@ -8,12 +8,26 @@ from atsim.readwrite import read_pickle, write_pickle, format_list, format_dict
 from atsim import simsio, utils, plotting, vectors, SCRIPTS_PATH, REF_PATH
 from atsim.analysis import compute_funcs
 from atsim.analysis.compute_funcs import get_depends, SINGLE_COMPUTE_LOOKUP, MULTI_COMPUTE_LOOKUP
-from atsim.analysis.postprocess import SINGLE_COMPUTES, MULTICOMPUTE_LOOKUP, compute_gb_energy, dict_from_list, get_required_defn
 from atsim.set_up.harvest_opt import HARVEST_OPT
+from atsim.utils import dict_from_list
 
 
 # List of multi computes which require the common series info list:
-REQUIRES_CSI = []
+REQUIRES_CSI = [
+    'gamma_surface_info'
+]
+# Allowed variable types and required keys for each type
+VAR_REQ_KEYS = ['type', 'name', 'id']
+VAR_ALLOWED_REQUIRED = {
+    'result': VAR_REQ_KEYS,
+    'parameter': VAR_REQ_KEYS,
+    'compute': VAR_REQ_KEYS,
+    'series_id': VAR_REQ_KEYS + ['col_id'],
+}
+
+# Keys which are not sent to compute functions. So can pass arbitrary
+# parameters to compute functions by specifying them in the variable dict.
+VAR_STD_KEYS = VAR_REQ_KEYS + ['display_name', 'idx', 'vals', ]
 
 
 def make_plots(out):
@@ -402,6 +416,90 @@ def read_results(sid, skip_idx=None, overwrite=False, query_all=False):
     write_pickle(sims, pick_path)
 
 
+def resolve_var_id_conflict(ordered_vars, vr_id, modify_existing=True):
+
+    # Resolve any ID conflicts. Search for same ID in ordered_vars, rename
+    # existing ordered_vars variable ID if conflict found. Conflict should
+    # only exist between an ordered_vars variable added as a dependency,
+    # since we check above for dupliate user-specified IDs.
+
+    trial_id = vr_id
+    id_match_idx, id_match = dict_from_list(ordered_vars, {'id': trial_id},
+                                            ret_index=True)
+    count = 1
+    while id_match is not None:
+        trial_id += '_{:d}'.format(count)
+        id_match = dict_from_list(ordered_vars, {'id': trial_id})
+        count += 1
+
+    if id_match_idx is not None:
+        if modify_existing:
+            ordered_vars[id_match_idx]['id'] = trial_id
+        else:
+            return trial_id
+
+    elif not modify_existing:
+        return trial_id
+
+
+def var_in_list(lst, var, ret_idx=False):
+    var_cnd = {k: v for k, v in var.items() if k not in ['id']}
+    return dict_from_list(lst, var_cnd, ret_index=ret_idx)
+
+
+def get_reduced_depends(ordered_vars, vr, inc_id, inc_val):
+
+    vr_type = vr['type']
+    vr_name = vr['name']
+    vr_name_idx = vr.get('idx')
+    vr_id = vr['id']
+
+    ov_idx, ov = var_in_list(ordered_vars, vr, ret_idx=True)
+
+    if ov is not None:
+        if inc_id:
+            # If ID already exists in ordered_vals, modify in ordered_vals
+            resolve_var_id_conflict(ordered_vars, vr_id)
+            # If already exists, update variable ID to match user-specified ID:
+            ordered_vars[ov_idx]['id'] = vr_id
+
+    else:
+        if vr_type != 'compute':
+            # If ID already exists in ordered_vals, modify in ordered_vals
+            if inc_id:
+                resolve_var_id_conflict(ordered_vars, vr_id)
+            vr_copy = copy.deepcopy(vr)
+            vr_copy.update({'vals': []})
+            ordered_vars.append(vr_copy)
+            return ordered_vars
+
+        else:
+            cmp_kw = {k: v for k, v in vr.items() if k not in VAR_STD_KEYS}
+            dpnds = get_depends(vr_name, inc_id=inc_id,
+                                inc_val=inc_val, **cmp_kw)
+
+            # print('depends: \n{}\n'.format(dpnds))
+
+            for d_idx, d in enumerate(dpnds):
+
+                dov = var_in_list(ordered_vars, d)
+                if dov is None:
+
+                    if inc_id:
+                        if d_idx == len(dpnds) - 1:
+                            # Last dependency is the variable itself, so user-
+                            # specified ID takes precedence.
+                            resolve_var_id_conflict(ordered_vars, vr_id)
+                            d['id'] = vr_id
+
+                        else:
+                            d['id'] = resolve_var_id_conflict(
+                                ordered_vars, d['id'], modify_existing=False)
+
+                    ordered_vars.append(copy.deepcopy(d))
+    return ordered_vars
+
+
 def collate_results(res_opt, skip_idx=None, debug=False):
     """
     Save a JSON file containing the results of one of more simulation series.
@@ -460,52 +558,10 @@ def collate_results(res_opt, skip_idx=None, debug=False):
     # Make a list of all variable ids
     var_ids = []
 
-    # Allowed variable types and required keys for each type
-    var_req_keys = ['type', 'name', 'id']
-    var_allowed_required = {
-        'result': var_req_keys,
-        'parameter': var_req_keys,
-        'compute': var_req_keys,
-        'series_id': var_req_keys + ['col_id'],
-    }
-
-    def resolve_var_id_conflict(ordered_vars, vr_id, modify_existing=True):
-
-        # Resolve any ID conflicts. Search for same ID in ordered_vars, rename
-        # existing ordered_vars variable ID if conflict found. Conflict should
-        # only exist between an ordered_vars variable added as a dependency,
-        # since we check above for dupliate user-specified IDs.
-
-        trial_id = vr_id
-        id_match_idx, id_match = dict_from_list(ordered_vars, {'id': trial_id},
-                                                ret_index=True)
-        count = 1
-        while id_match is not None:
-            trial_id += '_{:d}'.format(count)
-            id_match = dict_from_list(ordered_vars, {'id': trial_id})
-            count += 1
-
-        if id_match_idx is not None:
-            if modify_existing:
-                ordered_vars[id_match_idx]['id'] = trial_id
-            else:
-                return trial_id
-
-        elif not modify_existing:
-            return trial_id
-
-    def var_in_list(lst, var, ret_idx=False):
-        var_cnd = {k: v for k, v in var.items() if k not in ['id']}
-        return dict_from_list(lst, var_cnd, ret_index=ret_idx)
-
-    # Keys which are not sent to compute functions. So can pass arbitrary
-    # parameters to compute functions by specifying them in the variable dict.
-    var_std_keys = var_req_keys + ['display_name', 'idx', 'vals', ]
-
     # Variables ordered such that dependenices are listed before
     ordered_vars = []
 
-    # Loop though variables: do validation and find compute dependencies:
+    # Loop though variables: do validation
     for vr_idx, vr in enumerate(res_opt['variables']):
 
         vr_type = vr['type']
@@ -513,15 +569,13 @@ def collate_results(res_opt, skip_idx=None, debug=False):
         vr_name_idx = vr.get('idx')
         vr_id = vr['id']
 
-        # print('vr_id: {}'.format(vr_id))
-
         # Check type is allowed:
-        if vr_type not in var_allowed_required:
+        if vr_type not in VAR_ALLOWED_REQUIRED:
             raise ValueError('"{}" is not an allowed variable type: {}'.format(
-                vr_type, var_allowed_required.keys()))
+                vr_type, VAR_ALLOWED_REQUIRED.keys()))
 
         # Check all required keys are given:
-        for rk in var_allowed_required[vr_type]:
+        for rk in VAR_ALLOWED_REQUIRED[vr_type]:
             if rk not in vr:
                 rk_error = 'Variable #{} must have key: {}'.format(vr_idx, rk)
                 raise ValueError(rk_error)
@@ -532,44 +586,8 @@ def collate_results(res_opt, skip_idx=None, debug=False):
         else:
             raise ValueError('Variable #{} id is not unique.'.format(vr_idx))
 
-        ov_idx, ov = var_in_list(ordered_vars, vr, ret_idx=True)
-
-        if ov is not None:
-            # If ID already exists in ordered_vals, modify in ordered_vals
-            resolve_var_id_conflict(ordered_vars, vr_id)
-            # If already exists, update variable ID to match user-specified ID:
-            ordered_vars[ov_idx]['id'] = vr_id
-
-        else:
-            if vr_type != 'compute':
-                # If ID already exists in ordered_vals, modify in ordered_vals
-                resolve_var_id_conflict(ordered_vars, vr_id)
-                vr_copy = copy.deepcopy(vr)
-                vr_copy.update({'vals': []})
-                ordered_vars.append(vr_copy)
-                continue
-
-            else:
-                cmp_kw = {k: v for k, v in vr.items() if k not in var_std_keys}
-                dpnds = get_depends(vr_name, inc_id=True,
-                                    inc_val=True, **cmp_kw)
-
-                for d_idx, d in enumerate(dpnds):
-
-                    dov = var_in_list(ordered_vars, d)
-                    if dov is None:
-
-                        if d_idx == len(dpnds) - 1:
-                            # Last dependency is the variable itself, so user-
-                            # specified ID takes precedence.
-                            resolve_var_id_conflict(ordered_vars, vr_id)
-                            d['id'] = vr_id
-
-                        else:
-                            d['id'] = resolve_var_id_conflict(
-                                ordered_vars, d['id'], modify_existing=False)
-
-                        ordered_vars.append(copy.deepcopy(d))
+        ordered_vars = get_reduced_depends(
+            ordered_vars, vr, inc_id=True, inc_val=True)
 
     # Start building output dict, which will be saved as a JSON file:
     out = {
@@ -657,7 +675,7 @@ def collate_results(res_opt, skip_idx=None, debug=False):
 
                 vr_name = vr['name']
                 vr_type = vr['type']
-                args = {k: v for k, v in vr.items() if k not in var_std_keys}
+                args = {k: v for k, v in vr.items() if k not in VAR_STD_KEYS}
 
                 if vr_type not in ['result', 'parameter', 'compute']:
                     continue
@@ -692,8 +710,9 @@ def collate_results(res_opt, skip_idx=None, debug=False):
     all_ids = {k: v for k, v in all_ids.items() if k != 'name'}
     out['series_id'] = all_ids
 
+    all_vrs = out['variables']
     # Now calculate variables which are multi `compute`s and `series_id`s:
-    for vr_idx, vr in enumerate(out['variables']):
+    for vr_idx, vr in enumerate(all_vrs):
 
         vr_type = vr['type']
         vr_name = vr['name']
@@ -703,14 +722,18 @@ def collate_results(res_opt, skip_idx=None, debug=False):
             vals = utils.get_col(all_ids[vr_name], cid)
             if vr.get('col_idx') is not None:
                 vals = utils.get_col_none(vals, vr['col_idx'])
-            out['variables'][vr_idx]['vals'] = vals
+            all_vrs[vr_idx]['vals'] = vals
 
         elif vr_type == 'compute' and SINGLE_COMPUTE_LOOKUP.get(vr_name) is None:
             func = MULTI_COMPUTE_LOOKUP[vr_name]
-            args = {k: v for k, v in vr.items() if k not in var_std_keys}
+            req_vars_defn = get_reduced_depends(
+                [], vr, inc_id=False, inc_val=False)
+            req_vars = [dict_from_list(all_vrs, i) for i in req_vars_defn]
+
             if vr_name in REQUIRES_CSI:
-                args = {**args, 'common_series_info': all_csi}
-            func(out, **args)
+                func(out, req_vars, common_series_info=all_csi)
+            else:
+                func(out, req_vars)
 
     return out
 

@@ -127,12 +127,13 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
         columns are neccessary in writing the atom data.
     atom_constraints : dict, optional
         A dict with the following keys:
-            fix_xy_idx : list or ndarray of dimension 1
-                The atom indices whose `x` and `y` coordinates are to
-                be fixed. By default, set to None.
-            fix_xyz_idx : list or ndarray of dimension 1
+            fix_`mn`_idx : ndarray of dimension 1
+                The atom indices whose `m` and `n` coordinates are to
+                be fixed, where valid pairs of `mn` are (`xy`, `xz`, `yz`). 
+                By default, set to None. Indexing starts from 1!
+            fix_xyz_idx : ndarray of dimension 1
                 The atom indices whose `x`, `y` and `z` coordinates
-                are to be fixed. By default, set to None.
+                are to be fixed. By default, set to None. Indexing starts from 1!
     cell_constraints : dict, optional
         A dict with the following keys:
             lengths_equal : str
@@ -280,6 +281,8 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
 
     # Atom constraints
     fix_xy_idx = atom_constraints.get('fix_xy_idx')
+    fix_xz_idx = atom_constraints.get('fix_xz_idx')
+    fix_yz_idx = atom_constraints.get('fix_yz_idx')
     fix_xyz_idx = atom_constraints.get('fix_xyz_idx')
 
     if fix_xy_idx is not None:
@@ -290,11 +293,41 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
         else:
             fxy_grp = 'fix_xy'
             fxy_grp_ln = 'group {} id '.format(fxy_grp)
-            fxy_grp_ln += ('{:d} ' * nfxy).format(*fix_xy_idx)
+            fxy_grp_ln += ('{:d} ' * nfxy).format(*(fix_xy_idx-1))
             fix_lns.append(fxy_grp_ln)
 
         fix_lns.append('fix {:d} {} setforce 0.0 0.0 NULL'.format(fix_count,
                                                                   fxy_grp))
+        fix_count += 1
+
+    if fix_xz_idx is not None:
+
+        nfxz = len(fix_xz_idx)
+        if nfxz == atom_sites.shape[1]:
+            fxz_grp = 'all'
+        else:
+            fxz_grp = 'fix_xz'
+            fxz_grp_ln = 'group {} id '.format(fxz_grp)
+            fxz_grp_ln += ('{:d} ' * nfxz).format(*(fix_xz_idx-1))
+            fix_lns.append(fxz_grp_ln)
+
+        fix_lns.append('fix {:d} {} setforce 0.0 NULL 0.0'.format(fix_count,
+                                                                  fxz_grp))
+        fix_count += 1
+
+    if fix_yz_idx is not None:
+
+        nfyz = len(fix_yz_idx)
+        if nfyz == atom_sites.shape[1]:
+            fyz_grp = 'all'
+        else:
+            fyz_grp = 'fix_yz'
+            fyz_grp_ln = 'group {} id '.format(fyz_grp)
+            fyz_grp_ln += ('{:d} ' * nfyz).format(*(fix_yz_idx-1))
+            fix_lns.append(fyz_grp_ln)
+
+        fix_lns.append('fix {:d} {} setforce NULL 0.0 0.0'.format(fix_count,
+                                                                  fyz_grp))
         fix_count += 1
 
     if fix_xyz_idx is not None:
@@ -305,7 +338,7 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
         else:
             fxyz_grp = 'fix_xyz'
             fxyz_grp_ln = 'group {} id '.format(fxyz_grp)
-            fxyz_grp_ln += ('{:d} ' * nfxyz).format(*fix_xyz_idx)
+            fxyz_grp_ln += ('{:d} ' * nfxyz).format(*(fix_xyz_idx-1))
             fix_lns.append(fxyz_grp_ln)
 
         fix_lns.append('fix {:d} {} setforce 0.0 0.0 0.0'.format(fix_count,

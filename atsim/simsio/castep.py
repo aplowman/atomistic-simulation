@@ -168,11 +168,11 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                 supercell angles are to remain fixed.
     atom_constraints : dict, optional
         A dict with the following keys:
-            fix_`mn`_idx : list or ndarray of dimension 1
+            fix_`mn`_idx : ndarray of dimension 1
                 The atom indices whose `m` and `n` coordinates are to
                 be fixed, where valid pairs of `mn` are (`xy`, `xz`, `yz`). 
                 By default, set to None.
-            fix_xyz_idx : list or ndarray of dimension 1
+            fix_xyz_idx : ndarray of dimension 1
                 The atom indices whose `x`, `y` and `z` coordinates
                 are to be fixed. By default, set to None.
 
@@ -289,7 +289,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
             nc_yz = f_yz.shape[0]
 
             if nc_xyz > 0:
-
+                f_xyz -= 1
                 f_xyz_sp = np.tile(atom_species[f_xyz], (1, 3)).reshape(nc_xyz * 3, 1)
                 f_xyz_sub_idx = np.repeat(sub_idx[f_xyz], 3)[:, np.newaxis]
                 f_xyz_cnst_idx = (np.arange(nc_xyz * 3) + 1)[:, np.newaxis]
@@ -303,7 +303,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                                     col_delim=' '))
 
             if nc_xy > 0:
-
+                f_xy -= 1
                 f_xy_sp = np.tile(atom_species[f_xy], (1, 2)).reshape(nc_xy * 2, 1)
                 f_xy_sub_idx = np.repeat(sub_idx[f_xy], 2)[:, np.newaxis]
                 f_xy_cnst_idx = (np.arange(nc_xy * 2) + 1 +
@@ -318,7 +318,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                                     col_delim=' '))
 
             if nc_xz > 0:
-
+                f_xz -= 1
                 f_xz_sp = np.tile(atom_species[f_xz], (1, 2)).reshape(nc_xz * 2, 1)
                 f_xz_sub_idx = np.repeat(sub_idx[f_xz], 2)[:, np.newaxis]
                 f_xz_cnst_idx = (np.arange(nc_xz * 2) + 1 +
@@ -333,7 +333,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                                     col_delim=' '))
 
             if nc_yz > 0:
-
+                f_yz -= 1
                 f_yz_sp = np.tile(atom_species[f_yz], (1, 2)).reshape(nc_yz * 2, 1)
                 f_yz_sub_idx = np.repeat(sub_idx[f_yz], 2)[:, np.newaxis]
                 f_yz_cnst_idx = (np.arange(nc_yz * 2) + 1 + (nc_xz * 2) +

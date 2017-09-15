@@ -1047,7 +1047,7 @@ def process_constraints(opt, structure):
     which write input files.
 
     For atom constraints, convert `none` to None, and convert `all` to an index
-    array of all atoms.
+    array of all atoms. Indexing starts from 1!
 
     """
 
@@ -1062,21 +1062,25 @@ def process_constraints(opt, structure):
     atm_cnst = opt['constraints']['atom']
     atm_cnst_def = {
         'fix_xy_idx': 'none',
+        'fix_xz_idx': 'none',
+        'fix_yz_idx': 'none',
         'fix_xyz_idx': 'none'
     }
     atm_cnst = {**atm_cnst_def, **atm_cnst}
+    
+    valid_atom_cnst = {}
+    for k, v in atm_cnst.items():
+        if isinstance(v, list):
 
-    for fx in ['fix_xy_idx', 'fix_xyz_idx']:
-        if atm_cnst[fx] == 'none':
-            atm_cnst[fx] = None
-        elif atm_cnst[fx] == 'all':
-            atm_cnst[fx] = np.arange(structure.atom_sites.shape[1])
-        else:
-            # atom constraints are parsed as 2D arrays (pending TODO of
-            # dict-parser) (want 1D arrays)
-            atm_cnst[fx] = atm_cnst[fx][:, 0]
+            valid_atom_cnst.update({k: np.array(v)})
+        elif isinstance(v, str):
+            if v.upper() == 'NONE':
+                valid_atom_cnst.update({k: None})
+            elif v.upper() == 'ALL':
+                valid_atom_cnst.update(
+                    {k: np.arange(structure.atom_sites.shape[1]) + 1})
 
-    opt['constraints']['atom'] = atm_cnst
+    opt['constraints']['atom'] = valid_atom_cnst
 
     for fx in ['fix_angles', 'fix_lengths', 'angles_equal', 'lengths_equal']:
         if cll_cnst[fx] == 'none':

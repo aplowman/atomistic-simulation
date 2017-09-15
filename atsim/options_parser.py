@@ -552,6 +552,8 @@ def validate_ms_constraints(opt, opt_lookup):
             'atom_constraints', atom_opt, opt_lookup) or atom_opt
         allowed_keys = [
             'fix_xy_idx',
+            'fix_xz_idx',
+            'fix_yz_idx',
             'fix_xyz_idx',
         ]
         check_invalid_key(atom_opt, allowed_keys)

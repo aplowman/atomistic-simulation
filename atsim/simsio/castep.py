@@ -276,7 +276,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
             if nc_xyz > 0:
 
-                f_xyz_sp = np.tile(atom_species[f_xyz], (3, 1))
+                f_xyz_sp = np.tile(atom_species[f_xyz], (1, 3)).reshape(nc_xyz * 3, 1)
                 f_xyz_sub_idx = np.repeat(sub_idx[f_xyz], 3)[:, np.newaxis]
                 f_xyz_cnst_idx = (np.arange(nc_xyz * 3) + 1)[:, np.newaxis]
                 f_xyz_cnst_coef = np.tile(np.eye(3), (nc_xyz, 1))
@@ -290,7 +290,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
             if nc_xy > 0:
 
-                f_xy_sp = np.tile(atom_species[f_xy], (2, 1))
+                f_xy_sp = np.tile(atom_species[f_xy], (1, 2)).reshape(nc_xy * 3, 1)
                 f_xy_sub_idx = np.repeat(sub_idx[f_xy], 2)[:, np.newaxis]
                 f_xy_cnst_idx = (np.arange(nc_xy * 2) + 1 +
                                  (nc_xyz * 3))[:, np.newaxis]

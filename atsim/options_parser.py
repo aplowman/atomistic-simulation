@@ -424,6 +424,9 @@ def validate_ms_base_structure(opt, opt_lookup):
 
             valid_bs.update({k: valid_csl})
 
+        elif k == 'box_lat':
+            valid_bs.update({k: np.array(v)})
+
         else:
             valid_bs.update({k: v})
 

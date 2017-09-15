@@ -1,4 +1,5 @@
 import os
+import itertools
 import numpy as np
 from atsim import vectors, utils
 from atsim import readwrite
@@ -167,9 +168,10 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                 supercell angles are to remain fixed.
     atom_constraints : dict, optional
         A dict with the following keys:
-            fix_xy_idx : list or ndarray of dimension 1
-                The atom indices whose `x` and `y` coordinates are to
-                be fixed. By default, set to None.
+            fix_`mn`_idx : list or ndarray of dimension 1
+                The atom indices whose `m` and `n` coordinates are to
+                be fixed, where valid pairs of `mn` are (`xy`, `xz`, `yz`). 
+                By default, set to None.
             fix_xyz_idx : list or ndarray of dimension 1
                 The atom indices whose `x`, `y` and `z` coordinates
                 are to be fixed. By default, set to None.
@@ -205,17 +207,27 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                              'array.'.format(k))
 
     f_xy = atom_constraints.get('fix_xy_idx')
+    f_xz = atom_constraints.get('fix_xz_idx')
+    f_yz = atom_constraints.get('fix_yz_idx')
     f_xyz = atom_constraints.get('fix_xyz_idx')
 
     if f_xy is None:
         f_xy = np.array([])
+    if f_xz is None:
+        f_xz = np.array([])
+    if f_yz is None:
+        f_yz = np.array([])
     if f_xyz is None:
         f_xyz = np.array([])
 
-    if len(f_xyz) > 0 and len(f_xy) > 0:
-        if len(np.intersect1d(f_xyz, f_xy)) > 0:
-            raise ValueError('`fix_xyz_idx` and `fix_xy_idx` cannot '
-                             'contain the same indices.')
+    atom_constr_opt = ['f_xy', 'f_xz', 'f_yz', 'f_xyz']
+    atom_constr_pairs = list(itertools.combinations(atom_constr_opt, 2))
+
+    for pair in atom_constr_pairs:  
+        if len(eval(pair[0])) > 0 and len(eval(pair[1])) > 0:
+            if len(np.intersect1d(eval(pair[0]), eval(pair[1]))) > 0:
+                raise ValueError('`{}_idx` and `{}_idx`  cannot '
+                                'contain the same indices.'.format(pair[0], pair[1]))
 
     os.makedirs(path, exist_ok=True)
 
@@ -259,7 +271,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                 cf.write('%endblock cell_constraints\n')
 
         # Atom constraints:
-        if len(f_xyz) > 0 or len(f_xy) > 0:
+        if any([len(eval(x)) for x in atom_constr_opt]) > 0:
 
             # For each atom, get the index within like-species atoms:
             # 1-based indexing instead of 0-based!
@@ -273,6 +285,8 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
             nc_xyz = f_xyz.shape[0]
             nc_xy = f_xy.shape[0]
+            nc_xz = f_xz.shape[0]
+            nc_yz = f_yz.shape[0]
 
             if nc_xyz > 0:
 
@@ -294,12 +308,43 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                 f_xy_sub_idx = np.repeat(sub_idx[f_xy], 2)[:, np.newaxis]
                 f_xy_cnst_idx = (np.arange(nc_xy * 2) + 1 +
                                  (nc_xyz * 3))[:, np.newaxis]
-                f_xy_cnst_coef = np.tile(np.eye(3)[:2], (nc_xy, 1))
+                f_xy_cnst_coef = np.tile(np.eye(3)[[0,1]], (nc_xy, 1))
 
                 cnst_arrs_xy = [f_xy_cnst_idx, f_xy_sp, f_xy_sub_idx,
                                 f_xy_cnst_coef]
 
                 cf.write(format_arr(cnst_arrs_xy,
+                                    format_spec=cnst_fs,
+                                    col_delim=' '))
+
+            if nc_xz > 0:
+
+                f_xz_sp = np.tile(atom_species[f_xz], (1, 2)).reshape(nc_xz * 2, 1)
+                f_xz_sub_idx = np.repeat(sub_idx[f_xz], 2)[:, np.newaxis]
+                f_xz_cnst_idx = (np.arange(nc_xz * 2) + 1 +
+                                (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
+                f_xz_cnst_coef = np.tile(np.eye(3)[[0,2]], (nc_xz, 1))
+
+                cnst_arrs_xz = [f_xz_cnst_idx, f_xz_sp, f_xz_sub_idx,
+                                f_xz_cnst_coef]
+
+                cf.write(format_arr(cnst_arrs_xz,
+                                    format_spec=cnst_fs,
+                                    col_delim=' '))
+
+            if nc_yz > 0:
+
+                f_yz_sp = np.tile(atom_species[f_yz], (1, 2)).reshape(nc_yz * 2, 1)
+                f_yz_sub_idx = np.repeat(sub_idx[f_yz], 2)[:, np.newaxis]
+                f_yz_cnst_idx = (np.arange(nc_yz * 2) + 1 + (nc_xz * 2) +
+                                (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
+
+                f_yz_cnst_coef = np.tile(np.eye(3)[[1,2]], (nc_yz, 1))
+
+                cnst_arrs_yz = [f_yz_cnst_idx, f_yz_sp, f_yz_sub_idx,
+                                f_yz_cnst_coef]
+
+                cf.write(format_arr(cnst_arrs_yz,
                                     format_spec=cnst_fs,
                                     col_delim=' '))
 

@@ -151,15 +151,18 @@ def main(opt, s_id):
 
     arch_opt = base_opt['archive']
     is_dropbox = arch_opt.get('dropbox')
+    exclude = opt.get('exclude')
+
+    cpy_msg = 'remote Dropbox' if is_dropbox else 'local computer'
+    print('Copying completed sims to archive (on {}).'.format(cpy_msg))
+    print('From path: {}'.format(src_path))
+    print('To path: {}'.format(dst_path))
 
     if is_dropbox is True:
-        print('Uploading completed sims to dropbox...')
-        dbh.upload_dropbox_dir(dbx, src_path, dst_path)
-        print('Upload finished.')
+        dbh.upload_dropbox_dir(dbx, src_path, dst_path, exclude=exclude)
     else:
         # If Archive is not on Dropbox, assume it is on the scratch machine
         # i.e. the one from which this script (process.py) is run.
-        print('Copying completed sims to archive...')
-        print('From path: {}'.format(src_path))
-        print('To path: {}'.format(dst_path))
         copy_tree(src_path, dst_path)
+
+    print('Archive copying finished.')

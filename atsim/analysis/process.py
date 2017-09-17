@@ -164,7 +164,3 @@ def main(opt, s_id):
         print('From path: {}'.format(src_path))
         print('To path: {}'.format(dst_path))
         copy_tree(src_path, dst_path)
-
-
-if __name__ == '__main__':
-    main(sys.argv[1])

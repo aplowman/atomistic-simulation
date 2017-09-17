@@ -606,8 +606,8 @@ def read_castep_file(cst_path):
     scf_cycle_data = []
     all_scf_data = []
 
-    SCF_HEADER_LNS = 3              # 3 lines between scf header and start of block
-    FORCES_HEADER_LNS = 5           # 5 lines between forces header and start of block
+    SCF_HEADER_LNS = 3  # 3 lines between scf header and start of block
+    FORCES_HEADER_LNS = 5  # 5 lines between forces header and start of block
     # 3 lines between cell contents header and start of block
     CELL_CONTENTS_HEADER_LNS = 3
     CELL_LAT_IDX_START = 2
@@ -661,10 +661,19 @@ def read_castep_file(cst_path):
                     bfgs_lambda += [np.nan, ] * finite_basis_num_en
                     finite_basis_parsed = True
 
-            # Parse a unit cell block
-            if mode == 'parse_cell':
+            if mode == 'parse_header':
+                if VERS in ln:
+                    version = ln_s[7].split('|')[0]
+                    if version not in TESTED_VERS:
+                        raise NotImplementedError(
+                            'Parser not tested on this version of CASTEP: '
+                            '{}'.format(version))
 
-                if cell_idx >= CELL_LAT_IDX_START and cell_idx <= CELL_LAT_IDX_END:
+            # Parse a unit cell block
+            elif mode == 'parse_cell':
+
+                if (cell_idx >= CELL_LAT_IDX_START and
+                        cell_idx <= CELL_LAT_IDX_END):
 
                     # Parse real and reciprocal lattice blocks. Theses are row
                     # vectors in the file, but we will return as column vectors.
@@ -686,7 +695,8 @@ def read_castep_file(cst_path):
 
                     cell_idx += 1
 
-                elif cell_idx >= CELL_PARAMS_IDX_START and cell_idx <= CELL_PARAMS_IDX_END:
+                elif (cell_idx >= CELL_PARAMS_IDX_START and
+                      cell_idx <= CELL_PARAMS_IDX_END):
 
                     current_lat_params.append(float(ln_s[2]))
                     current_cell_angles.append(float(ln_s[5]))
@@ -717,7 +727,8 @@ def read_castep_file(cst_path):
                 if cell_conts_idx < 0:
                     cell_conts_idx += 1
 
-                elif cell_conts_idx > 0 and (CELL_CONTS_START_END in ln or CELL_CONTS_INI_START_END in ln):
+                elif cell_conts_idx > 0 and (CELL_CONTS_START_END in ln or
+                                             CELL_CONTS_INI_START_END in ln):
 
                     # Finish parsing cell contents block
                     mode = 'scan'
@@ -796,7 +807,8 @@ def read_castep_file(cst_path):
                 if force_ion_idx < 0:
                     force_ion_idx += 1
 
-                elif force_ion_idx > 0 and (UNCON_FORCES_END in ln or CON_FORCES_GO_END in ln):
+                elif force_ion_idx > 0 and (UNCON_FORCES_END in ln or
+                                            CON_FORCES_GO_END in ln):
 
                     # Finish parsing forces block
                     force_ion_idx = -FORCES_HEADER_LNS

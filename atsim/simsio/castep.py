@@ -170,7 +170,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
         A dict with the following keys:
             fix_`mn`_idx : ndarray of dimension 1
                 The atom indices whose `m` and `n` coordinates are to
-                be fixed, where valid pairs of `mn` are (`xy`, `xz`, `yz`). 
+                be fixed, where valid pairs of `mn` are (`xy`, `xz`, `yz`).
                 By default, set to None.
             fix_xyz_idx : ndarray of dimension 1
                 The atom indices whose `x`, `y` and `z` coordinates
@@ -227,7 +227,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
         if len(pair[0]) > 0 and len(pair[1]) > 0:
             if len(np.intersect1d(pair[0], pair[1])) > 0:
                 raise ValueError('`{}_idx` and `{}_idx`  cannot '
-                                'contain the same indices.'.format(pair[0], pair[1]))
+                                 'contain the same indices.'.format(pair[0], pair[1]))
 
     os.makedirs(path, exist_ok=True)
 
@@ -290,7 +290,8 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
             if nc_xyz > 0:
                 f_xyz -= 1
-                f_xyz_sp = np.tile(atom_species[f_xyz], (1, 3)).reshape(nc_xyz * 3, 1)
+                f_xyz_sp = np.tile(
+                    atom_species[f_xyz], (1, 3)).reshape(nc_xyz * 3, 1)
                 f_xyz_sub_idx = np.repeat(sub_idx[f_xyz], 3)[:, np.newaxis]
                 f_xyz_cnst_idx = (np.arange(nc_xyz * 3) + 1)[:, np.newaxis]
                 f_xyz_cnst_coef = np.tile(np.eye(3), (nc_xyz, 1))
@@ -304,11 +305,12 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
             if nc_xy > 0:
                 f_xy -= 1
-                f_xy_sp = np.tile(atom_species[f_xy], (1, 2)).reshape(nc_xy * 2, 1)
+                f_xy_sp = np.tile(
+                    atom_species[f_xy], (1, 2)).reshape(nc_xy * 2, 1)
                 f_xy_sub_idx = np.repeat(sub_idx[f_xy], 2)[:, np.newaxis]
                 f_xy_cnst_idx = (np.arange(nc_xy * 2) + 1 +
                                  (nc_xyz * 3))[:, np.newaxis]
-                f_xy_cnst_coef = np.tile(np.eye(3)[[0,1]], (nc_xy, 1))
+                f_xy_cnst_coef = np.tile(np.eye(3)[[0, 1]], (nc_xy, 1))
 
                 cnst_arrs_xy = [f_xy_cnst_idx, f_xy_sp, f_xy_sub_idx,
                                 f_xy_cnst_coef]
@@ -319,11 +321,12 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
             if nc_xz > 0:
                 f_xz -= 1
-                f_xz_sp = np.tile(atom_species[f_xz], (1, 2)).reshape(nc_xz * 2, 1)
+                f_xz_sp = np.tile(
+                    atom_species[f_xz], (1, 2)).reshape(nc_xz * 2, 1)
                 f_xz_sub_idx = np.repeat(sub_idx[f_xz], 2)[:, np.newaxis]
                 f_xz_cnst_idx = (np.arange(nc_xz * 2) + 1 +
-                                (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
-                f_xz_cnst_coef = np.tile(np.eye(3)[[0,2]], (nc_xz, 1))
+                                 (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
+                f_xz_cnst_coef = np.tile(np.eye(3)[[0, 2]], (nc_xz, 1))
 
                 cnst_arrs_xz = [f_xz_cnst_idx, f_xz_sp, f_xz_sub_idx,
                                 f_xz_cnst_coef]
@@ -334,12 +337,13 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
             if nc_yz > 0:
                 f_yz -= 1
-                f_yz_sp = np.tile(atom_species[f_yz], (1, 2)).reshape(nc_yz * 2, 1)
+                f_yz_sp = np.tile(
+                    atom_species[f_yz], (1, 2)).reshape(nc_yz * 2, 1)
                 f_yz_sub_idx = np.repeat(sub_idx[f_yz], 2)[:, np.newaxis]
                 f_yz_cnst_idx = (np.arange(nc_yz * 2) + 1 + (nc_xz * 2) +
-                                (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
+                                 (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
 
-                f_yz_cnst_coef = np.tile(np.eye(3)[[1,2]], (nc_yz, 1))
+                f_yz_cnst_coef = np.tile(np.eye(3)[[1, 2]], (nc_yz, 1))
 
                 cnst_arrs_yz = [f_yz_cnst_idx, f_yz_sp, f_yz_sub_idx,
                                 f_yz_cnst_coef]
@@ -480,6 +484,7 @@ def read_castep_file(cst_path):
 
     TESTED_VERS = ['17.2']
 
+    HEADER = '+-------------------------------------------------+'
     VERS = 'CASTEP version'
     CALC_TYPE = 'type of calculation                            :'
     PARAM_ECUT = 'plane wave basis set cut-off                   :'
@@ -537,6 +542,7 @@ def read_castep_file(cst_path):
     CELL_CON_NUM = 'Number of cell constraints='
     CELL_CON = 'Cell constraints are:'
 
+    header_lns = 0  # Header line is repeated three times for each header
     version = None
     ecut = None
     fine_grid = None
@@ -602,8 +608,8 @@ def read_castep_file(cst_path):
     scf_cycle_data = []
     all_scf_data = []
 
-    SCF_HEADER_LNS = 3              # 3 lines between scf header and start of block
-    FORCES_HEADER_LNS = 5           # 5 lines between forces header and start of block
+    SCF_HEADER_LNS = 3  # 3 lines between scf header and start of block
+    FORCES_HEADER_LNS = 5  # 5 lines between forces header and start of block
     # 3 lines between cell contents header and start of block
     CELL_CONTENTS_HEADER_LNS = 3
     CELL_LAT_IDX_START = 2
@@ -639,6 +645,17 @@ def read_castep_file(cst_path):
 
             ln_s = ln.strip().split()
 
+            if ln.strip() == HEADER:
+                header_lns += 1
+                if header_lns % 3 != 0:
+                    mode = 'parse_header'
+                else:
+                    force_ion_idx = -FORCES_HEADER_LNS
+                    cell_conts_idx = -CELL_CONTENTS_HEADER_LNS
+                    scf_iter_idx = -SCF_HEADER_LNS
+                    cell_idx = 0
+                    mode = 'scan'
+
             if not finite_basis_parsed:
 
                 if BASIS_SET_PARAM_FBC in ln:
@@ -657,10 +674,19 @@ def read_castep_file(cst_path):
                     bfgs_lambda += [np.nan, ] * finite_basis_num_en
                     finite_basis_parsed = True
 
-            # Parse a unit cell block
-            if mode == 'parse_cell':
+            if mode == 'parse_header':
+                if VERS in ln:
+                    version = ln_s[7].split('|')[0]
+                    if version not in TESTED_VERS:
+                        raise NotImplementedError(
+                            'Parser not tested on this version of CASTEP: '
+                            '{}'.format(version))
 
-                if cell_idx >= CELL_LAT_IDX_START and cell_idx <= CELL_LAT_IDX_END:
+            # Parse a unit cell block
+            elif mode == 'parse_cell':
+
+                if (cell_idx >= CELL_LAT_IDX_START and
+                        cell_idx <= CELL_LAT_IDX_END):
 
                     # Parse real and reciprocal lattice blocks. Theses are row
                     # vectors in the file, but we will return as column vectors.
@@ -682,7 +708,8 @@ def read_castep_file(cst_path):
 
                     cell_idx += 1
 
-                elif cell_idx >= CELL_PARAMS_IDX_START and cell_idx <= CELL_PARAMS_IDX_END:
+                elif (cell_idx >= CELL_PARAMS_IDX_START and
+                      cell_idx <= CELL_PARAMS_IDX_END):
 
                     current_lat_params.append(float(ln_s[2]))
                     current_cell_angles.append(float(ln_s[5]))
@@ -713,7 +740,8 @@ def read_castep_file(cst_path):
                 if cell_conts_idx < 0:
                     cell_conts_idx += 1
 
-                elif cell_conts_idx > 0 and (CELL_CONTS_START_END in ln or CELL_CONTS_INI_START_END in ln):
+                elif cell_conts_idx > 0 and (CELL_CONTS_START_END in ln or
+                                             CELL_CONTS_INI_START_END in ln):
 
                     # Finish parsing cell contents block
                     mode = 'scan'
@@ -738,7 +766,8 @@ def read_castep_file(cst_path):
                         species_idx.append(species.index(sp))
 
                     ion_uvw = [float(ln_s[i]) for i in [3, 4, 5]]
-                    current_cell_conts.append(np.array(ion_uvw)[:, np.newaxis])
+                    current_cell_conts.append(
+                        np.array(ion_uvw)[:, np.newaxis])
 
                     cell_conts_idx += 1
 
@@ -791,7 +820,8 @@ def read_castep_file(cst_path):
                 if force_ion_idx < 0:
                     force_ion_idx += 1
 
-                elif force_ion_idx > 0 and (UNCON_FORCES_END in ln or CON_FORCES_GO_END in ln):
+                elif force_ion_idx > 0 and (UNCON_FORCES_END in ln or
+                                            CON_FORCES_GO_END in ln):
 
                     # Finish parsing forces block
                     force_ion_idx = -FORCES_HEADER_LNS
@@ -821,14 +851,14 @@ def read_castep_file(cst_path):
 
             elif mode == 'scan':
 
-                if VERS in ln:
-                    version = ln_s[7].split('|')[0]
-                    if version not in TESTED_VERS:
-                        raise NotImplementedError(
-                            'Parser not tested on this version of CASTEP: {}'.format(version))
-
-                elif CALC_TYPE in ln:
-                    calc_type_str = ln.split(':')[1].strip()
+                if CALC_TYPE in ln:
+                    cur_calc_type_str = ln.split(':')[1].strip()
+                    if calc_type_str is not None:
+                        if cur_calc_type_str != calc_type_str:
+                            raise ValueError('Caclulation type changed: was '
+                                             '"{}", changed to: "{}"'.format(
+                                                 calc_type_str, cur_calc_type_str))
+                    calc_type_str = cur_calc_type_str
 
                 elif PARAM_ECUT in ln:
                     ecut = float(ln_s[-2])

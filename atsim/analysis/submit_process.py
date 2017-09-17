@@ -11,7 +11,7 @@ JOBSCRIPT = """#!/bin/bash
 #$ -o process_output/
 #$ -e process_output/
 
-python process.py {}"""
+python -m atsim process {}"""
 
 
 def main(sid):
@@ -51,7 +51,3 @@ def main(sid):
 
         # Remove the jobscript:
         os.remove(js_fn)
-
-
-if __name__ == '__main__':
-    main(sys.argv[1])

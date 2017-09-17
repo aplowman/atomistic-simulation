@@ -484,6 +484,7 @@ def read_castep_file(cst_path):
 
     TESTED_VERS = ['17.2']
 
+    HEADER = '+-------------------------------------------------+'
     VERS = 'CASTEP version'
     CALC_TYPE = 'type of calculation                            :'
     PARAM_ECUT = 'plane wave basis set cut-off                   :'
@@ -541,6 +542,7 @@ def read_castep_file(cst_path):
     CELL_CON_NUM = 'Number of cell constraints='
     CELL_CON = 'Cell constraints are:'
 
+    header_lns = 0  # Header line is repeated three times for each header
     version = None
     ecut = None
     fine_grid = None
@@ -642,6 +644,17 @@ def read_castep_file(cst_path):
         for ln_idx, ln in enumerate(cst):
 
             ln_s = ln.strip().split()
+
+            if ln.strip() == HEADER:
+                header_lns += 1
+                if header_lns % 3 != 0:
+                    mode = 'parse_header'
+                else:
+                    force_ion_idx = -FORCES_HEADER_LNS
+                    cell_conts_idx = -CELL_CONTENTS_HEADER_LNS
+                    scf_iter_idx = -SCF_HEADER_LNS
+                    cell_idx = 0
+                    mode = 'scan'
 
             if not finite_basis_parsed:
 
@@ -838,14 +851,14 @@ def read_castep_file(cst_path):
 
             elif mode == 'scan':
 
-                if VERS in ln:
-                    version = ln_s[7].split('|')[0]
-                    if version not in TESTED_VERS:
-                        raise NotImplementedError(
-                            'Parser not tested on this version of CASTEP: {}'.format(version))
-
-                elif CALC_TYPE in ln:
-                    calc_type_str = ln.split(':')[1].strip()
+                if CALC_TYPE in ln:
+                    cur_calc_type_str = ln.split(':')[1].strip()
+                    if calc_type_str is not None:
+                        if cur_calc_type_str != calc_type_str:
+                            raise ValueError('Caclulation type changed: was '
+                                             '"{}", changed to: "{}"'.format(
+                                                 calc_type_str, cur_calc_type_str))
+                    calc_type_str = cur_calc_type_str
 
                 elif PARAM_ECUT in ln:
                     ecut = float(ln_s[-2])

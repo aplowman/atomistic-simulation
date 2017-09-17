@@ -1100,6 +1100,8 @@ def process_constraints(opt, structure):
             opt['constraints']['cell'].pop('fix_cell_angles', None)
             opt['constraints']['cell'].pop('fix_cell_lengths', None)
             opt['constraints']['atom'].pop('fix_xy_idx', None)
+            opt['constraints']['atom'].pop('fix_xz_idx', None)
+            opt['constraints']['atom'].pop('fix_yz_idx', None)
             opt['constraints']['atom'].pop('fix_xyz_idx', None)
 
 

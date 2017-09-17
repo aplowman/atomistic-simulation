@@ -57,7 +57,7 @@ def check_errors(sms_path, src_path, skip_idx=None):
 
                 new_srs_id = []
                 for k, v in srs_id.items():
-                    new_series_id.append([{'name': k, **v}])
+                    new_srs_id.append([{'name': k, **v}])
                 srs_id = new_srs_id
 
             if not isinstance(srs_id, dict):

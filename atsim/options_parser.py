@@ -424,6 +424,9 @@ def validate_ms_base_structure(opt, opt_lookup):
 
             valid_bs.update({k: valid_csl})
 
+        elif k == 'box_lat':
+            valid_bs.update({k: np.array(v)})
+
         else:
             valid_bs.update({k: v})
 
@@ -549,6 +552,8 @@ def validate_ms_constraints(opt, opt_lookup):
             'atom_constraints', atom_opt, opt_lookup) or atom_opt
         allowed_keys = [
             'fix_xy_idx',
+            'fix_xz_idx',
+            'fix_yz_idx',
             'fix_xyz_idx',
         ]
         check_invalid_key(atom_opt, allowed_keys)

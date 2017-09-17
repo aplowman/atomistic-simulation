@@ -53,3 +53,29 @@ def sigmoid(x, a, b, c, d):
     f[lim_hi_idx] = 0
 
     return a * (f - d)
+
+
+def fit_quad(x, y):
+    """
+    Fit x and y data to a quadratic and get the minimum point
+
+    Returns
+    -------
+    tuple
+        poly1d, min_x, min_y
+
+    """
+
+    # Validation
+    if len(x) != len(y):
+        raise ValueError('x and y must have the same length')
+    if len(x) < 3:
+        raise ValueError('x and y must be of at least length 3.')
+
+    z = np.polyfit(x, y, 2)
+    p1d = np.poly1d(z)
+    dpdx = np.polyder(p1d)
+    min_x = -dpdx[0] / dpdx[1]
+    min_y = p1d(min_x)
+
+    return p1d, min_x, min_y

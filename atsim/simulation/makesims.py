@@ -393,19 +393,15 @@ class Stage(object):
 
         if scratch.remote:
 
-            if self.os_name == 'nt' and scratch.os_name == 'posix':
+            if not utils.dir_exists_remote(scratch.host, scratch.path):
+                raise ValueError(no_dir_msg)
 
-                if not utils.dir_exists_remote(scratch.host, scratch.path):
-                    raise ValueError(no_dir_msg)
-
-                print('Submitting simulations on scratch...')
-                comp_proc = subprocess.run(
-                    ['bash',
-                     '-c',
-                     'ssh {} "cd {} && qsub jobscript.sh"'.format(
-                         scratch.host, scratch.path)])
-            else:
-                raise NotImplementedError('Unsupported remote transfer.')
+            print('Submitting simulations on scratch...')
+            comp_proc = subprocess.run(
+                ['bash',
+                    '-c',
+                    'ssh {} "cd {} && qsub jobscript.sh"'.format(
+                        scratch.host, scratch.path)])
 
         else:
 

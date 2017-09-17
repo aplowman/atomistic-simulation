@@ -139,11 +139,10 @@ def main(opt, s_id):
     print('Source path: {}'.format(src_path))
     print('Destination path: {}'.format(dst_path))
 
-    error_paths = check_errors(sms_path, src_path)
+    error_paths = check_errors(sms_path, src_path, opt.get('skip_idx'))
     if len(error_paths) > 0:
         raise ValueError('Errors found! Exiting process.py.')
 
-    sms = read_pickle(sms_path)
     off_fls = base_opt['scratch']['offline_files']
     move_offline_files(s_id, src_path, off_fls)
 

@@ -291,18 +291,18 @@ class Stage(object):
         """
 
         if self.os_name == 'posix':
-            return self.path
+            new_path = self.path
 
         elif self.os_name == 'nt':
             drv, pst_drv = os.path.splitdrive(self.path)
-            stage_path_bash = posixpath.sep.join(
+            new_path = posixpath.sep.join(
                 [posixpath.sep + 'mnt', drv[0].lower()] +
                 pst_drv.strip(ntpath.sep).split(ntpath.sep))
 
-            if end_path_sep:
-                stage_path_bash += posixpath.sep
+        if end_path_sep:
+            new_path += posixpath.sep
 
-            return stage_path_bash
+        return new_path
 
     def copy_to_scratch(self, scratch):
         """
@@ -323,18 +323,13 @@ class Stage(object):
 
         if scratch.remote:
 
-            if self.os_name == 'nt' and scratch.os_name == 'posix':
+            if utils.dir_exists_remote(scratch.host, scratch.path):
+                raise ValueError(scratch_dir_exists)
 
-                if utils.dir_exists_remote(scratch.host, scratch.path):
-                    raise ValueError(scratch_dir_exists)
-
-                print(copy_msg)
-                bash_path = self.get_bash_path(end_path_sep=True)
-                utils.rsync_remote(bash_path, scratch.host, scratch.path,
-                                   exclude=rsync_ex)
-
-            else:
-                raise NotImplementedError('Unsupported remote transfer.')
+            print(copy_msg)
+            bash_path = self.get_bash_path(end_path_sep=True)
+            utils.rsync_remote(bash_path, scratch.host, scratch.path,
+                               exclude=rsync_ex)
 
         else:
 
@@ -1067,7 +1062,7 @@ def process_constraints(opt, structure):
         'fix_xyz_idx': 'none'
     }
     atm_cnst = {**atm_cnst_def, **atm_cnst}
-    
+
     valid_atom_cnst = {}
     for k, v in atm_cnst.items():
         if isinstance(v, list):

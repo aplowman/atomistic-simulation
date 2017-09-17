@@ -186,7 +186,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
     species_idx = utils.parse_as_int_arr(species_idx)
     if species_idx.min() < 0 or species_idx.max() > (atom_sites.shape[1] - 1):
         raise IndexError('`species_idx` must index `atom_sites`'.format(k))
-
+    
     for k, v in atom_constraints.items():
 
         if isinstance(v, (np.ndarray, list)):
@@ -198,7 +198,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                 raise ValueError('`atom_constraints[{}]` must be a 1D list, '
                                  '1D array or str.'.format(k))
 
-            if v.min() < 0 or v.max() > (atom_sites.shape[1] - 1):
+            if v.min() < 1 or v.max() > atom_sites.shape[1]:
                 raise IndexError('`atom_constraints[{}]` must index '
                                  '`atom_sites`'.format(k))
 
@@ -220,12 +220,12 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
     if f_xyz is None:
         f_xyz = np.array([])
 
-    atom_constr_opt = ['f_xy', 'f_xz', 'f_yz', 'f_xyz']
+    atom_constr_opt = [f_xy, f_xz, f_yz, f_xyz]
     atom_constr_pairs = list(itertools.combinations(atom_constr_opt, 2))
 
-    for pair in atom_constr_pairs:
-        if len(eval(pair[0])) > 0 and len(eval(pair[1])) > 0:
-            if len(np.intersect1d(eval(pair[0]), eval(pair[1]))) > 0:
+    for pair in atom_constr_pairs:  
+        if len(pair[0]) > 0 and len(pair[1]) > 0:
+            if len(np.intersect1d(pair[0], pair[1])) > 0:
                 raise ValueError('`{}_idx` and `{}_idx`  cannot '
                                  'contain the same indices.'.format(pair[0], pair[1]))
 
@@ -271,8 +271,8 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                 cf.write('%endblock cell_constraints\n')
 
         # Atom constraints:
-        if any([len(eval(x)) for x in atom_constr_opt]) > 0:
-
+        if any([len(x) for x in atom_constr_opt]) > 0:
+            
             # For each atom, get the index within like-species atoms:
             # 1-based indexing instead of 0-based!
             sub_idx = np.zeros((atom_sites.shape[1]), dtype=int) - 1

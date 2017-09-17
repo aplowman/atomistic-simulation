@@ -34,8 +34,8 @@ def check_errors(sms_path, src_path, skip_idx=None):
 
     # Open the sims pickle, get list of AtomisticSimulation objects:
     sms = read_pickle(sms_path)
-    base_opt = sms['base_options']
     all_sms = sms['all_sims']
+    base_opt = sms.get('base_options', all_sms[0].options)
     method = base_opt['method']
 
     error_paths = []

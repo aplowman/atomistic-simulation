@@ -170,7 +170,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
         A dict with the following keys:
             fix_`mn`_idx : ndarray of dimension 1
                 The atom indices whose `m` and `n` coordinates are to
-                be fixed, where valid pairs of `mn` are (`xy`, `xz`, `yz`). 
+                be fixed, where valid pairs of `mn` are (`xy`, `xz`, `yz`).
                 By default, set to None.
             fix_xyz_idx : ndarray of dimension 1
                 The atom indices whose `x`, `y` and `z` coordinates
@@ -223,11 +223,11 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
     atom_constr_opt = ['f_xy', 'f_xz', 'f_yz', 'f_xyz']
     atom_constr_pairs = list(itertools.combinations(atom_constr_opt, 2))
 
-    for pair in atom_constr_pairs:  
+    for pair in atom_constr_pairs:
         if len(eval(pair[0])) > 0 and len(eval(pair[1])) > 0:
             if len(np.intersect1d(eval(pair[0]), eval(pair[1]))) > 0:
                 raise ValueError('`{}_idx` and `{}_idx`  cannot '
-                                'contain the same indices.'.format(pair[0], pair[1]))
+                                 'contain the same indices.'.format(pair[0], pair[1]))
 
     os.makedirs(path, exist_ok=True)
 
@@ -290,7 +290,8 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
             if nc_xyz > 0:
                 f_xyz -= 1
-                f_xyz_sp = np.tile(atom_species[f_xyz], (1, 3)).reshape(nc_xyz * 3, 1)
+                f_xyz_sp = np.tile(
+                    atom_species[f_xyz], (1, 3)).reshape(nc_xyz * 3, 1)
                 f_xyz_sub_idx = np.repeat(sub_idx[f_xyz], 3)[:, np.newaxis]
                 f_xyz_cnst_idx = (np.arange(nc_xyz * 3) + 1)[:, np.newaxis]
                 f_xyz_cnst_coef = np.tile(np.eye(3), (nc_xyz, 1))
@@ -304,11 +305,12 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
             if nc_xy > 0:
                 f_xy -= 1
-                f_xy_sp = np.tile(atom_species[f_xy], (1, 2)).reshape(nc_xy * 2, 1)
+                f_xy_sp = np.tile(
+                    atom_species[f_xy], (1, 2)).reshape(nc_xy * 2, 1)
                 f_xy_sub_idx = np.repeat(sub_idx[f_xy], 2)[:, np.newaxis]
                 f_xy_cnst_idx = (np.arange(nc_xy * 2) + 1 +
                                  (nc_xyz * 3))[:, np.newaxis]
-                f_xy_cnst_coef = np.tile(np.eye(3)[[0,1]], (nc_xy, 1))
+                f_xy_cnst_coef = np.tile(np.eye(3)[[0, 1]], (nc_xy, 1))
 
                 cnst_arrs_xy = [f_xy_cnst_idx, f_xy_sp, f_xy_sub_idx,
                                 f_xy_cnst_coef]
@@ -319,11 +321,12 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
             if nc_xz > 0:
                 f_xz -= 1
-                f_xz_sp = np.tile(atom_species[f_xz], (1, 2)).reshape(nc_xz * 2, 1)
+                f_xz_sp = np.tile(
+                    atom_species[f_xz], (1, 2)).reshape(nc_xz * 2, 1)
                 f_xz_sub_idx = np.repeat(sub_idx[f_xz], 2)[:, np.newaxis]
                 f_xz_cnst_idx = (np.arange(nc_xz * 2) + 1 +
-                                (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
-                f_xz_cnst_coef = np.tile(np.eye(3)[[0,2]], (nc_xz, 1))
+                                 (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
+                f_xz_cnst_coef = np.tile(np.eye(3)[[0, 2]], (nc_xz, 1))
 
                 cnst_arrs_xz = [f_xz_cnst_idx, f_xz_sp, f_xz_sub_idx,
                                 f_xz_cnst_coef]
@@ -334,12 +337,13 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
             if nc_yz > 0:
                 f_yz -= 1
-                f_yz_sp = np.tile(atom_species[f_yz], (1, 2)).reshape(nc_yz * 2, 1)
+                f_yz_sp = np.tile(
+                    atom_species[f_yz], (1, 2)).reshape(nc_yz * 2, 1)
                 f_yz_sub_idx = np.repeat(sub_idx[f_yz], 2)[:, np.newaxis]
                 f_yz_cnst_idx = (np.arange(nc_yz * 2) + 1 + (nc_xz * 2) +
-                                (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
+                                 (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
 
-                f_yz_cnst_coef = np.tile(np.eye(3)[[1,2]], (nc_yz, 1))
+                f_yz_cnst_coef = np.tile(np.eye(3)[[1, 2]], (nc_yz, 1))
 
                 cnst_arrs_yz = [f_yz_cnst_idx, f_yz_sp, f_yz_sub_idx,
                                 f_yz_cnst_coef]
@@ -738,7 +742,8 @@ def read_castep_file(cst_path):
                         species_idx.append(species.index(sp))
 
                     ion_uvw = [float(ln_s[i]) for i in [3, 4, 5]]
-                    current_cell_conts.append(np.array(ion_uvw)[:, np.newaxis])
+                    current_cell_conts.append(
+                        np.array(ion_uvw)[:, np.newaxis])
 
                     cell_conts_idx += 1
 

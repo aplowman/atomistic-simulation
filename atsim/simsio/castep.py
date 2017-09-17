@@ -186,7 +186,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
     species_idx = utils.parse_as_int_arr(species_idx)
     if species_idx.min() < 0 or species_idx.max() > (atom_sites.shape[1] - 1):
         raise IndexError('`species_idx` must index `atom_sites`'.format(k))
-    
+
     for k, v in atom_constraints.items():
 
         if isinstance(v, (np.ndarray, list)):
@@ -223,7 +223,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
     atom_constr_opt = [f_xy, f_xz, f_yz, f_xyz]
     atom_constr_pairs = list(itertools.combinations(atom_constr_opt, 2))
 
-    for pair in atom_constr_pairs:  
+    for pair in atom_constr_pairs:
         if len(pair[0]) > 0 and len(pair[1]) > 0:
             if len(np.intersect1d(pair[0], pair[1])) > 0:
                 raise ValueError('`{}_idx` and `{}_idx`  cannot '
@@ -272,7 +272,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
         # Atom constraints:
         if any([len(x) for x in atom_constr_opt]) > 0:
-            
+
             # For each atom, get the index within like-species atoms:
             # 1-based indexing instead of 0-based!
             sub_idx = np.zeros((atom_sites.shape[1]), dtype=int) - 1
@@ -477,7 +477,6 @@ def read_castep_file(cst_path):
 
     TODO:
     -   Test version 16.1.1
-    -   Parse SCF warning lines like in: "\2017-04-01-2206_64626\calcs\0.360\"
     -   Add error lines to `errors` list
 
     """
@@ -541,6 +540,7 @@ def read_castep_file(cst_path):
     SPACE_GRP = 'Space group of crystal ='
     CELL_CON_NUM = 'Number of cell constraints='
     CELL_CON = 'Cell constraints are:'
+    WARNING = 'Warning:'
 
     header_lns = 0  # Header line is repeated three times for each header
     version = None
@@ -562,6 +562,7 @@ def read_castep_file(cst_path):
     finite_basis_correction = None
     calc_type_str = None
     errors = []
+    warnings = []
 
     bfgs_iter_idx = 0
 
@@ -638,12 +639,18 @@ def read_castep_file(cst_path):
 
     # For data blocks parsed over multiple lines, mode is changed from scan to parse_<something>
     mode = 'scan'
+    prev_mode = mode
 
     with open(cst_path, 'r') as cst:
 
         for ln_idx, ln in enumerate(cst):
 
             ln_s = ln.strip().split()
+
+            if len(ln_s) > 0 and ln_s[0] == WARNING:
+                prev_mode = mode
+                mode = 'parse_warning'
+                warnings.append([])
 
             if ln.strip() == HEADER:
                 header_lns += 1
@@ -674,7 +681,14 @@ def read_castep_file(cst_path):
                     bfgs_lambda += [np.nan, ] * finite_basis_num_en
                     finite_basis_parsed = True
 
-            if mode == 'parse_header':
+            if mode == 'parse_warning':
+
+                if ln.strip() != '':
+                    warnings[-1].append(ln.strip())
+                else:
+                    mode = prev_mode
+
+            elif mode == 'parse_header':
                 if VERS in ln:
                     version = ln_s[7].split('|')[0]
                     if version not in TESTED_VERS:
@@ -1078,6 +1092,7 @@ def read_castep_file(cst_path):
             'species':                  species,
             'species_idx':              species_idx,
             'errors':                   errors,
+            'warnings':                 warnings,
         }
 
         return out

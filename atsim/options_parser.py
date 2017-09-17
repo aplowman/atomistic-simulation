@@ -648,6 +648,7 @@ def validate_ps_opt(opt_fn, lookup_opt_fn):
     allowed_keys = [
         'database',
         'skip_idx',
+        'exclude',
     ]
 
     check_invalid_key(opt_unflat, allowed_keys)

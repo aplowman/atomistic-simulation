@@ -35,14 +35,13 @@ def check_errors(sms_path, src_path, skip_idx=None):
     # Open the sims pickle, get list of AtomisticSimulation objects:
     sms = read_pickle(sms_path)
     all_sms = sms['all_sims']
+    # Get options from first sim if they don't exist (legacy compatiblity)
     base_opt = sms.get('base_options', all_sms[0].options)
     method = base_opt['method']
 
-    error_paths = []
+    error_idx = []
     s_count = 0
     for s_idx, sim_i in enumerate(all_sms):
-
-        print('s_idx: {}'.format(s_idx))
 
         if skip_idx is not None and s_idx in skip_idx:
             continue
@@ -50,9 +49,24 @@ def check_errors(sms_path, src_path, skip_idx=None):
         s_count += 1
         srs_paths = []
         srs_id = sim_i.options.get('series_id')
+
         if srs_id is not None:
-            for srs_id_lst in srs_id:
-                srs_paths.append('_'.join([i['path'] for i in srs_id_lst]))
+
+            # (legacy compatibility)
+            if isinstance(srs_id, dict) and len(srs_id) == 1:
+
+                new_srs_id = []
+                for k, v in srs_id.items():
+                    new_series_id.append([{'name': k, **v}])
+                srs_id = new_srs_id
+
+            if not isinstance(srs_id, dict):
+                for srs_id_lst in srs_id:
+                    srs_paths.append('_'.join([i['path'] for i in srs_id_lst]))
+
+            else:
+                raise ValueError('Cannot parse `series_id` option from '
+                                 's_idx: {}'.format(s_idx))
 
         calc_path = os.path.join(src_path, 'calcs', *srs_paths)
 
@@ -63,9 +77,9 @@ def check_errors(sms_path, src_path, skip_idx=None):
             out = lammps.read_lammps_output(calc_path)
 
         if len(out['errors']) > 0:
-            error_paths.extend(srs_paths)
+            error_idx.append(s_idx)
 
-    return error_paths
+    return error_idx
 
 
 def move_offline_files(s_id, src_path, offline_files):
@@ -139,8 +153,8 @@ def main(opt, s_id):
     print('Source path: {}'.format(src_path))
     print('Destination path: {}'.format(dst_path))
 
-    error_paths = check_errors(sms_path, src_path, opt.get('skip_idx'))
-    if len(error_paths) > 0:
+    error_idx = check_errors(sms_path, src_path, opt.get('skip_idx'))
+    if len(error_idx) > 0:
         raise ValueError('Errors found! Exiting process.py.')
 
     off_fls = base_opt['scratch']['offline_files']

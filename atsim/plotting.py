@@ -699,7 +699,7 @@ def plot_many_mpl(figs, save_dir=None):
                     y_arr = np.array(yv)
 
                     plt_type = sub_t['type']
-                    label = sub_t.get('name', None)
+                    label = sub_t.get('title', None)
 
                     if label is not None:
                         if sub_t.get('title') is not None:

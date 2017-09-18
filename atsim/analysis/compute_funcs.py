@@ -201,6 +201,21 @@ def get_depends(compute_name, inc_id=True, inc_val=True, **kwargs):
             PREDEFINED_VARS['sup_type'],
         ] + out
 
+    elif compute_name == 'difference':
+
+        d.update({
+            'x_id': kwargs['x_id'],
+            'y_id': kwargs['y_id'],
+            'x_args': kwargs['x_args'],
+            'y_args': kwargs['y_args'],
+        })
+
+        out = (get_depends(kwargs['x_id'], **kwargs['x_args'],
+                           inc_id=inc_id, inc_val=inc_val) +
+               get_depends(kwargs['y_id'], **kwargs['y_args'],
+                           inc_id=inc_id, inc_val=inc_val) +
+               out)
+
     # If the d dict is not in out, add it:
     d_out = dict_from_list(out, d)
     if d_out is None:
@@ -631,6 +646,40 @@ def master_gamma(out, req_vars):
     }
 
 
+def difference(out, req_vars):
+
+    x_id = req_vars[-1]['x_id']
+    y_id = req_vars[-1]['y_id']
+    x = dict_from_list(req_vars, {'id': x_id})
+    y = dict_from_list(req_vars, {'id': y_id})
+
+    x_vals = x['vals']
+    y_vals = y['vals']
+
+    x_arr = np.array(x_vals)
+    x_none_idx = np.equal(x_arr, None)
+    x_arr[x_none_idx] = np.nan
+    x_arr = x_arr.astype(float)
+    srt_idx = x_arr.argsort()
+
+    y_arr = np.array(y_vals)
+    y_none_idx = np.equal(y_arr, None)
+    y_arr[y_none_idx] = np.nan
+    y_arr = y_arr.astype(float)
+
+    x_srt = x_arr[srt_idx]
+    y_srt = y_arr[srt_idx]
+
+    diff = np.diff(y_srt)
+    diff_list = [None] * len(y_arr)
+
+    for d_idx, d in enumerate(diff[:-1]):
+        if not np.isnan(d):
+            diff_list[d_idx + 1] = d
+
+    req_vars[-1]['vals'] = diff_list
+
+
 # Single-compute functions are passed individual AtomisticSimulation objects:
 SINGLE_COMPUTE_LOOKUP = {
     'num_atoms': num_atoms,
@@ -652,4 +701,5 @@ MULTI_COMPUTE_LOOKUP = {
     'gb_energy': gb_energy,
     'gamma_surface_info': gamma_surface_info,
     'master_gamma': master_gamma,
+    'difference': difference,
 }

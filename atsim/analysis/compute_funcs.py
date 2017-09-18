@@ -670,12 +670,16 @@ def difference(out, req_vars):
     x_srt = x_arr[srt_idx]
     y_srt = y_arr[srt_idx]
 
-    diff = np.diff(y_srt)
+    diff = np.concatenate([[np.nan], np.diff(y_srt)])
+    diff = diff[np.argsort(srt_idx)]
     diff_list = [None] * len(y_arr)
 
-    for d_idx, d in enumerate(diff[:-1]):
-        if not np.isnan(d):
-            diff_list[d_idx + 1] = d
+    for d_idx, d in enumerate(diff):
+        if np.isnan(d):
+            val = None
+        else:
+            val = d
+        diff_list[d_idx] = val
 
     req_vars[-1]['vals'] = diff_list
 

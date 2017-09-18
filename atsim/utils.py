@@ -734,3 +734,11 @@ def unflatten_dict_keys(d, delim='.'):
                         sub_d = prev_sub_d[ks]
 
     return unflat_d
+
+
+def nan_to_none(arr):
+    """Convert a Numpy array to a (nested) list with np.nan replaced by None"""
+    none_idx = np.where(np.isnan(arr))
+    arr = arr.astype(object)
+    arr[none_idx] = None
+    return arr.tolist()

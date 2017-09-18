@@ -151,26 +151,34 @@ def get_depends(compute_name, inc_id=True, inc_val=True, **kwargs):
             'opt_step': kwargs['opt_step'],
             'series_id': kwargs['series_id'],
             'unit': kwargs['unit'],
+            'gb_energy': kwargs['gb_energy'],
         })
 
-        out = (get_depends('gb_energy', inc_id=inc_id, inv_val=inc_val,
-                           energy_src=kwargs['energy_src'],
-                           opt_step=kwargs['opt_step'],
-                           series_id=kwargs['series_id'],
-                           unit=kwargs['unit']) +
-               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+        if kwargs.get('gb_energy', False):
+            energy_depends = get_depends('gb_energy', inc_id=inc_id, inc_val=inc_val,
+                                         energy_src=kwargs['energy_src'],
+                                         opt_step=kwargs['opt_step'],
+                                         series_id=kwargs['series_id'],
+                                         unit=kwargs['unit'])
+        else:
+            energy_depends = get_depends('energy', inc_id=inc_id, inc_val=inc_val,
+                                         energy_src=kwargs['energy_src'],
+                                         opt_step=kwargs['opt_step'],)
+
+        out = (energy_depends +
+               get_depends('gamma_surface_info', inc_id=inc_id, inc_val=inc_val,
                            info_name='row_idx') +
-               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+               get_depends('gamma_surface_info', inc_id=inc_id, inc_val=inc_val,
                            info_name='col_idx') +
-               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+               get_depends('gamma_surface_info', inc_id=inc_id, inc_val=inc_val,
                            info_name='x_std_vals') +
-               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+               get_depends('gamma_surface_info', inc_id=inc_id, inc_val=inc_val,
                            info_name='y_std_vals') +
-               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+               get_depends('gamma_surface_info', inc_id=inc_id, inc_val=inc_val,
                            info_name='x_frac_vals') +
-               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+               get_depends('gamma_surface_info', inc_id=inc_id, inc_val=inc_val,
                            info_name='y_frac_vals') +
-               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+               get_depends('gamma_surface_info', inc_id=inc_id, inc_val=inc_val,
                            info_name='grid_shape')
                ) + [PREDEFINED_VARS['gb_boundary_vac']] + out
 

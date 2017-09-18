@@ -244,7 +244,11 @@ def get_depends(compute_name, inc_id=True, inc_val=True, **kwargs):
             'y_id': kwargs['y_id'],
             'x_args': kwargs['x_args'],
             'y_args': kwargs['y_args'],
+            'series_id': kwargs['series_id'],
         })
+
+        if kwargs.get('forward_diff') is not None:
+            d.update({'forward_diff': kwargs['forward_diff']})
 
         out = (get_depends(kwargs['x_id'], **kwargs['x_args'],
                            inc_id=inc_id, inc_val=inc_val) +
@@ -673,38 +677,45 @@ def difference(out, req_vars):
 
     x_id = req_vars[-1]['x_id']
     y_id = req_vars[-1]['y_id']
+    forward_diff = req_vars[-1].get('forward_diff', False)
+
     x = dict_from_list(req_vars, {'id': x_id})
     y = dict_from_list(req_vars, {'id': y_id})
 
     x_vals = x['vals']
     y_vals = y['vals']
 
-    x_arr = np.array(x_vals)
-    x_none_idx = np.equal(x_arr, None)
-    x_arr[x_none_idx] = np.nan
-    x_arr = x_arr.astype(float)
-    srt_idx = x_arr.argsort()
+    srs_vals = get_srs_vals(out, req_vars[-1]['series_id'])
+    unique_srs, unique_srs_idx = get_unique_idx(srs_vals)
 
-    y_arr = np.array(y_vals)
-    y_none_idx = np.equal(y_arr, None)
-    y_arr[y_none_idx] = np.nan
-    y_arr = y_arr.astype(float)
+    x_arr = np.array(x_vals, dtype=float)
+    y_arr = np.array(y_vals, dtype=float)
 
-    x_srt = x_arr[srt_idx]
-    y_srt = y_arr[srt_idx]
+    out = np.ones(len(x_arr), dtype=float) * np.nan
+    for usi in unique_srs_idx:
 
-    diff = np.concatenate([[np.nan], np.diff(y_srt)])
-    diff = diff[np.argsort(srt_idx)]
-    diff_list = [None] * len(y_arr)
+        xi = x_arr[usi]
+        yi = y_arr[usi]
 
-    for d_idx, d in enumerate(diff):
-        if np.isnan(d):
-            val = None
+        srt_idx = np.argsort(xi)
+
+        xis = xi[srt_idx]
+        yis = yi[srt_idx]
+
+        yis_d = np.diff(yis)
+
+        if forward_diff:
+            concat_lst = [yis_d, [np.nan]]
         else:
-            val = d
-        diff_list[d_idx] = val
+            concat_lst = [[np.nan], yis_d]
 
-    req_vars[-1]['vals'] = diff_list
+        diff = np.concatenate(concat_lst)
+        diff = diff[np.argsort(srt_idx)]  # go back to original order
+
+        out[usi] = diff
+
+    req_vars[-1]['vals'] = utils.nan_to_none(out)
+
 
 
 # Single-compute functions are passed individual AtomisticSimulation objects:

@@ -40,6 +40,42 @@ PREDEFINED_VARS = {
 }
 
 
+def get_srs_vals(out, series_id):
+
+    srs_vals = []
+    series_names = out['series_name']
+
+    for i in series_id:
+        if i in series_names:
+            i_idx = series_names.index(i)
+            i_vals = utils.get_col(out['series_id']['val'], i_idx)
+        else:
+            i_vals = dict_from_list(
+                out['variables'], {'id': i})['vals']
+        srs_vals.append(i_vals)
+
+    srs_vals = utils.transpose_list(srs_vals)
+
+    if len(srs_vals) == 0:
+        srs_vals = [[0] for _ in range(num_sims)]
+
+    return srs_vals
+
+
+def get_unique_idx(a):
+    unique = []
+    unique_idx = []
+    for ai_idx, ai in enumerate(a):
+        if ai in unique:
+            unique_idx[unique.index(ai)].append(ai_idx)
+        elif None in ai:
+            continue
+        else:
+            unique.append(ai)
+            unique_idx.append([ai_idx])
+    return unique, unique_idx
+
+
 def is_bicrystal(sim):
     """
     Check if a simulation structure represents a bicrystal
@@ -389,25 +425,12 @@ def gb_energy(out, req_vars):
     """
 
     energy, num_atoms, area, sup_type = [req_vars[i]['vals'] for i in range(4)]
-    series_names = out['series_name']
     series_id = req_vars[-1]['series_id']
     unit = req_vars[-1]['unit']
     sesh_ids = np.array(out['session_id'])[out['session_id_idx']]
     num_sims = len(sesh_ids)
 
-    srs_vals = []
-    for i in series_id:
-        if i in series_names:
-            i_idx = series_names.index(i)
-            i_vals = utils.get_col(out['series_id']['val'], i_idx)
-        else:
-            i_vals = dict_from_list(
-                out['variables'], {'id': i})['vals']
-        srs_vals.append(i_vals)
-    srs_vals = utils.transpose_list(srs_vals)
-
-    if len(srs_vals) == 0:
-        srs_vals = [[0] for _ in range(num_sims)]
+    srs_vals = get_srs_vals(out, series_id)
 
     gb_idx = []
     bulk_idx = []

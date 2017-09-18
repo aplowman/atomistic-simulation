@@ -8,7 +8,7 @@ from atsim.readwrite import read_pickle, write_pickle, format_list, format_dict
 from atsim import utils, plotting, vectors, SCRIPTS_PATH, REF_PATH
 from atsim.simsio import castep, lammps
 from atsim.analysis import compute_funcs
-from atsim.analysis.compute_funcs import get_depends, SINGLE_COMPUTE_LOOKUP, MULTI_COMPUTE_LOOKUP
+from atsim.analysis.compute_funcs import get_depends, SINGLE_COMPUTE_LOOKUP, MULTI_COMPUTE_LOOKUP, get_unique_idx
 from atsim.set_up.harvest_opt import HARVEST_OPT
 from atsim.utils import dict_from_list
 
@@ -167,38 +167,9 @@ def make_plots(out):
         if len(trace_srs_vals) == 0:
             trace_srs_vals = [[0] for _ in range(num_sims)]
 
-        unique_fsv = []
-        unique_fsv_idx = []
-        for f_idx, f in enumerate(file_srs_vals):
-            if f in unique_fsv:
-                unique_fsv_idx[unique_fsv.index(f)].append(f_idx)
-            elif None in f:
-                continue
-            else:
-                unique_fsv.append(f)
-                unique_fsv_idx.append([f_idx])
-
-        unique_ssv = []
-        unique_ssv_idx = []
-        for s_idx, s in enumerate(subplot_srs_vals):
-            if s in unique_ssv:
-                unique_ssv_idx[unique_ssv.index(s)].append(s_idx)
-            elif None in s:
-                continue
-            else:
-                unique_ssv.append(s)
-                unique_ssv_idx.append([s_idx])
-
-        unique_tsv = []
-        unique_tsv_idx = []
-        for t_idx, t in enumerate(trace_srs_vals):
-            if t in unique_tsv:
-                unique_tsv_idx[unique_tsv.index(t)].append(t_idx)
-            elif None in t:
-                continue
-            else:
-                unique_tsv.append(t)
-                unique_tsv_idx.append([t_idx])
+        unique_fsv, unique_fsv_idx = get_unique_idx(file_srs_vals)
+        unique_ssv, unique_ssv_idx = get_unique_idx(subplot_srs_vals)
+        unique_tsv, unique_tsv_idx = get_unique_idx(trace_srs_vals)
 
         all_f = []
         for f in unique_fsv_idx:

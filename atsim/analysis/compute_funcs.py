@@ -1,7 +1,7 @@
 import copy
 import numpy as np
 from atsim import utils
-from atsim.utils import dict_from_list
+from atsim.utils import dict_from_list, get_unique_idx
 from atsim.readwrite import format_list, format_dict
 
 
@@ -37,6 +37,13 @@ PREDEFINED_VARS = {
         'name': 'atoms_gb_dist_change',
         'id': 'atoms_gb_dist_change',
     },
+    'find_inv_sym': {
+        'type': 'parameter',
+        'name': 'castep',
+        'idx': ('find_inv_sym',),
+        'id': 'find_inv_sym',
+    }
+
 }
 
 
@@ -60,20 +67,6 @@ def get_srs_vals(out, series_id):
         srs_vals = [[0] for _ in range(num_sims)]
 
     return srs_vals
-
-
-def get_unique_idx(a):
-    unique = []
-    unique_idx = []
-    for ai_idx, ai in enumerate(a):
-        if ai in unique:
-            unique_idx[unique.index(ai)].append(ai_idx)
-        elif None in ai:
-            continue
-        else:
-            unique.append(ai)
-            unique_idx.append([ai_idx])
-    return unique, unique_idx
 
 
 def is_bicrystal(sim):
@@ -350,7 +343,10 @@ def gb_area(out, sim, sim_idx):
 def gb_boundary_vac(out, sim, sim_idx):
 
     if is_bicrystal(sim):
-        return sim.structure.boundary_vac
+        try:
+            return sim.structure.boundary_vac
+        except AttributeError:
+            return 0.0
     else:
         return None
 
@@ -359,6 +355,17 @@ def gb_thickness(out, sim, sim_idx):
 
     if is_bicrystal(sim):
         return sim.structure.bicrystal_thickness
+    else:
+        return None
+
+
+def gb_relative_shift(out, sim, sim_idx):
+
+    if is_bicrystal(sim):
+        try:
+            return sim.structure.relative_shift
+        except AttributeError:
+            return [0, 0]
     else:
         return None
 
@@ -727,6 +734,7 @@ SINGLE_COMPUTE_LOOKUP = {
     'supercell_type': supercell_type,
     'gb_thickness': gb_thickness,
     'gb_boundary_vac': gb_boundary_vac,
+    'gb_relative_shift': gb_relative_shift,
     'atoms_gb_dist_initial': atoms_gb_dist_initial,
     'atoms_gb_dist_final': atoms_gb_dist_final,
     'atoms_gb_dist_change': atoms_gb_dist_change,

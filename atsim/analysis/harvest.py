@@ -8,9 +8,9 @@ from atsim.readwrite import read_pickle, write_pickle, format_list, format_dict
 from atsim import utils, plotting, vectors, SCRIPTS_PATH, REF_PATH
 from atsim.simsio import castep, lammps
 from atsim.analysis import compute_funcs
-from atsim.analysis.compute_funcs import get_depends, SINGLE_COMPUTE_LOOKUP, MULTI_COMPUTE_LOOKUP, get_unique_idx
+from atsim.analysis.compute_funcs import get_depends, SINGLE_COMPUTE_LOOKUP, MULTI_COMPUTE_LOOKUP
 from atsim.set_up.harvest_opt import HARVEST_OPT
-from atsim.utils import dict_from_list
+from atsim.utils import dict_from_list, get_unique_idx
 
 
 # List of multi computes which require the common series info list:
@@ -668,7 +668,15 @@ def collate_results(res_opt, skip_idx=None, debug=False):
                 all_sub_idx = vr.get('idx')
                 if all_sub_idx is not None:
                     for sub_idx in all_sub_idx:
-                        val = val[sub_idx]
+                        if vr_type == 'parameter':
+                            try:
+                                val = val[sub_idx]
+                            except KeyError:
+                                val = vr.get('default')
+                                break
+
+                        else:
+                            val = val[sub_idx]
 
                 # To ensure the data is JSON compatible:
                 if isinstance(val, np.ndarray):

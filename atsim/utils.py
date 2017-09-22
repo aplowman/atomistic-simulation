@@ -742,3 +742,17 @@ def nan_to_none(arr):
     arr = arr.astype(object)
     arr[none_idx] = None
     return arr.tolist()
+
+
+def get_unique_idx(a):
+    unique = []
+    unique_idx = []
+    for ai_idx, ai in enumerate(a):
+        if ai in unique:
+            unique_idx[unique.index(ai)].append(ai_idx)
+        elif None in ai:
+            continue
+        else:
+            unique.append(ai)
+            unique_idx.append([ai_idx])
+    return unique, unique_idx

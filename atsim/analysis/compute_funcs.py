@@ -63,6 +63,9 @@ def get_srs_vals(out, series_id):
 
     srs_vals = utils.transpose_list(srs_vals)
 
+    sesh_ids = np.array(out['session_id'])[out['session_id_idx']]
+    num_sims = len(sesh_ids)
+
     if len(srs_vals) == 0:
         srs_vals = [[0] for _ in range(num_sims)]
 

@@ -661,3 +661,117 @@ def validate_ps_opt(opt_fn, lookup_opt_fn):
             valid_opt.update({k: v})
 
     return valid_opt
+
+
+def validate_mp_opt(opt_fn, lookup_opt_fn):
+    """Function to validate makeplots.yml options."""
+
+    opt_path = os.path.join(SET_UP_PATH, opt_fn)
+    opt_lookup_path = os.path.join(SET_UP_PATH, lookup_opt_fn)
+
+    with open(opt_path, 'r', encoding='utf-8') as f:
+        opt = yaml.load(f)
+
+    with open(opt_lookup_path, 'r', encoding='utf-8') as f:
+        opt_lookup = yaml.load(f)
+
+    allowed_keys = [
+        'fmt',
+        'lib',
+        'filename',
+        'subplot_width',
+        'subplot_height',
+        'file_series',
+        'subplot_series',
+        'trace_series',
+        'data',
+    ]
+
+    valid_opt = []
+    for plt_idx, plt in enumerate(opt):
+
+        if isinstance(plt, str):
+            if '<<' in plt and '>>' in plt:
+                plt = {'<<lookup>>': plt}
+
+        plt = check_lookup('plots', plt, opt_lookup) or plt
+        plt_opt = utils.unflatten_dict_keys(plt)
+
+        print('plt_opt: \n{}\n'.format(plt_opt))
+
+
+        check_invalid_key(plt_opt, allowed_keys)
+        valid_plt = {}
+        for k, v in plt_opt.items():
+            if k == 'data':
+                valid_plt.update({k: validate_mp_data(v, opt_lookup)})
+            else:
+                valid_plt.update({k: v})
+
+        valid_opt.append(valid_plt)
+
+    return valid_opt
+
+def validate_mp_data(opt, opt_lookup):
+
+    def validate_xyz(xyz_opt, opt_lookup):
+        allowed_keys = [            
+            'id',
+            'label',
+            'reverse',
+        ]
+        check_invalid_key(xyz_opt, allowed_keys)
+        return xyz_opt
+
+    
+    allowed_keys_all = [
+        'type',
+        'x',
+        'y',
+    ]
+    allowed_keys_2d = allowed_keys_all
+    allowed_keys_line = allowed_keys_2d + [
+        'line',
+    ]
+    allowed_keys_marker = allowed_keys_2d + [
+        'marker',
+    ]
+    allowed_keys_3d = allowed_keys_all + [
+        'z',
+    ]
+    allowed_keys_contour = allowed_keys_3d + [
+        'show_points',  # something to show scatter points
+        'grid',  # something to say x,y,z data are 2D
+    ]
+    allowed_keys = {
+        'line': allowed_keys_line,
+        'marker': allowed_keys_marker,
+        'contour': allowed_keys_contour
+    }
+    allowed_types = list(allowed_keys.keys())
+
+    valid_opt = []
+    for dat_idx, dat in enumerate(opt):
+
+        if isinstance(dat, str):
+            if '<<' in dat and '>>' in dat:
+                dat = {'<<lookup>>': dat}
+
+        dat = check_lookup('plots_data', dat, opt_lookup) or dat
+        dat_opt = utils.unflatten_dict_keys(dat)
+
+        plt_type = dat_opt['type']
+        if plt_type not in allowed_types:
+            raise ValueError('Plot type is unknown: "{}"'.format(plt_type))
+        check_invalid_key(dat_opt, allowed_keys[plt_type])
+        
+        valid_dat = {}
+        for k, v in dat_opt.items():
+            if k in ['x', 'y', 'z']:
+                valid_dat.update({k: validate_xyz(v, opt_lookup)})
+            else:
+                valid_dat.update({k: v})
+
+        valid_opt.append(valid_dat)
+
+    return valid_opt

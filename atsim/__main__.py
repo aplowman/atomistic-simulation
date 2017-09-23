@@ -35,6 +35,15 @@ elif args[1] == 'harvest':
     from atsim.set_up.harvest_opt import HARVEST_OPT
     harvest.main(HARVEST_OPT)
 
+elif args[1] == 'plot':
+    from atsim.analysis import makeplots
+    from atsim import options_parser
+    opt_fn = 'makeplots.yml'
+    opt_lkup_fn = 'makesims_opt_lookup.yml'
+    mp_opt = options_parser.validate_mp_opt(opt_fn, opt_lkup_fn)
+    print('mp_opt: {}'.format(mp_opt))
+    exit()
+
 elif args[1] == 'series_helper':
     if len(args) != 3:
         print('Specify SID to series_helper.')

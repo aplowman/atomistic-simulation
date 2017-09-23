@@ -1,0 +1,9 @@
+plotly==2.0.11
+spglib==1.9.9.44
+setuptools==36.5.0
+numpy==1.12.1
+matplotlib==2.0.2
+mendeleev==0.3.4
+dropbox==8.0.0
+bokeh==0.12.9
+PyYAML==3.12

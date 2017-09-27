@@ -250,7 +250,7 @@ def validate_ms_opt(opt_fn, lookup_opt_fn):
     for k, v in opt_unflat.items():
 
         if k == 'archive':
-            valid_opt.update({k: validate_ms_archive(v, opt_lookup)})
+            valid_opt.update({k: validate_archive(v, opt_lookup)})
 
         elif k == 'stage':
             valid_opt.update({k: validate_ms_stage(v, opt_lookup)})
@@ -287,7 +287,7 @@ def validate_ms_opt(opt_fn, lookup_opt_fn):
     return valid_opt
 
 
-def validate_ms_archive(opt, opt_lookup):
+def validate_archive(opt, opt_lookup):
     opt = check_lookup('archive', opt, opt_lookup) or opt
     allowed_keys = ['dropbox', 'path']
     check_invalid_key(opt, allowed_keys)
@@ -625,6 +625,56 @@ def validate_ms_lammps(opt, opt_lookup):
     check_invalid_key(opt, allowed_keys)
     return opt
 
+def validate_hv_opt(opt_fn, lookup_opt_fn, opt_def_fn):
+    """Function to validate harvest.yml options."""
+
+    opt_path = os.path.join(SET_UP_PATH, opt_fn)
+    opt_lookup_path = os.path.join(SET_UP_PATH, lookup_opt_fn)
+    opt_def_path = os.path.join(SET_UP_PATH, opt_def_fn)
+
+    with open(opt_path, 'r', encoding='utf-8') as f:
+        opt = yaml.load(f)
+
+    with open(opt_lookup_path, 'r', encoding='utf-8') as f:
+        opt_lookup = yaml.load(f)
+
+    with open(opt_def_path, 'r', encoding='utf-8') as f:
+        opt_def = yaml.load(f)        
+
+    deep_keys = [
+        'archive',
+        'output',
+    ]
+    for dk in deep_keys:
+        if opt.get(dk) is not None:
+            opt[dk + '.<<lookup>>'] = opt.pop(dk)
+
+    opt_unflat = utils.unflatten_dict_keys(opt)
+
+    allowed_keys = [
+        'archive',
+        'output',
+        'overwrite',
+        'debug',
+        'sid',
+        'skip_idx',
+        'variables',
+    ]   
+    check_invalid_key(opt_unflat, allowed_keys)
+
+    valid_opt = {}
+    for k, v in opt_unflat.items():
+        
+        if k == 'archive':
+            valid_opt.update({k: validate_archive(v, opt_lookup)})
+        elif k == 'output':
+            valid_opt.update({k: validate_hv_output(v, opt_lookup)})
+        elif k == 'variables':
+            valid_opt.update({k: validate_hv_variables(v, opt_lookup, opt_def)})
+        else:
+            valid_opt.update({k: v})
+
+    return valid_opt
 
 def validate_ps_opt(opt_fn, lookup_opt_fn):
     opt_path = os.path.join(SET_UP_PATH, opt_fn)
@@ -663,17 +713,21 @@ def validate_ps_opt(opt_fn, lookup_opt_fn):
     return valid_opt
 
 
-def validate_mp_opt(opt_fn, lookup_opt_fn):
+def validate_mp_opt(opt_fn, lookup_opt_fn, opt_def_fn):
     """Function to validate makeplots.yml options."""
 
     opt_path = os.path.join(SET_UP_PATH, opt_fn)
     opt_lookup_path = os.path.join(SET_UP_PATH, lookup_opt_fn)
+    opt_def_path = os.path.join(SET_UP_PATH, opt_def_fn)
 
     with open(opt_path, 'r', encoding='utf-8') as f:
         opt = yaml.load(f)
 
     with open(opt_lookup_path, 'r', encoding='utf-8') as f:
         opt_lookup = yaml.load(f)
+
+    with open(opt_def_path, 'r', encoding='utf-8') as f:
+        opt_def = yaml.load(f)        
 
     allowed_keys = [
         'fmt',
@@ -685,6 +739,7 @@ def validate_mp_opt(opt_fn, lookup_opt_fn):
         'subplot_series',
         'trace_series',
         'data',
+        'axes',
     ]
 
     valid_opt = []
@@ -696,6 +751,7 @@ def validate_mp_opt(opt_fn, lookup_opt_fn):
 
         plt = check_lookup('plots', plt, opt_lookup) or plt
         plt_opt = utils.unflatten_dict_keys(plt)
+        plt_opt = {**opt_def['plots'], **plt_opt}
 
         print('plt_opt: \n{}\n'.format(plt_opt))
 
@@ -723,7 +779,6 @@ def validate_mp_data(opt, opt_lookup):
         check_invalid_key(xyz_opt, allowed_keys)
         return xyz_opt
 
-    
     allowed_keys_all = [
         'type',
         'x',
@@ -764,7 +819,7 @@ def validate_mp_data(opt, opt_lookup):
         if plt_type not in allowed_types:
             raise ValueError('Plot type is unknown: "{}"'.format(plt_type))
         check_invalid_key(dat_opt, allowed_keys[plt_type])
-        
+
         valid_dat = {}
         for k, v in dat_opt.items():
             if k in ['x', 'y', 'z']:
@@ -775,3 +830,13 @@ def validate_mp_data(opt, opt_lookup):
         valid_opt.append(valid_dat)
 
     return valid_opt
+
+def validate_hv_output(opt, opt_lookup):
+    opt = check_lookup('output', opt, opt_lookup) or opt
+    allowed_keys = ['path']
+    check_invalid_key(opt, allowed_keys)
+    return opt
+
+def validate_hv_variables(opt, opt_lookup, opt_def):
+    return opt  # TODO
+

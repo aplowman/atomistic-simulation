@@ -737,7 +737,14 @@ def unflatten_dict_keys(d, delim='.'):
 
 
 def nan_to_none(arr):
-    """Convert a Numpy array to a (nested) list with np.nan replaced by None"""
+    """
+    Convert a Numpy array to a (nested) list with np.nan replaced by None
+
+    Notes
+    -----
+    The inverse can be done by specifying the dtype: np.array(lst, dtype=float)
+    """
+
     none_idx = np.where(np.isnan(arr))
     arr = arr.astype(object)
     arr[none_idx] = None

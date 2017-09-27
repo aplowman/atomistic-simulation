@@ -640,7 +640,7 @@ def get_circle_trace_plotly(radius, origin=None, start_ang=0, stop_ang=360, degr
     return out
 
 
-def plot_many_mpl(figs, save_dir=None):
+def plot_many_mpl_old(figs, save_dir=None):
     """
     Plot multiple figures with mutliple subplots and traces in Matplotlib.
 
@@ -680,10 +680,11 @@ def plot_many_mpl(figs, save_dir=None):
 
             num_traces = len(s['traces'])
 
-            try:
+            if sp_nrows == 1 or sp_ncols == 1:
+                ax_idx = sp_ridx if sp_ncols == 1 else sp_cidx
+                ax = all_ax[ax_idx]
+            else:
                 ax = all_ax[sp_ridx][sp_cidx]
-            except:
-                ax = all_ax
 
             all_labels = []
 
@@ -798,3 +799,475 @@ def plot_many_mpl(figs, save_dir=None):
                 fn = fn_base + '.' + fmt_i
                 path = os.path.join(save_dir, fn)
                 plt.savefig(path)
+        else:
+            plt.show()
+
+
+def normalise_mpl_subplots_axes(all_ax, nrows, ncols):
+    """
+    Normalise the axes produced by plt.subplots() so it is always a 2D array.
+
+    """
+
+    if nrows == 1:
+
+        if ncols == 1:
+            all_ax = np.array([[all_ax]])
+
+        else:
+            all_ax = np.array([all_ax])
+
+    elif ncols == 1:
+        all_ax = np.array([[i] for i in all_ax])
+
+    return all_ax
+
+
+def encode_axis_props_mpl(props, ax):
+    """
+    Change axis properties into those accepted by Matplotlib.
+
+    Parameters
+    ----------
+    props : dict
+        Dict of axis properties which are to be mapped to MPL axis properties 
+        which can be passed to `ax.set()`.
+    ax : str
+        `x` or `y`      
+    """
+    isx = False
+    if ax == 'x':
+        isx = True
+
+    encoded_props = {}
+    for k, v in props.items():
+
+        if k == 'label':
+            if isx:
+                encoded_props.update({'xlabel': v})
+            else:
+                encoded_props.update({'ylabel': v})
+
+    return encoded_props
+
+
+def encode_axis_props_plotly(props):
+    """Change axis properties into those accepted by Plotly."""
+
+    PASS_PROPS = [
+        'side',
+        'overlaying',
+        'mirror',
+        'linecolor',
+        'linewidth',
+        'ticks',
+        'showgrid',
+        'zeroline',
+    ]
+
+    encoded_props = {}
+    for k, v in props.items():
+
+        if k == 'label':
+            encoded_props.update({'title': v})
+        elif k == 'reverse':
+            encoded_props.update({'autorange': 'reversed' if v else True})
+        elif k in PASS_PROPS:
+            encoded_props.update({k: v})
+
+    return encoded_props
+
+
+def get_subplot_axes_mpl(base_ax, all_ax_defn, all_ax_props):
+    """
+    Generate a list of mpl axes objects, starting from an original axes object.
+
+    Parameters
+    ----------
+    base_ax : matplotlib.axes.Axes object
+        New Axes are generated from this Axes object with e.g. ax.twiny()
+    all_ax_defn: list of list of str
+        Each list element represents a set of axes (e.g. x and y) to appear
+        on a given subplot. Inner lists represent the x- and y-axes and 
+        are defined here so that properties can be assiged in the 
+        `all_ax_props` dict.
+    all_ax_props : dict
+        Keys are strings which are listed in `all_ax_defn`. Values are 
+        axis properties defined which are passed to `encode_axis_props_mpl`.
+
+    Returns
+    -------
+    list of matplotlib.axes.Axes objects
+        The list represents all the Axes objects for a given subplot.
+
+    """
+
+    subplot_ax = [base_ax]
+    for ax_i_names in all_ax_defn[1:]:
+
+        if ax_i_names[0] == all_ax_defn[0][0]:
+            subplot_ax.append(base_ax.twinx())
+
+        elif ax_i_names[1] == all_ax_defn[0][1]:
+            subplot_ax.append(base_ax.twiny())
+
+    for ax_idx, ax_i_names in enumerate(all_ax_defn):
+
+        x_name = ax_i_names[0]
+        y_name = ax_i_names[1]
+
+        x_props = all_ax_props.get(x_name, {})
+        y_props = all_ax_props.get(y_name, {})
+
+        if x_props.get('reverse', False):
+            subplot_ax[ax_idx].invert_xaxis()
+            del x_props['reverse']
+
+        if y_props.get('reverse', False):
+            subplot_ax[ax_idx].invert_yaxis()
+            del y_props['reverse']
+
+        x_set_props = encode_axis_props_mpl(x_props, 'x')
+        y_set_props = encode_axis_props_mpl(y_props, 'y')
+        subplot_ax[ax_idx].set(**x_set_props, **y_set_props)
+
+    return subplot_ax
+
+
+def set_subplot_axes_plotly(layout, idx, all_ax_defn, all_ax_props):
+    """
+    Generate additional axes for a given subplot index (`idx`) in a grid of
+    subplots, where the single x and y axes for each subplot have already been
+    defined in `layout`.
+
+    """
+
+    base_xax_idx = str(idx + 1)
+    base_yax_idx = str(idx + 1)
+    base_xax_name = 'xaxis' + base_xax_idx
+    base_yax_name = 'yaxis' + base_yax_idx
+    xax = layout[base_xax_name]
+    yax = layout[base_yax_name]
+
+    num_xax = len([i for i in layout.keys() if 'xaxis' in i])
+    num_yax = len([i for i in layout.keys() if 'yaxis' in i])
+
+    all_x_defn = utils.get_col(all_ax_defn, 0)
+    all_y_defn = utils.get_col(all_ax_defn, 1)
+
+    default_base_ax = {
+        'linecolor': 'black',
+        'linewidth': 1,
+        'mirror': True,
+        'ticks': 'outside',
+        'zeroline': False,
+    }
+    default_non_base_ax = {
+        'ticks': 'outside',
+        'showgrid': False,
+        'zeroline': False,
+    }
+
+    xax.update({
+        **encode_axis_props_plotly({
+            **all_ax_props.get(all_ax_defn[0][0], {}),
+            **default_base_ax,
+        }),
+    })
+    yax.update({
+        **encode_axis_props_plotly({
+            **all_ax_props.get(all_ax_defn[0][1], {}),
+            **default_base_ax,
+        })
+    })
+
+    ax_names_map = [['x' + base_xax_idx, 'y' + base_yax_idx]]
+    for ax_nm_idx, ax_i_names in enumerate(all_ax_defn[1:]):
+
+        if ax_i_names[0] in all_x_defn[:ax_nm_idx + 1]:
+            xax_i_idx = all_x_defn[:ax_nm_idx + 1].index(ax_i_names[0])
+            xax_name = ax_names_map[xax_i_idx][0]
+
+        else:
+            xax_idx = str(num_xax + 1)
+            xax_name = 'x' + xax_idx
+
+            layout.update({
+                'xaxis' + xax_idx: {
+                    **encode_axis_props_plotly({
+                        **all_ax_props.get(ax_i_names[0], {}),
+                        **default_non_base_ax,
+                    }),
+                    'domain': layout[base_xax_name]['domain'],
+                    'anchor': 'y' + str(idx + 1),
+                }
+            })
+            num_xax += 1
+
+        if ax_i_names[1] in all_y_defn[:ax_nm_idx + 1]:
+            yax_i_idx = all_y_defn[:ax_nm_idx + 1].index(ax_i_names[1])
+            yax_name = ax_names_map[yax_i_idx][1]
+
+        else:
+            yax_idx = str(num_yax + 1)
+            yax_name = 'y' + yax_idx
+            layout.update({
+                'yaxis' + yax_idx: {
+                    **encode_axis_props_plotly({
+                        **all_ax_props.get(ax_i_names[1], {}),
+                        **default_non_base_ax,
+                    }),
+                    'domain': layout[base_yax_name]['domain'],
+                    'anchor': 'x' + str(idx + 1),
+                    'side': 'right',
+                    'overlaying': 'y' + base_yax_idx,
+                }
+            })
+            num_yax += 1
+
+        ax_names_map.append([xax_name, yax_name])
+
+    return ax_names_map
+
+
+def make_plotly_grid(nrows, ncols, subplot_width, subplot_height, titles):
+    """Define an x- and y-axis for each in a grid of subplots."""
+
+    sep_x = 80
+    sep_y = 50
+    subplot_title_sep = 20
+
+    w = (subplot_width + (sep_x * 2)) * ncols
+    h = (subplot_height + (sep_y * 2) + subplot_title_sep) * nrows
+
+    sep_x_frac = sep_x / w
+    sep_y_frac = sep_y / h
+    spt_sep_frac = subplot_title_sep / h
+
+    layout = {
+        'width': w,
+        'height': h,
+        'annotations': [],
+    }
+    idx = 1
+    for r in range(nrows):
+        for c in range(ncols):
+            xname = 'xaxis' + str(idx)
+            yname = 'yaxis' + str(idx)
+            xfrac = (c / ncols)
+            yfrac = (r / nrows)
+
+            ytop = (r + 1) / nrows - sep_y_frac
+            xdom = [c / ncols + sep_x_frac, (c + 1) / ncols - sep_x_frac]
+            ydom = [r / nrows + sep_y_frac, ytop]
+
+            layout.update({
+                xname: {
+                    'anchor': 'y' + str(idx),
+                    'domain': xdom,
+                },
+                yname: {
+                    'anchor': 'x' + str(idx),
+                    'domain': ydom
+                }
+            })
+
+            if titles[idx - 1] is not None:
+
+                xmid = (c + 1 / 2) / ncols
+                layout['annotations'].append({
+                    'xref': 'paper',
+                    'yref': 'paper',
+                    'y': ytop + spt_sep_frac,
+                    'x': xmid,
+                    'text': titles[idx - 1],
+                    'showarrow': False,
+                    'font': {'size': 16},
+                    'xanchor': 'center',
+                    'yanchor': 'bottom',
+                })
+
+            idx += 1
+
+    return layout
+
+
+def get_subplots(fig, lib='mpl'):
+    """
+    Later add ability to get subplots from grid etc.
+
+    Parameters
+    ----------
+    fig : dict
+    lib : str ('mpl' | 'plotly')
+
+    """
+
+    SUBPLOT_WIDTH = 300
+    SUBPLOT_HEIGHT = 300
+    MAX_HORZ_SUBPLOTS = 4
+    DPI = 96
+
+    if fig.get('subplot_width') is not None:
+        SUBPLOT_WIDTH = fig['subplot_width']
+    if fig.get('subplot_height') is not None:
+        SUBPLOT_HEIGHT = fig['subplot_height']
+
+    num_subplots = len(fig['subplots'])
+
+    # Partition subplots into reasonable grid
+    sp_nrows = int(np.ceil(num_subplots / MAX_HORZ_SUBPLOTS))
+    sp_ncols = int(np.ceil(num_subplots / sp_nrows))
+
+    if lib == 'mpl':
+
+        width = (SUBPLOT_WIDTH * sp_ncols) / DPI
+        height = (SUBPLOT_HEIGHT * sp_nrows) / DPI
+
+        fig, all_ax = plt.subplots(
+            sp_nrows, sp_ncols, figsize=(width, height), dpi=DPI)
+
+        # Normalise all_ax so can always index with row and column indices
+        all_ax = normalise_mpl_subplots_axes(all_ax, sp_nrows, sp_ncols)
+        return fig, all_ax, sp_nrows, sp_ncols
+
+    elif lib == 'plotly':
+
+        subplot_titles = [i.get('title') for i in fig['subplots']]
+        layout = make_plotly_grid(sp_nrows, sp_ncols, SUBPLOT_WIDTH,
+                                  SUBPLOT_HEIGHT, subplot_titles)
+        return layout, sp_nrows, sp_ncols
+
+
+def set_trace_defaults(trc):
+
+    trc_def = {
+        'type': 'line',
+    }
+
+    return {**trc_def, **trc}
+
+
+def plot_many_plotly(figs):
+    """
+    Plot one or more figures each containing multiple subplots and traces
+    using Plotly.
+
+    """
+
+    figs = copy.deepcopy(figs)
+
+    for f_idx, f in enumerate(figs):
+
+        layout, nrows, ncols = get_subplots(f, lib='plotly')
+        layout.update({
+            'title': f['title']
+        })
+        data = []
+        legend_names_cols = {}
+        for s_idx, s in enumerate(f['subplots']):
+
+            # Generate additional axes for a given subplot
+            subplot_ax_names = set_subplot_axes_plotly(
+                layout, s_idx, s['axes'], s['axes_props'])
+
+            for t_idx, t in enumerate(s['traces']):
+
+                t = set_trace_defaults(t)
+                t_xax = subplot_ax_names[t['axes_idx']][0]
+                t_yax = subplot_ax_names[t['axes_idx']][1]
+
+                xv = t['x']['vals']
+                yv = t['y']['vals']
+                name = t['name'] if t.get('name', False) else None
+
+                showlegend = False
+                if name not in legend_names_cols:
+                    legend_names_cols.update(
+                        {name: COLS[len(legend_names_cols)]})
+                    showlegend = True
+
+                trc = {
+                    'x': xv,
+                    'y': yv,
+                    'name': name,
+                    'legendgroup': name,
+                    'showlegend': showlegend,
+                    'xaxis': t_xax,
+                    'yaxis': t_yax,
+                }
+
+                if t['type'] == 'line':
+                    trc.update({
+                        'type': 'scatter',
+                        'mode': 'line',
+                        'line': {
+                            'color': legend_names_cols[name],
+                        }
+                    })
+
+                elif t['type'] == 'marker':
+                    trc.update({
+                        'type': 'scatter',
+                        'mode': 'markers',
+                        'marker': {
+                            'color': legend_names_cols[name],
+                        }
+                    })
+
+                data.append(trc)
+
+        fig = go.Figure(data=data, layout=layout)
+        iplot(fig)
+
+
+def plot_many_mpl(figs):
+    """
+    Plot one or more figures each containing multiple subplots and traces using
+    Matplotlib.
+
+    """
+
+    figs = copy.deepcopy(figs)
+
+    for f_idx, f in enumerate(figs):
+
+        f_i, all_ax, nrows, ncols = get_subplots(f, lib='mpl')
+        f_i.suptitle(f['title'])
+
+        legend_names_cols = {}
+        for s_idx, s in enumerate(f['subplots']):
+
+            ridx, cidx = utils.get_row_col_idx(s_idx, nrows, ncols)
+            ax = all_ax[ridx][cidx]
+
+            # Generate additional axes for a given subplot
+            subplot_ax = get_subplot_axes_mpl(ax, s['axes'], s['axes_props'])
+
+            if s.get('title', False):
+                subplot_ax[0].set_title(s['title'])
+
+            for t_idx, t in enumerate(s['traces']):
+
+                t = set_trace_defaults(t)
+                t_ax = subplot_ax[t['axes_idx']]
+
+                xv = t['x']['vals']
+                yv = t['y']['vals']
+                name = t.get('name')
+
+                if name not in legend_names_cols:
+                    legend_names_cols.update(
+                        {name: COLS[len(legend_names_cols)]})
+
+                if t['type'] == 'line':
+                    t_ax.plot(xv, yv, c=legend_names_cols[name], label=name)
+
+                elif t['type'] == 'marker':
+                    t_ax.scatter(
+                        x=xv, y=yv, c=legend_names_cols[name], label=name)
+
+                t_ax.legend()
+
+        plt.tight_layout()
+        plt.show()

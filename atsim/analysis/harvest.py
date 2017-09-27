@@ -9,7 +9,6 @@ from atsim import utils, plotting, vectors, SCRIPTS_PATH, REF_PATH
 from atsim.simsio import castep, lammps
 from atsim.analysis import compute_funcs
 from atsim.analysis.compute_funcs import get_depends, SINGLE_COMPUTE_LOOKUP, MULTI_COMPUTE_LOOKUP
-from atsim.set_up.harvest_opt import HARVEST_OPT
 from atsim.utils import dict_from_list, get_unique_idx
 
 
@@ -31,7 +30,7 @@ VAR_ALLOWED_REQUIRED = {
 VAR_STD_KEYS = VAR_REQ_KEYS + ['display_name', 'idx', 'vals', ]
 
 
-def read_results(sid, skip_idx=None, overwrite=False, query_all=False):
+def read_results(sid, archive_path, skip_idx=None, overwrite=False, query_all=False):
     """
     Parameters
     ----------
@@ -54,7 +53,7 @@ def read_results(sid, skip_idx=None, overwrite=False, query_all=False):
 
     """
 
-    sid_path = os.path.join(HARVEST_OPT['archive_path'], sid)
+    sid_path = os.path.join(archive_path, sid)
     sims = read_pickle(os.path.join(sid_path, 'sims.pickle'))
     method = sims['base_options']['method']
 
@@ -266,7 +265,6 @@ def collate_results(res_opt, skip_idx=None, debug=False):
 
     computes = []
     add_vars = []
-    plots = res_opt.get('plots', [])
 
     # Make a list of all variable ids
     var_ids = []
@@ -308,16 +306,15 @@ def collate_results(res_opt, skip_idx=None, debug=False):
         'session_id_idx': [],
         'idx': [],
         'series_name': [],
-        'plots': plots,
         'variables': ordered_vars,
         'rid': rs_id,
-        'output_path': res_opt['output_path'],
+        'output_path': res_opt['output']['path'],
     }
 
     # Get a list of lists of sims:
     all_sims = []
     for sid in res_opt['sid']:
-        path = os.path.join(res_opt['archive_path'], sid)
+        path = os.path.join(res_opt['archive']['path'], sid)
         pick_path = os.path.join(path, 'sims.pickle')
         pick = read_pickle(pick_path)
         all_sims.append(pick['all_sims'])
@@ -349,7 +346,7 @@ def collate_results(res_opt, skip_idx=None, debug=False):
     for sid_idx, sid in enumerate(res_opt['sid']):
 
         skips = skip_idx[sid_idx]
-        path = os.path.join(res_opt['archive_path'], sid)
+        path = os.path.join(res_opt['archive']['path'], sid)
 
         # Open the pickle file associated with this simulation series:
         pick_path = os.path.join(path, 'sims.pickle')
@@ -464,6 +461,7 @@ def main(harvest_opt):
     sids = harvest_opt['sid']
     skip_idx = harvest_opt['skip_idx']
     overwrite = harvest_opt.get('overwrite', False)
+    archive_path = harvest_opt['archive']['path']
     debug = harvest_opt.get('debug', False)
 
     if skip_idx is None or len(skip_idx) == 0:
@@ -478,13 +476,13 @@ def main(harvest_opt):
             skip_idx = [[] for _ in range(len(sids))]
 
     for s_idx, s in enumerate(sids):
-        read_results(s, skip_idx=skip_idx[s_idx], overwrite=overwrite)
+        read_results(s, archive_path, skip_idx=skip_idx[s_idx], overwrite=overwrite)
 
     # Compute additional properties
     out = collate_results(harvest_opt, skip_idx=skip_idx, debug=debug)
 
     # Save the JSON file in the results directory of the first listed SID
-    res_dir = os.path.join(harvest_opt['output_path'], out['rid'])
+    res_dir = os.path.join(harvest_opt['output']['path'], out['rid'])
 
     os.makedirs(res_dir, exist_ok=True)
     json_fn = 'results.json'
@@ -498,7 +496,3 @@ def main(harvest_opt):
     with open(json_path, 'w', encoding='utf-8', newline='') as jf:
         print('Saving {} in {}'.format(json_fn, res_dir))
         json.dump(out, jf, sort_keys=True, indent=4)
-
-
-if __name__ == '__main__':
-    main(HARVEST_OPT)

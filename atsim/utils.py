@@ -763,3 +763,14 @@ def get_unique_idx(a):
             unique.append(ai)
             unique_idx.append([ai_idx])
     return unique, unique_idx
+
+
+def get_row_col_idx(idx, nrows, ncols):
+    """
+    For a grid defined by number of rows and columns, get the row and column indices 
+    from a single index which increments first columns and then rows.
+
+    """
+    ridx = int(np.floor(idx / ncols))
+    cidx = int(idx - (ridx * ncols))
+    return ridx, cidx

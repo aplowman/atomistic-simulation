@@ -625,6 +625,7 @@ def validate_ms_lammps(opt, opt_lookup):
     check_invalid_key(opt, allowed_keys)
     return opt
 
+
 def validate_hv_opt(opt_fn, lookup_opt_fn, opt_def_fn):
     """Function to validate harvest.yml options."""
 
@@ -639,7 +640,7 @@ def validate_hv_opt(opt_fn, lookup_opt_fn, opt_def_fn):
         opt_lookup = yaml.load(f)
 
     with open(opt_def_path, 'r', encoding='utf-8') as f:
-        opt_def = yaml.load(f)        
+        opt_def = yaml.load(f)
 
     deep_keys = [
         'archive',
@@ -659,22 +660,24 @@ def validate_hv_opt(opt_fn, lookup_opt_fn, opt_def_fn):
         'sid',
         'skip_idx',
         'variables',
-    ]   
+    ]
     check_invalid_key(opt_unflat, allowed_keys)
 
     valid_opt = {}
     for k, v in opt_unflat.items():
-        
+
         if k == 'archive':
             valid_opt.update({k: validate_archive(v, opt_lookup)})
         elif k == 'output':
             valid_opt.update({k: validate_hv_output(v, opt_lookup)})
         elif k == 'variables':
-            valid_opt.update({k: validate_hv_variables(v, opt_lookup, opt_def)})
+            valid_opt.update(
+                {k: validate_hv_variables(v, opt_lookup, opt_def)})
         else:
             valid_opt.update({k: v})
 
     return valid_opt
+
 
 def validate_ps_opt(opt_fn, lookup_opt_fn):
     opt_path = os.path.join(SET_UP_PATH, opt_fn)
@@ -727,7 +730,7 @@ def validate_mp_opt(opt_fn, lookup_opt_fn, opt_def_fn):
         opt_lookup = yaml.load(f)
 
     with open(opt_def_path, 'r', encoding='utf-8') as f:
-        opt_def = yaml.load(f)        
+        opt_def = yaml.load(f)
 
     allowed_keys = [
         'fmt',
@@ -755,7 +758,6 @@ def validate_mp_opt(opt_fn, lookup_opt_fn, opt_def_fn):
 
         print('plt_opt: \n{}\n'.format(plt_opt))
 
-
         check_invalid_key(plt_opt, allowed_keys)
         valid_plt = {}
         for k, v in plt_opt.items():
@@ -768,10 +770,11 @@ def validate_mp_opt(opt_fn, lookup_opt_fn, opt_def_fn):
 
     return valid_opt
 
+
 def validate_mp_data(opt, opt_lookup):
 
     def validate_xyz(xyz_opt, opt_lookup):
-        allowed_keys = [            
+        allowed_keys = [
             'id',
             'label',
             'reverse',
@@ -831,12 +834,13 @@ def validate_mp_data(opt, opt_lookup):
 
     return valid_opt
 
+
 def validate_hv_output(opt, opt_lookup):
     opt = check_lookup('output', opt, opt_lookup) or opt
     allowed_keys = ['path']
     check_invalid_key(opt, allowed_keys)
     return opt
 
+
 def validate_hv_variables(opt, opt_lookup, opt_def):
     return opt  # TODO
-

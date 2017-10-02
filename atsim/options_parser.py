@@ -72,7 +72,7 @@ def get_base_structure_defn(opt, opt_lookup):
             raise ValueError(
                 'Σ value not specified in CSL supercell type.')
         else:
-            sigma = csl_str[-1]
+            sigma = int(csl_str.split('Σ')[1])
             csl_vecs = opt_lookup['csl_vecs'][csl_str]
             if sup_type == 'csl_bulk_bicrystal':
                 csl_vecs = csl_vecs[bulk_idx]

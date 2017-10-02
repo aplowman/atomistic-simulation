@@ -743,6 +743,7 @@ def validate_mp_opt(opt_fn, lookup_opt_fn, opt_def_fn):
         'trace_series',
         'data',
         'axes',
+        'axes_props',
     ]
 
     valid_opt = []
@@ -786,6 +787,9 @@ def validate_mp_data(opt, opt_lookup):
         'type',
         'x',
         'y',
+        'axes_idx',
+        'name',
+        'sort',
     ]
     allowed_keys_2d = allowed_keys_all
     allowed_keys_line = allowed_keys_2d + [

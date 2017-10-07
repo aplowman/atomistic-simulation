@@ -225,6 +225,17 @@ def get_depends(compute_name, inc_id=True, inc_val=True, **kwargs):
                 'opt_step': opt_step,
             })
 
+    elif compute_name == 'rms_forces':
+
+        d.update({
+            'forces_src': kwargs['forces_src'],
+        })
+        opt_step = kwargs.get('opt_step')
+        if opt_step is not None:
+            d.update({
+                'opt_step': opt_step,
+            })
+
     elif compute_name == 'atoms_gb_dist_change':
 
         out = [
@@ -294,6 +305,50 @@ def supercell_type(out, sim, sim_idx):
 
     else:
         return COMPATIBILITY_LOOKUP[sim.options['base_structure']['type']]
+
+
+def get_rms_force(forces):
+    """
+    Parameters
+    ----------
+    forces : ndarray of shape (M, 3, N)
+        Array representing the force components on N atoms
+        for M steps.
+    """
+    if len(forces) == 0:
+        return None
+
+    forces_rshp = forces.reshape(forces.shape[0], -1)
+    forces_rms = np.sqrt(np.mean(forces_rshp ** 2, axis=1))
+
+    return forces_rms
+
+
+def rms_forces(out, sim, sim_idx, forces_src, opt_step=None):
+    err_msg = 'Forces source "{}" not available from {} output.'
+    method = sim.options['method']
+    allowed_frc_srcs = {
+        'castep': ['forces_constrained', 'forces_unconstrained',
+                   'forces_constrained_sym'],
+        'lammps': []
+    }
+    if forces_src not in allowed_frc_srcs[method]:
+        raise ValueError(err_msg.format(forces_src, method.upper()))
+
+    forces = sim.results[forces_src]
+
+    print('in rms_forces!')
+
+    if opt_step is None:
+        f_rms = get_rms_force(forces)
+
+    else:
+        if not isinstance(opt_step, int):
+            raise ValueError('`opt_step` must be an integer.')
+        f_rms = get_rms_force(forces)[opt_step]
+
+    print('f_rms: {}'.format(f_rms))
+    return f_rms
 
 
 def energy(out, sim, sim_idx, energy_src, opt_step=None):
@@ -733,6 +788,7 @@ SINGLE_COMPUTE_LOOKUP = {
     'num_atoms': num_atoms,
     'energy': energy,
     'energy_per_atom': energy_per_atom,
+    'rms_forces': rms_forces,
     'gb_area': gb_area,
     'supercell_type': supercell_type,
     'gb_thickness': gb_thickness,

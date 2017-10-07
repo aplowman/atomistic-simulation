@@ -4,6 +4,7 @@ from atsim import utils
 from atsim import SET_UP_PATH, SERIES_NAMES, ALLOWED_SERIES_KEYS
 import copy
 import os
+import warnings
 
 
 def get_scratch_lookup_name(lookup_name, method):
@@ -366,19 +367,28 @@ def validate_ms_base_structure(opt, opt_lookup):
         check_invalid_key(csl_params_opt, allowed_keys)
         return csl_params_opt
 
-    print('opt: {}'.format(opt))
-
     if '<<lookup>>' in opt:
         opt = get_base_structure_defn(opt, opt_lookup)
 
     print('opt: {}'.format(opt))
 
-    sup_type = opt['type']
     allowed_keys_all = [
         'type',
         'overlap_tol',
+        'import',
     ]
-    allowed_keys_gb_from_structure = allowed_keys_all + [
+    allowed_keys_import = [
+        'import',
+        'overlap_tol',
+        'archive',
+    ]
+    allowed_keys_gb = [
+        'relative_shift_args',
+        'boundary_vac_args',
+        'wrap',
+        'maintain_inv_sym',
+    ]
+    allowed_keys_gb_from_structure = allowed_keys_all + allowed_keys_gb + [
         'csl',
         'csl_params',
     ]
@@ -398,18 +408,27 @@ def validate_ms_base_structure(opt, opt_lookup):
         'box_lat'
     ]
     allowed_keys = {
-        'csl_bicrystal': allowed_keys_csl,
+        'csl_bicrystal': allowed_keys_csl + allowed_keys_gb,
         'csl_bulk_bicrystal': allowed_keys_csl,
-        'csl_surface_bicrystal': allowed_keys_csl_surf,
+        'csl_surface_bicrystal': allowed_keys_csl_surf + allowed_keys_gb,
         'csl_bicrystal_from_structure': allowed_keys_gb_from_structure,
         'bulk': allowed_keys_bulk,
     }
     allowed_types = list(allowed_keys.keys())
-    if sup_type not in allowed_types:
-        raise ValueError(
-            'base_structure.type: {} is unknown.'.format(sup_type))
-    check_invalid_key(opt, allowed_keys[sup_type])
 
+    if 'import' not in opt:
+
+        sup_type = opt['type']
+
+        if sup_type not in allowed_types:
+            raise ValueError(
+                'base_structure.type: {} is unknown.'.format(sup_type))
+        allowed_keys = allowed_keys[sup_type]
+
+    else:
+        allowed_keys = allowed_keys_import
+
+    check_invalid_key(opt, allowed_keys)
     valid_bs = {}
     for k, v in opt.items():
         if k == 'csl_params':
@@ -427,10 +446,43 @@ def validate_ms_base_structure(opt, opt_lookup):
         elif k == 'box_lat':
             valid_bs.update({k: np.array(v)})
 
+        elif k == 'import':
+            valid_bs.update({k: validate_bs_import(v, opt_lookup)})
+
         else:
             valid_bs.update({k: v})
 
     return valid_bs
+
+
+def validate_bs_import(opt, opt_lookup):
+
+    deep_keys = [
+        'archive',
+    ]
+    for dk in deep_keys:
+        if opt.get(dk) is not None:
+            opt[dk + '.<<lookup>>'] = opt.pop(dk)
+
+    opt_unflat = utils.unflatten_dict_keys(opt)
+
+    allowed_keys = [
+        'id',
+        'sim_idx',
+        'opt_step',
+        'archive',
+    ]
+    check_invalid_key(opt_unflat, allowed_keys)
+    valid_import = {}
+
+    for k, v in opt_unflat.items():
+
+        if k == 'archive':
+            valid_import.update({k: validate_archive(v, opt_lookup)})
+        else:
+            valid_import.update({k: v})
+
+    return valid_import
 
 
 def validate_ms_crystal_structures(opt, opt_lookup):
@@ -733,6 +785,24 @@ def validate_mp_opt(opt_fn, lookup_opt_fn, opt_def_fn):
         opt_def = yaml.load(f)
 
     allowed_keys = [
+        'results_id',
+        'plots',
+    ]
+
+    valid_opt = {}
+    for k, v in opt.items():
+
+        if k == 'plots':
+            valid_opt.update({k: validate_mp_plots(v, opt_lookup, opt_def)})
+        else:
+            valid_opt.update({k: v})
+
+    return valid_opt
+
+
+def validate_mp_plots(opt, opt_lookup, opt_def):
+
+    allowed_keys = [
         'fmt',
         'lib',
         'filename',
@@ -744,6 +814,8 @@ def validate_mp_opt(opt_fn, lookup_opt_fn, opt_def_fn):
         'data',
         'axes',
         'axes_props',
+        'subplot_rows',
+        'subplot_cols',
     ]
 
     valid_opt = []
@@ -756,8 +828,6 @@ def validate_mp_opt(opt_fn, lookup_opt_fn, opt_def_fn):
         plt = check_lookup('plots', plt, opt_lookup) or plt
         plt_opt = utils.unflatten_dict_keys(plt)
         plt_opt = {**opt_def['plots'], **plt_opt}
-
-        print('plt_opt: \n{}\n'.format(plt_opt))
 
         check_invalid_key(plt_opt, allowed_keys)
         valid_plt = {}
@@ -777,6 +847,7 @@ def validate_mp_data(opt, opt_lookup):
     def validate_xyz(xyz_opt, opt_lookup):
         allowed_keys = [
             'id',
+            'idx',
             'label',
             'reverse',
         ]
@@ -790,6 +861,7 @@ def validate_mp_data(opt, opt_lookup):
         'axes_idx',
         'name',
         'sort',
+        'legend',
     ]
     allowed_keys_2d = allowed_keys_all
     allowed_keys_line = allowed_keys_2d + [
@@ -800,15 +872,24 @@ def validate_mp_data(opt, opt_lookup):
     ]
     allowed_keys_3d = allowed_keys_all + [
         'z',
+        'row_idx_id',
+        'col_idx_id',
+        'shape_id',
     ]
     allowed_keys_contour = allowed_keys_3d + [
         'show_points',  # something to show scatter points
         'grid',  # something to say x,y,z data are 2D
     ]
+    allowed_keys_poly = allowed_keys_all + [
+        'coeffs',
+        'xmin',
+        'xmax',
+    ]
     allowed_keys = {
         'line': allowed_keys_line,
         'marker': allowed_keys_marker,
-        'contour': allowed_keys_contour
+        'contour': allowed_keys_contour,
+        'poly': allowed_keys_poly,
     }
     allowed_types = list(allowed_keys.keys())
 

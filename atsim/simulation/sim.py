@@ -8,6 +8,45 @@ from atsim.structure.crystal import CrystalBox, CrystalStructure
 from atsim.simsio import castep, lammps
 
 
+class SimulationSeries(object):
+
+    def __init__(self, options):
+
+        sims, base_options = self.generate(options)
+        self.sims = sims
+        self.base_options = base_options
+
+    def generate(self, options):
+        """
+        Generates a simulation series on the stage area of the local machine.
+
+        Parameters
+        ----------
+        options : dict
+
+        Returns
+        -------
+        tuple of (list of AtomisticSimulation objects, dict)
+
+        """
+
+    @classmethod
+    def from_jsonable(cls):
+        pass
+
+    def to_jsonable(self):
+        pass
+
+    def write_jobscript(self):
+        pass
+
+    def copy_to_scratch(self):
+        pass
+
+    def copy_to_archive(self):
+        pass
+
+
 class AtomisticSimulation(object):
 
     def __init__(self, atomistic_structure, options):

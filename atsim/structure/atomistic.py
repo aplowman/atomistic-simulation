@@ -1249,3 +1249,87 @@ class BulkCrystal(AtomisticStructure):
                          motif_idx=cb.motif_idx)
 
         self.meta.update({'supercell_type': ['bulk']})
+
+
+class PointDefect(object):
+    """
+    Class to represent a point defect embedded within an AtomisticStructure
+
+    Attributes
+    ----------
+    species : str
+        Chemical symbol of a species or "v" for vacancy
+    atom_site : str
+        Chemical symbol of the species which this defect replaces or "i" for
+        interstitial.
+    index : int
+        The atom site or interstitial site index within the AtomisticStructure.
+    charge : float
+        The defect's electronic charge.
+    interstice_type : str
+        Set to "tetrahedral" or "octahedral" if `atom_site` is "i".
+
+    """
+
+    def __init__(self, species, atom_site, index=None, charge=0, interstice_type=None):
+
+        # Validation
+        if interstice_type not in [None, 'tetrahedral', 'octahedral']:
+            raise ValueError('Interstice type "{}" not understood.'.format(
+                interstice_type))
+
+        if atom_site != 'i' and interstice_type is not None:
+            raise ValueError('Non-interstitial defect specified but '
+                             '`interstice_type` also specified.')
+
+        if species == 'v' and atom_site == 'i':
+            raise ValueError('Cannot add a vacancy defect to an '
+                             'interstitial site!')
+
+        if atom_site == 'i' and interstice_type is None:
+            raise ValueError('`interstice_type` must be specified for '
+                             'interstitial point defect.')
+
+        self.species = species
+        self.atom_site = atom_site
+        self.index = index
+        self.charge = charge
+        self.interstice_type = interstice_type
+
+    def __str__(self):
+        """
+        References
+        ----------
+        https://en.wikipedia.org/wiki/Kr%C3%B6ger%E2%80%93Vink_notation
+
+        """
+        # String representation of the charge in Kroger-Vink notation
+        if self.charge == 0:
+            charge_str = 'x'
+        elif self.charge > 0:
+            charge_str = '•' * abs(self.charge)
+        elif self.charge < 0:
+            charge_str = '′' * abs(self.charge)
+
+        out = '{}_{}^{}'.format(self.species, self.atom_site, charge_str,
+                                self.index)
+
+        if self.index is not None:
+            idx_str_int = 'interstitial' if self.atom_site == 'i' else 'atom'
+            idx_str = 'at {} index {}'.format(idx_str_int, self.index)
+        else:
+            idx_str = ''
+
+        if self.interstice_type is not None:
+            out += ' ({}'.format(self.interstice_type)
+            out += ' ' + idx_str + ')'
+        else:
+            out += ' (' + idx_str + ')'
+
+        return out
+
+    def __repr__(self):
+        return ('PointDefect({!r}, {!r}, index={!r}, charge={!r}, '
+                'interstice_type={!r})').format(
+                    self.species, self.atom_site, self.index, self.charge,
+                    self.interstice_type)

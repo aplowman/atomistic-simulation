@@ -1420,6 +1420,7 @@ def main(opt):
             return
 
     # Generate simulation series:
+    skipped_sims = []
     num_sims = len(all_upd)
     for upd_idx, upd in enumerate(all_upd):
 
@@ -1485,7 +1486,8 @@ def main(opt):
         asim.write_input_files()
         all_sims.append(asim)
 
-    print('Completed making {} sim(s).'.format(num_sims))
+    print('Completed making {} sim(s). {} sims were skipped: {}.'.format(
+        num_sims, len(skipped_sims), skipped_sims))
 
     # Save all sims as pickle file:
     pick_path = stage.get_path('sims.pickle')

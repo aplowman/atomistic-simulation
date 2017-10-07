@@ -19,6 +19,7 @@ from atsim.simulation.sim import AtomisticSimulation
 from atsim.structure.bravais import BravaisLattice
 from atsim.structure.crystal import CrystalStructure
 from atsim.structure import atomistic
+from atsim.structure.atomistic import AtomisticStructureException
 from atsim.structure import bicrystal
 
 JS_TEMPLATE_DIR = os.path.join(SCRIPTS_PATH, 'set_up', 'jobscript_templates')
@@ -1422,7 +1423,12 @@ def main(opt):
 
         srs_opt = copy.deepcopy(opt)
         utils.update_dict(srs_opt, upd)
-        srs_as = make_series_structure(srs_opt['base_structure'], crys_structs)
+        try:
+            srs_as = make_base_structure(
+                srs_opt['base_structure'], crys_structs)
+        except AtomisticStructureException as e:
+            skipped_sims.append(upd_idx)
+            continue
 
         # Form the directory path for this sim
         # and find out which series affect the structure (for plotting purposes):

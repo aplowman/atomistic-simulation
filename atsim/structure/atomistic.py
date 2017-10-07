@@ -175,12 +175,12 @@ class AtomisticStructure(object):
         self._overlap_tol = overlap_tol
 
         if all_species is None:
-            self._all_species = all_species
+            self._all_species = None
         else:
             self._all_species = np.array(all_species)
 
         if all_species_idx is None:
-            self._all_species_idx = all_species_idx
+            self._all_species_idx = None
         else:
             self._all_species_idx = utils.parse_as_int_arr(all_species_idx)
 
@@ -1057,8 +1057,7 @@ class AtomisticStructure(object):
             return self._all_species
 
         else:
-            all_sp, _ = self.get_all_species()
-            return all_sp
+            return self.get_all_species()[0]
 
     @property
     def all_species_idx(self):
@@ -1068,8 +1067,7 @@ class AtomisticStructure(object):
             return self._all_species_idx
 
         else:
-            _, all_sp_idx = self.get_all_species()
-            return all_sp_idx
+            return self.get_all_species()[1]
 
     @property
     def crystal_centres(self):

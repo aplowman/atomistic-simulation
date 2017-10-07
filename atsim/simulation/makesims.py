@@ -747,7 +747,7 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
 
     Notes
     -----
-    Consider two parallel series A, B and a nested series C, so 
+    Consider two parallel series A, B and a nested series C, so
     `all_series_spec` looks like this:
     [
         [A_defn, B_defn], [C_defn],
@@ -781,7 +781,7 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
     [
         [A_defn], [B_defn, C_defn], [D_lookup_defn]
     ]
-    As before, firstly replace definition dict with list of update dicts (and 
+    As before, firstly replace definition dict with list of update dicts (and
     remove the lookup defn):
     [
         [ [A1, A2] ], [ [B1, B2], [C1, C2] ],
@@ -806,7 +806,7 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
     if a matching update dict.
 
     For each element in the lookup parent series, generate a child series if it
-    matches a parent specified in the lookup dict. Note that the child series 
+    matches a parent specified in the lookup dict. Note that the child series
     lengths need not be the same for each parent series element.
     [
         [[A1B1C1], [D1, D2]], [[A1B2C2], [D3]], [[A2B1C1], []], [[A2B2C2], []]

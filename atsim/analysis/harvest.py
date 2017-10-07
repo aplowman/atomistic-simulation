@@ -513,12 +513,12 @@ def main(harvest_opt):
             skip_idx = [[] for _ in range(len(sids))]
 
     for s_idx, s in enumerate(sids):
-        read_results(s, archive_path, skip_idx=skip_idx[s_idx], overwrite=overwrite)
+        read_results(s, archive_path,
+                     skip_idx=skip_idx[s_idx], overwrite=overwrite)
 
     # Compute additional properties
     out = collate_results(harvest_opt, skip_idx=skip_idx, debug=debug)
 
-    # Save the JSON file in the results directory of the first listed SID
     res_dir = os.path.join(harvest_opt['output']['path'], out['rid'])
 
     os.makedirs(res_dir, exist_ok=True)

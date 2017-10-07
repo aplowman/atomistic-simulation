@@ -1076,6 +1076,33 @@ class AtomisticStructure(object):
         return [geometry.get_box_centre(c['crystal'], origin=c['origin'])
                 for c in self.crystals]
 
+    def tile_supercell(self, tiles):
+        """
+        Tile supercell and atoms by some integer factors in each supercell 
+        direction.
+
+        Parameters
+        ----------
+        tiles : tuple or list of length 3
+            Number of repeats in each supercell direction.
+
+        """
+        invalid_msg = ('`tiles` must be a tuple or list of three integers '
+                       'greater than 0.')
+        if len(tiles) != 3:
+            raise ValueError(invalid_msg)
+
+        for t in tiles:
+            if not isinstance(t, int) or t < 1:
+                raise ValueError(invalid_msg)
+
+        tiled_atoms, tiled_all_species_idx = self.get_tiled_atoms(tiles)
+        tiled_sup = self.supercell * tiles
+
+        self.atom_sites = tiled_atoms
+        self._all_species_idx = tiled_all_species_idx
+        self.supercell = tiled_sup
+
     def get_tiled_atoms(self, tiles):
         """
         Get atom sites tiled by some integer factors in each supercell
@@ -1094,26 +1121,28 @@ class AtomisticStructure(object):
 
         """
 
-        invalid_msg = ('`tiles` must be a tuple or list of 3 integers greater'
-                       ' than 0.')
+        invalid_msg = ('`tiles` must be a tuple or list of three integers '
+                       'greater than 0.')
         if len(tiles) != 3:
             raise ValueError(invalid_msg)
 
         as_tiled = np.copy(self.atom_sites)
+        all_species_idx_tiled = np.copy(self.all_species_idx)
         for t_idx, t in enumerate(tiles):
 
             if t == 1:
                 continue
 
-            if not isinstance(t, int) or t == 0:
+            if not isinstance(t, int) or t < 1:
                 raise ValueError(invalid_msg)
 
             v = self.supercell[:, t_idx:t_idx + 1]
             all_t = (v * np.arange(1, t)).T[:, :, np.newaxis]
             as_tiled_t = np.hstack(all_t + as_tiled)
+            all_species_idx_tiled = np.tile(all_species_idx_tiled, t)
             as_tiled = np.hstack([as_tiled, as_tiled_t])
 
-        return as_tiled
+        return as_tiled, all_species_idx_tiled
 
     def get_interatomic_dist(self, periodic=True):
         """
@@ -1139,7 +1168,7 @@ class AtomisticStructure(object):
 
         """
         if periodic:
-            atms = self.get_tiled_atoms([2, 2, 2])
+            atms = self.get_tiled_atoms([2, 2, 2])[0]
         else:
             atms = self.atom_sites
 

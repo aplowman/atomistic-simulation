@@ -1317,29 +1317,6 @@ def main(opt):
         'boundary_vac': True,
         'boundary_vac_flat': True,
     }
-    log = []
-
-    # TEMP
-    """
-    keys in opt:
-        ['archive', 
-        'upload_plots', 
-        'crystal_structures', 
-        'offline_files', 
-        'scratch', 
-        'subdirs', 
-        'constraints', 
-        'castep', 
-        'series', 
-        'method', 
-        'base_structure', 
-        'append_db', 
-        'database', 
-        'make_plots',
-        'stage']
-
-    """
-    ####
 
     # Get unique representation of this series:
     opt['time_stamp'] = time.time()
@@ -1360,7 +1337,6 @@ def main(opt):
     scratch = Scratch(session_id=s_id, **opt['scratch'])
     archive = Archive(session_id=s_id, scratch=scratch, **opt['archive'])
 
-    # log.append('Making stage directory at: {}.'.format(stage_path))
     os.makedirs(stage.path, exist_ok=False)
 
     crys_structs = None

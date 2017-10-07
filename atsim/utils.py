@@ -774,3 +774,14 @@ def get_row_col_idx(idx, nrows, ncols):
     ridx = int(np.floor(idx / ncols))
     cidx = int(idx - (ridx * ncols))
     return ridx, cidx
+
+
+def get_key_max(lst, key):
+    """Get the maximum value of a key in a list of dicts"""
+    maxv = None
+    for d_idx, d in enumerate(lst):
+        if d_idx == 0:
+            maxv = d[key]
+        elif d[key] > maxv:
+            maxv = d[key]
+    return maxv

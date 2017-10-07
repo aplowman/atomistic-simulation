@@ -27,3 +27,13 @@ ALLOWED_SERIES_KEYS = {
     'gamma_surface': VLD_SRS_NM_VLS + ['grid_spec', 'preview'],
 }
 SERIES_NAMES = list(ALLOWED_SERIES_KEYS.keys())
+
+# Options file names
+OPT_FILE_NAMES = {
+    'makesims': 'makesims.yml',
+    'process': 'process.yml',
+    'harvest': 'harvest.yml',
+    'makeplots': 'makeplots.yml',
+    'lookup': 'lookup.yml',
+    'defaults': 'defaults.yml',
+}

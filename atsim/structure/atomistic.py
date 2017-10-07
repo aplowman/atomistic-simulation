@@ -907,6 +907,25 @@ class AtomisticStructure(object):
         # Update attributes:
         self.atom_sites = as_std_wrp
 
+    def add_point_defects(self, point_defects):
+        """
+        Add point defects to the structure.
+
+        Parameters
+        ----------
+        point_defects : list of PointDefect objects
+
+        """
+        pass
+
+    def add_atom(self, coords, species, crystal_idx, is_frac_coords=False):
+        """Add an atom to the structure."""
+        pass
+
+    def remove_atom(self, atom_idx):
+        """Remove an atom from the structure."""
+        pass
+
     @property
     def atom_sites_frac(self):
         return np.dot(np.linalg.inv(self.supercell), self.atom_sites)

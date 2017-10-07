@@ -5,7 +5,7 @@ import json
 import copy
 from pathlib import Path
 from atsim.readwrite import read_pickle, write_pickle, format_list, format_dict
-from atsim import utils, plotting, vectors, SCRIPTS_PATH, REF_PATH
+from atsim import utils, plotting, vectors, SCRIPTS_PATH, REF_PATH, OPT_FILE_NAMES
 from atsim.simsio import castep, lammps
 from atsim.analysis import compute_funcs
 from atsim.analysis.compute_funcs import get_depends, SINGLE_COMPUTE_LOOKUP, MULTI_COMPUTE_LOOKUP
@@ -52,10 +52,11 @@ def read_results(sid, archive_path, skip_idx=None, overwrite=False, query_all=Fa
         the remaining simulations. Default is False.
 
     """
-
     sid_path = os.path.join(archive_path, sid)
     sims = read_pickle(os.path.join(sid_path, 'sims.pickle'))
-    method = sims['base_options']['method']
+    # Get options from first sim if they don't exist (legacy compatiblity)
+    base_opt = sims.get('base_options', sims['all_sims'][0].options)
+    method = base_opt['method']
 
     s_count = 0
     for s_idx, sim_i in enumerate(sims['all_sims']):
@@ -67,8 +68,22 @@ def read_results(sid, archive_path, skip_idx=None, overwrite=False, query_all=Fa
         srs_paths = []
         srs_id = sim_i.options.get('series_id')
         if srs_id is not None:
-            for srs_id_lst in srs_id:
-                srs_paths.append('_'.join([i['path'] for i in srs_id_lst]))
+
+            # (legacy compatibility)
+            if isinstance(srs_id, dict) and len(srs_id) == 1:
+
+                new_srs_id = []
+                for k, v in srs_id.items():
+                    new_srs_id.append([{'name': k, **v}])
+                srs_id = new_srs_id
+
+            if not isinstance(srs_id, dict):
+                for srs_id_lst in srs_id:
+                    srs_paths.append('_'.join([i['path'] for i in srs_id_lst]))
+
+            else:
+                raise ValueError('Cannot parse `series_id` option from '
+                                 's_idx: {}'.format(s_idx))
 
         calc_path = os.path.join(sid_path, 'calcs', *srs_paths)
 
@@ -324,8 +339,19 @@ def collate_results(res_opt, skip_idx=None, debug=False):
     for series_sims in all_sims:
         sm_0 = series_sims[0]
         sm_0_opt = sm_0.options
-        if sm_0_opt.get('series_id') is not None:
-            for series_id_list in sm_0_opt['series_id']:
+
+        srs_id = sm_0_opt.get('series_id')
+        if srs_id is not None:
+
+            # (legacy compatibility)
+            if isinstance(srs_id, dict) and len(srs_id) == 1:
+
+                new_srs_id = []
+                for k, v in srs_id.items():
+                    new_srs_id.append([{'name': k, **v}])
+                srs_id = new_srs_id
+
+            for series_id_list in srs_id:
                 for series_id_sublist in series_id_list:
                     nm = series_id_sublist['name']
                     if nm not in all_srs_name:
@@ -352,7 +378,8 @@ def collate_results(res_opt, skip_idx=None, debug=False):
         pick_path = os.path.join(path, 'sims.pickle')
         pick = read_pickle(pick_path)
         sims = pick['all_sims']
-        base_opt = pick['base_options']
+        # Get options from first sim if they don't exist (legacy compatiblity)
+        base_opt = pick.get('base_options', sims[0].options)
         all_csi.append(pick.get('common_series_info'))
 
         # Loop through each simulation for this series
@@ -371,6 +398,16 @@ def collate_results(res_opt, skip_idx=None, debug=False):
             out['idx'].append(sm_idx)
 
             srs_id = sm.options.get('series_id')
+            if srs_id is not None:
+
+                # (legacy compatibility)
+                if isinstance(srs_id, dict) and len(srs_id) == 1:
+
+                    new_srs_id = []
+                    for k, v in srs_id.items():
+                        new_srs_id.append([{'name': k, **v}])
+                    srs_id = new_srs_id
+
             if srs_id is None:
                 srs_id = [[]]
 

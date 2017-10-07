@@ -11,7 +11,7 @@ import time
 import warnings
 from sys import stdout
 from pathlib import Path
-from atsim import utils, dbhelpers, readwrite, geometry
+from atsim import utils, dbhelpers, readwrite, geometry, OPT_FILE_NAMES
 from atsim import readwrite
 from atsim import SERIES_NAMES, SET_UP_PATH, REF_PATH, SCRIPTS_PATH
 from atsim.readwrite import replace_in_file, delete_line, add_line
@@ -1367,6 +1367,11 @@ def main(opt):
     if opt.get('crystal_structures') is not None:
         crys_structs = make_crystal_structures(opt['crystal_structures'])
     base_as = make_base_structure(opt['base_structure'], crys_structs)
+
+    # Copy makesims options file
+    opt_path = stage.get_path(OPT_FILE_NAMES['makesims'])
+    shutil.copy(os.path.join(
+        SET_UP_PATH, OPT_FILE_NAMES['makesims']), opt_path)
 
     # Save current options dict
     opt_p_str_path = stage.get_path('opt_processed.txt')

@@ -1,5 +1,7 @@
 import numpy as np
 import os
+import copy
+from atsim import utils
 
 # Plotly
 from plotly import tools
@@ -830,10 +832,10 @@ def encode_axis_props_mpl(props, ax):
     Parameters
     ----------
     props : dict
-        Dict of axis properties which are to be mapped to MPL axis properties 
+        Dict of axis properties which are to be mapped to MPL axis properties
         which can be passed to `ax.set()`.
     ax : str
-        `x` or `y`      
+        `x` or `y`
     """
     isx = False
     if ax == 'x':
@@ -888,11 +890,11 @@ def get_subplot_axes_mpl(base_ax, all_ax_defn, all_ax_props):
         New Axes are generated from this Axes object with e.g. ax.twiny()
     all_ax_defn: list of list of str
         Each list element represents a set of axes (e.g. x and y) to appear
-        on a given subplot. Inner lists represent the x- and y-axes and 
-        are defined here so that properties can be assiged in the 
+        on a given subplot. Inner lists represent the x- and y-axes and
+        are defined here so that properties can be assiged in the
         `all_ax_props` dict.
     all_ax_props : dict
-        Keys are strings which are listed in `all_ax_defn`. Values are 
+        Keys are strings which are listed in `all_ax_defn`. Values are
         axis properties defined which are passed to `encode_axis_props_mpl`.
 
     Returns
@@ -1115,13 +1117,18 @@ def get_subplots(fig, lib='mpl'):
 
     num_subplots = len(fig['subplots'])
 
-    # Partition subplots into reasonable grid
-    sp_nrows = int(np.ceil(num_subplots / MAX_HORZ_SUBPLOTS))
+    if fig.get('subplot_rows') is not None:
+        sp_nrows = fig['subplot_rows']
+    else:
+        # Partition subplots into reasonable grid
+        sp_nrows = int(np.ceil(num_subplots / MAX_HORZ_SUBPLOTS))
+
     sp_ncols = int(np.ceil(num_subplots / sp_nrows))
 
     if lib == 'mpl':
 
-        width = (SUBPLOT_WIDTH * sp_ncols) / DPI
+        width_pad = 200
+        width = (width_pad + (SUBPLOT_WIDTH * sp_ncols)) / DPI
         height = (SUBPLOT_HEIGHT * sp_nrows) / DPI
 
         fig, all_ax = plt.subplots(
@@ -1160,8 +1167,13 @@ def plot_many_plotly(figs):
     for f_idx, f in enumerate(figs):
 
         layout, nrows, ncols = get_subplots(f, lib='plotly')
+
         layout.update({
-            'title': f['title']
+            'title': f['title'],
+            'margin': {
+                'r': 300,
+            },
+            'width': layout['width'] + 300
         })
         data = []
         legend_names_cols = {}
@@ -1218,7 +1230,13 @@ def plot_many_plotly(figs):
                 data.append(trc)
 
         fig = go.Figure(data=data, layout=layout)
-        iplot(fig)
+
+        if f.get('iplot') is True:
+            iplot(fig)
+
+        elif f.get('save', True):
+            plot(fig, filename=os.path.join(
+                f.get('save_path', ''), f['title'] + '.html'))
 
 
 def plot_many_mpl(figs):
@@ -1252,22 +1270,233 @@ def plot_many_mpl(figs):
                 t = set_trace_defaults(t)
                 t_ax = subplot_ax[t['axes_idx']]
 
-                xv = t['x']['vals']
-                yv = t['y']['vals']
                 name = t.get('name')
+
+                xv = None
+                yv = None
+                if t['type'] in ['line', 'marker', 'contour']:
+                    xv = t['x']['vals']
+                    yv = t['y']['vals']
 
                 if name not in legend_names_cols:
                     legend_names_cols.update(
                         {name: COLS[len(legend_names_cols)]})
 
                 if t['type'] == 'line':
-                    t_ax.plot(xv, yv, c=legend_names_cols[name], label=name)
+                    plot_opt = {
+                        'c': legend_names_cols[name],
+                    }
+                    if t['legend']:
+                        plot_opt.update({
+                            'label': name
+                        })
+                    t_ax.plot(xv, yv, **plot_opt)
 
                 elif t['type'] == 'marker':
-                    t_ax.scatter(
-                        x=xv, y=yv, c=legend_names_cols[name], label=name)
+                    marker_opt = t.get('marker', {})
+
+                    if marker_opt.get('size') is not None:
+                        size = marker_opt['size']
+                    else:
+                        size = 5
+
+                    if marker_opt.get('color') is not None:
+                        col = marker_opt['color']
+                    else:
+                        col = legend_names_cols[name]
+
+                    plot_opt = {
+                        'c': col,
+                        's': size,
+                    }
+                    if t['legend']:
+                        plot_opt.update({
+                            'label': name
+                        })
+                    t_ax.scatter(xv, yv, **plot_opt)
+
+                elif t['type'] == 'contour':
+                    zv = t['z']['vals']
+                    add_contour_trace_mpl(
+                        f_i, t_ax, xv, yv, zv, name, t['contour'])
+
+                elif t['type'] == 'poly':
+
+                    x_vals = np.linspace(t['xmin'], t['xmax'])
+                    p1d = np.poly1d(t['coeffs']['vals'])
+                    poly_y = p1d(x_vals)
+                    poly_x = x_vals
+
+                    plot_opt = {
+                        'c': legend_names_cols[name],
+                    }
+                    if t['legend']:
+                        plot_opt.update({
+                            'label': name
+                        })
+                    t_ax.plot(poly_x, poly_y, **plot_opt)
 
                 t_ax.legend()
 
         plt.tight_layout()
-        plt.show()
+        if f.get('iplot') is True:
+            plt.show()
+
+        elif f.get('save', True):
+            plt.savefig(os.path.join(
+                f.get('save_path', ''), f['title'] + '.png'))
+
+
+def add_contour_trace_mpl(fig, ax, x, y, z, name, options=None):
+    """
+    Add a contour plot to an Axes object in Matplotlib
+
+    Parameters
+    ----------
+    ax : Matplotlib Axes object
+    x : list or ndarray
+        Defines the x values of the data. If `is_grid` is True, this is a 2D
+        array of a list of lists which can be cast to a 2D array, otherwise,
+        this is a 1D list or array.
+    y : list or ndarray
+        Defines the y values of the data. If `is_grid` is True, this is a 2D
+        array of a list of lists which can be cast to a 2D array, otherwise,
+        this is a 1D list or array.
+    z : list or ndarray
+        Defines the z values of the data. If `is_grid` is True, this is a 2D
+        array of a list of lists which can be cast to a 2D array, otherwise,
+        this is a 1D list or array.
+    options : dict
+        Options dictating the appearance of the contour plot. Following keys
+        are allowed (all optional):
+            is_grid : bool
+                If True, `x`, `y` and `z` data are expected to be 2D arrays (or
+                lists). If False, the data are expected to be 1D arrays (or
+                lists). If False, further options must be specified: `shape`,
+                `row_idx`, `col_idx`.
+            equal_aspect : bool
+                Sets an equal aspect ratio between the x and y axes.
+            tight_fit : bool
+                Fits the contour plot to the edges of the axes
+
+
+    Returns
+    -------
+    None
+
+    """
+
+    if options is None:
+        options = {}
+
+    opt_def = {
+        'is_grid': False,
+        'equal_aspect': True,
+        'tight_fit': True,
+        'cmap': 'viridis',
+    }
+
+    options = {**opt_def, **options}
+
+    allowed_keys = [
+        'is_grid',
+        'equal_aspect',
+        'tight_fit',
+        'cmap',
+        'row_idx',
+        'col_idx',
+        'grid_shape',
+    ]
+    for k, v in options.items():
+        if k not in allowed_keys:
+            raise ValueError('Option key "{}" is not allowed'.format(k))
+
+    xa, ya, za = [np.array(i) for i in [x, y, z]]
+
+    if options['is_grid']:
+        x_flat, y_flat = [i.flatten() for i in [xa, ya]]
+
+    else:
+
+        # Construct X, Y and Z 2D arrays from 1D arrays: x, y, z, row_idx,
+        # col_idx and grid_shape (grid_shape is redundantly an array)
+
+        # Validation:
+        if any([options.get(i) is None for i in ['row_idx', 'col_idx', 'grid_shape']]):
+            raise ValueError('`row_idx`, `col_idx`, and `grid_shape` must be '
+                             'specified in the `options` dict.')
+
+        row_idx = np.array(options['row_idx'])
+        col_idx = np.array(options['col_idx'])
+        grid_shape = np.array(options['grid_shape'])
+
+        # print('grid_shape: {}'.format(grid_shape))
+
+        if grid_shape.shape[1] != 2:
+            raise ValueError('`grid_shape` has an unexpected shape.')
+
+        # print('xa: {}'.format(xa))
+        # print('ya: {}'.format(ya))
+        # print('za: {}'.format(za))
+
+        # Check shapes:
+        required = [options['grid_shape'], options['row_idx'],
+                    options['col_idx'], xa, ya, za]
+        required_shps = [i.shape for i in required]
+        required_1d_shps = required_shps[1:]
+        if any([len(i) != 1 for i in required_1d_shps]):
+            raise ValueError('Input data should be 1D.')
+        required_shps_0 = [i[0] for i in required_shps]
+        required_shps_0_set = set(required_shps_0)
+
+        if len(required_shps_0_set) > 1:
+            raise ValueError('Length mismatch.')
+
+        X, Y, Z = None, None, None
+        shape_parsed = False
+        parsed_grid_pos = []
+        for idx, (gs, ri, ci, xi, yi, zi) in enumerate(zip(*required)):
+
+            rq = [gs, ri, ci, xi, yi, zi]
+
+            if any([i is None for i_idx, i in enumerate(rq) if i_idx != 0]):
+                continue
+
+            if any([np.isnan(i) for i_idx, i in enumerate(rq) if i_idx != 0]):
+                continue
+
+            if not shape_parsed:
+                shape_parsed = True
+                new_shape = tuple([int(i) for i in gs])
+                X = np.empty(new_shape, dtype=float) * np.nan
+                Y = np.empty(new_shape, dtype=float) * np.nan
+                Z = np.empty(new_shape, dtype=float) * np.nan
+
+            ri = int(ri)
+            ci = int(ci)
+
+            if (ri, ci) in parsed_grid_pos:
+                raise ValueError('Grid position: ({}, {}) has multiple '
+                                 'records.'.format(ri, ci))
+
+            X[ri][ci] = xi
+            Y[ri][ci] = yi
+            Z[ri][ci] = zi
+
+            parsed_grid_pos.append((ri, ci))
+
+        xa, ya, za = X, Y, Z
+
+    cset = ax.contourf(xa, ya, za, cmap=plt.get_cmap(options['cmap']))
+
+    if options['tight_fit']:
+        x_minmax = [np.nanmin(x), np.nanmax(x)]
+        y_minmax = [np.nanmin(y), np.nanmax(y)]
+        ax.set_xlim(x_minmax)
+        ax.set_ylim(y_minmax)
+
+    if options['equal_aspect']:
+        ax.set_aspect('equal')
+
+    cbar = fig.colorbar(cset, ax=ax)
+    cbar.set_label(name)

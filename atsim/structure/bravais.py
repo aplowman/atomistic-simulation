@@ -4,6 +4,16 @@ from plotly.offline import plot, iplot
 from atsim import geometry, vectors, utils
 
 
+def get_hex_vol(a, c):
+    """Get the volume of an hexagonal unit cell from the `a` and `c` parameters"""
+    return (c * a**2) * np.sin(np.pi / 3)
+
+
+def get_hex_a(c_a, v):
+    """Get the hexagonal unit cell `a` lattice parameter from the c/a ratio and the volume."""
+    return (v / (np.sin(np.pi / 3) * c_a))**(1 / 3)
+
+
 class BravaisLattice(object):
     """
     Class to represent a Bravais lattice unit cell.

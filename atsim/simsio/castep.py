@@ -430,7 +430,9 @@ def read_castep_output(dir_path, seedname=None, ignore_missing_output=False):
     out = read_castep_file(cst_path)
 
     # Parse additional ouput files:
-    if out['write_geom']:
+    vrs = out['version']
+    is_geom = out['params']['calc_type'] == 'geometry optimization'
+    if (vrs in ['17.2'] and out['write_geom']) or is_geom:
 
         # Parse the .geom file:
         geom_fn = '{}.geom'.format(seedname)
@@ -481,7 +483,7 @@ def read_castep_file(cst_path):
 
     """
 
-    TESTED_VERS = ['17.2']
+    TESTED_VERS = ['17.2', '16.11']
 
     HEADER = '+-------------------------------------------------+'
     VERS = 'CASTEP version'

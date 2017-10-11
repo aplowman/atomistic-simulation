@@ -25,6 +25,8 @@ ALLOWED_SERIES_KEYS = {
     'point_defect_charge': VLD_SRS_NM_VLS_SSS,
     'point_defect_idx': VLD_SRS_NM_VLS_SSS,
     'gamma_surface': VLD_SRS_NM_VLS + ['grid_spec', 'preview'],
+    'cs_vol_range': VLD_SRS_NM_VLS_SSS,
+    'cs_ca_range': VLD_SRS_NM_VLS_SSS,
 }
 SERIES_NAMES = list(ALLOWED_SERIES_KEYS.keys())
 

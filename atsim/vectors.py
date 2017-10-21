@@ -322,7 +322,7 @@ def find_unique_int_vecs(s):
     Returns
     -------
     ndarray
-        Array of column vectors.
+        Array of row vectors.
 
     Examples
     --------

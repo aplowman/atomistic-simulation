@@ -45,7 +45,7 @@ class Bicrystal(AtomisticStructure):
 
     def __init__(self, as_params, maintain_inv_sym=False, reorient=False,
                  boundary_vac_args=None, relative_shift_args=None, wrap=True,
-                 nbi=None):
+                 nbi=None, rot_mat=None):
 
         # Call parent constructor
         super().__init__(**as_params)
@@ -75,6 +75,7 @@ class Bicrystal(AtomisticStructure):
         self.boundary_idx = BI
         self.boundary_vac = 0
         self.relative_shift = [0, 0]
+        self.rot_mat = rot_mat
 
         self.check_inv_symmetry()
 
@@ -600,6 +601,7 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
         'relative_shift_args': relative_shift_args,
         'wrap': wrap,
         'nbi': 2,
+        'rot_mat': rot_mat,
     }
 
     return Bicrystal(**bc_params)

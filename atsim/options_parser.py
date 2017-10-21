@@ -340,6 +340,7 @@ def validate_ms_scratch(opt, opt_lookup, method):
         'module_load',
         'job_array',
         'offline_files',
+        'selective_submission',
     ]
     check_invalid_key(opt, allowed_keys)
     valid_scratch = {}

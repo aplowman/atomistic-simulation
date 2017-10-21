@@ -16,7 +16,7 @@ from atsim import readwrite
 from atsim import SERIES_NAMES, SET_UP_PATH, REF_PATH, SCRIPTS_PATH
 from atsim.readwrite import replace_in_file, delete_line, add_line
 from atsim.simulation.sim import AtomisticSimulation
-from atsim.structure.bravais import BravaisLattice
+from atsim.structure.bravais import BravaisLattice, get_hex_a, get_hex_vol
 from atsim.structure.crystal import CrystalStructure
 from atsim.structure import atomistic
 from atsim.structure.atomistic import AtomisticStructureException
@@ -716,6 +716,32 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
                               'path': '{:.2f}'.format(v)}
             })
 
+    elif sn == 'cs_vol_range':
+
+        for v in vals:
+
+            out.append({
+                'base_structure': {
+                    'crystal_structure_modify': {
+                        'vol_change': v,
+                    }
+                },
+                'series_id': {'name': sn, 'val': v, 'path': '{:.2f}'.format(v)}
+            })
+
+    elif sn == 'cs_ca_range':
+
+        for v in vals:
+
+            out.append({
+                'base_structure': {
+                    'crystal_structure_modify': {
+                        'ca_change': v,
+                    }
+                },
+                'series_id': {'name': sn, 'val': v, 'path': '{:.2f}'.format(v)}
+            })
+
     extra_update = ss.get('extra_update')
     if extra_update is not None:
         for up_idx, up in enumerate(out):
@@ -1179,16 +1205,61 @@ def make_crystal_structures(cs_opt):
     return cs
 
 
+def modify_crystal_structure(cs, vol_change, ca_change):
+    """
+    Regenerate a CrystalStructure with a modified bravais lattice.
+
+    Parameters
+    ----------
+    cs : CrystalStructure object
+    vol_change : float
+        Percentage change in volume
+    ca_change : float
+        Percentage change in c/a ratio
+
+    Returns
+    -------
+    CrystalStructure
+
+    """
+    bl = cs.bravais_lattice
+
+    # Modify hexagonal CrystalStructure
+    if bl.lattice_system != 'hexagonal':
+        raise NotImplementedError('Cannot modify non-hexagonal crystal '
+                                  'structure.')
+
+    # Generate new a and c lattice parameters based on originals and volume and
+    # c/a ratio changes:
+    v = get_hex_vol(bl.a, bl.c)
+    v_new = v * (1 + vol_change / 100)
+
+    ca_new = (bl.c / bl.a) * (1 + ca_change / 100)
+    a_new = get_hex_a(ca_new, v_new)
+    c_new = ca_new * a_new
+
+    bl_new = BravaisLattice('hexagonal', a=a_new, c=c_new)
+    cs_new = CrystalStructure(bl_new, copy.deepcopy(cs.motif))
+    return cs_new
+
+
 def make_base_structure(bs_opt, crystal_structures):
 
     if bs_opt.get('import') is None:
-
+        remove_kys = ['type', 'import', 'sigma', 'crystal_structure_modify']
         struct_opt = {}
         for k, v in bs_opt.items():
-            if k == 'type' or k == 'import' or k == 'sigma':
+
+            if k in remove_kys:
                 continue
+
             elif k == 'cs_idx':
-                struct_opt.update({'crystal_structure': crystal_structures[v]})
+                cs = crystal_structures[v]
+                csm = bs_opt.get('crystal_structure_modify')
+                if csm is not None:
+                    cs = modify_crystal_structure(cs, **csm)
+                struct_opt.update({'crystal_structure': cs})
+
             else:
                 struct_opt.update({k: v})
 

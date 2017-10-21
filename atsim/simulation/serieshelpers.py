@@ -83,6 +83,8 @@ def refine_gamma_surface(sid):
         ],
     ]
 
+    # should add this programmatically to makesims.yml so the options are still
+    # validated.
     OPT['series'] = series
     makesims.main(OPT)
 

@@ -256,7 +256,7 @@ class BravaisLattice(object):
             a_x = self.a * f / np.sin(α_rad)
             a_y = self.a * (np.cos(γ_rad) - np.cos(α_rad)
                             * np.cos(β_rad)) / np.sin(α_rad)
-            a_z = self.a * np.cos(β)
+            a_z = self.a * np.cos(β_rad)
             b_y = self.b * np.sin(α_rad)
             b_z = self.b * np.cos(α_rad)
             c_z = self.c

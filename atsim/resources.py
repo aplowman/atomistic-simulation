@@ -1,3 +1,6 @@
+import utils
+
+
 class SGEOptions(object):
     """
     Class to represent options for sumitting a simulation series to a SGE batch
@@ -6,7 +9,7 @@ class SGEOptions(object):
     """
 
     def __init__(self, job_array, selective_submission=False, job_name=None,
-                 parallel_env=None):
+                 parallel_env=None, resource=None):
         """
         Parameters
         ----------
@@ -22,13 +25,16 @@ class SGEOptions(object):
             If True, the SGE task id flag `-t` [1] will be excluded
             from the jobscript file and instead this flag will be
             expected as a command line argument when executing the
-            jobscript: e.g. "qsub jobscript.sh -t 1-10:2". Default is
+            jobscript: e.g. "qsub -t 1-10:2 jobscript.sh". Default is
             False.
         job_name : str, optional
             Default is None.
         parallel_env : str, optional
-            The SGE parallel environment on which to submit the calculations. Only
-            applicable in `num_cores` > 1. Default is None.
+            The SGE parallel environment on which to submit the calculations.
+            Only applicable in `num_cores` > 1. Default is None.
+        resource : str, optional
+            The value to set for the SGE resource flag "-l". Default is None,
+            in which case the "-l" flag is not set.
 
         References
         ----------
@@ -65,6 +71,43 @@ class Resource(object):
     """Class to represent a directory on a remote or local computer."""
 
     def __init__(self, is_dropbox=False, host=None, os_name='posix', path='', remote=False):
+        """
+        Parameters
+        ----------
+        is_dropbox : bool, optional
+            Specifies whether this resource resides on a Dropbox account.
+            Default is False.
+        host : str, optional
+            Only applicable if `remote` is True. Host name used to connect to
+            the remote resource using SSH. Default is None. Must be specified
+            if `remote` is True.
+        os_name : str, optional
+            One of "posix" (for MacOS and Unix-like machines) or "nt" (for 
+            Windows). Default is "posix".
+        path : str, optional
+            Directory path of the resource. Set to empty string by default.
+        remote : bool, optional
+            Specifies whether the resource is on the local or a remote machine.
+            Default is False.
+
+        """
+
+        if remote and not host:
+            raise ValueError('`host` must be specified if `remote` is True.')
+
+        elif not remote and host:
+            raise ValueError('`host` must not be specified if `remote` is '
+                             'False')
+
+        if remote and os_name == 'nt':
+            raise NotImplementedError('Remote Windows resource not currently '
+                                      'supported.')
+
+        self.is_dropbox = is_dropbox
+        self.host = host
+        self.os_name = os_name
+        self.path = path
+        self.remote = remote
 
         check_access()
 
@@ -77,6 +120,14 @@ class Resource(object):
 
     def check_access(self):
         """Check the resource is accessible."""
+
+        # If on Windows, check we have access to bash
+        if self.os_name == 'posix':
+            if not utils.check_bash():
+                raise NotImplementedError('Cannot find Bash.')
+
+        # Check that self.path is a directory as well
+
         pass
 
     def copy_to(self):

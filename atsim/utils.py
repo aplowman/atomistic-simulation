@@ -401,6 +401,14 @@ def confirm(prompt=None, resp=False):
             return False
 
 
+def check_bash():
+    rc = subprocess.call(["bash", "-c", "ls"], shell=True)
+    if rc == 0:
+        return True
+    else:
+        return False
+
+
 def dir_exists_remote(host, dir_path):
     comp_proc = subprocess.run(
         ['bash', '-c', 'ssh {} "[ -d {} ]"'.format(host, dir_path)])

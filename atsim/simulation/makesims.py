@@ -559,6 +559,11 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
 
     # If start, step and stop are provided, generate a set of vals from these:
     if vals is None and start is not None:
+
+        if not np.isclose((start - stop) % step, 0):
+            warnings.warn(
+                'Spacing between series values will not be exactly as specified.')
+
         diff = start - stop if start > stop else stop - start
         num = int(np.round((diff + step) / step))
         vals = np.linspace(start, stop, num=num)

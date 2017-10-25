@@ -240,8 +240,6 @@ def main(plots_defn):
 
                         coeffs['vals'] = cv
 
-                        # print("coeffs['vals']: {}".format(coeffs['vals']))
-
                         trc.update({
                             'coeffs': coeffs,
                             'xmin': d['xmin'],
@@ -315,18 +313,26 @@ def main(plots_defn):
                             col_idx = copy.deepcopy(d['col_idx'])
                             grid_shape = copy.deepcopy(d['grid_shape'])
 
-                            zv = np.array(z['vals'], dtype=float)
-                            row_idx_vals = np.array(
-                                row_idx['vals'], dtype=float)
-                            col_idx_vals = np.array(
-                                col_idx['vals'], dtype=float)
-                            grid_shape_vals = np.array(
-                                grid_shape['vals'], dtype=float)
+                            zv = utils.index_lst(z['vals'], tt['vals_idx'])
+                            row_idx_vals = utils.index_lst(
+                                row_idx['vals'], tt['vals_idx'])
+                            col_idx_vals = utils.index_lst(
+                                col_idx['vals'], tt['vals_idx'])
+                            grid_shape_vals = utils.index_lst(
+                                grid_shape['vals'], tt['vals_idx'])
 
-                            zv = zv[tt['vals_idx']]
-                            row_idx_vals = row_idx_vals[tt['vals_idx']]
-                            col_idx_vals = col_idx_vals[tt['vals_idx']]
-                            grid_shape_vals = grid_shape_vals[tt['vals_idx']]
+                            zv = utils.index_lst(zv, y_non_none_idx)
+                            row_idx_vals = utils.index_lst(
+                                row_idx_vals, y_non_none_idx)
+                            col_idx_vals = utils.index_lst(
+                                col_idx_vals, y_non_none_idx)
+                            grid_shape_vals = utils.index_lst(
+                                grid_shape_vals, y_non_none_idx)
+
+                            zv = np.array(zv)
+                            row_idx_vals = np.array(row_idx_vals)
+                            col_idx_vals = np.array(col_idx_vals)
+                            grid_shape_vals = np.array(grid_shape_vals)
 
                             z['vals'] = zv
                             row_idx['vals'] = row_idx_vals

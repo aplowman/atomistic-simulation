@@ -677,8 +677,8 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
             out.append({
                 'base_structure': {sn: v},
                 'series_id': {'name': sn, 'val': v,
-                              'path': '{}_{}_{}-{}_{}_{}-{}_{}_{}'.format(
-                                  *v.flatten())}
+                              'path': '{}_{}_{}--{}_{}_{}--{}_{}_{}'.format(
+                                  *v.T.flatten())}
             })
 
     elif sn == 'relative_shift':

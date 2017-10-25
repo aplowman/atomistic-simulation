@@ -108,7 +108,7 @@ def get_base_structure_defn(opt, opt_lookup):
                 'size must be of shape (3, 3): {}'.format(size_str))
 
         base_structure.update({
-            'box_lat': size,
+            'box_lat': size.T,
         })
 
     # Reassign opt:

@@ -1450,7 +1450,8 @@ def add_contour_trace_mpl(fig, ax, x, y, z, name, options=None):
         required_shps_0_set = set(required_shps_0)
 
         if len(required_shps_0_set) > 1:
-            raise ValueError('Length mismatch.')
+            raise ValueError(
+                'Length mismatch. Shapes are: {}'.format(required_shps))
 
         X, Y, Z = None, None, None
         shape_parsed = False

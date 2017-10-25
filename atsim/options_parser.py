@@ -572,7 +572,12 @@ def validate_ms_series(opt):
         if srs_nm not in SERIES_NAMES:
             raise ValueError('Series name "{}" not allowed.'.format(srs_nm))
         check_invalid_key(srs_itm, ALLOWED_SERIES_KEYS[srs_nm])
-        return srs_itm
+
+        valid_srs = copy.deepcopy(srs_itm)
+        if srs_itm['name'] == 'box_lat':
+            valid_srs['vals'] = [np.array(i) for i in valid_srs['vals']]
+
+        return valid_srs
 
     if opt is None:
         opt = [[]]

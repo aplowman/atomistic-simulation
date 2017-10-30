@@ -935,3 +935,44 @@ def validate_hv_output(opt, opt_lookup):
 
 def validate_hv_variables(opt, opt_lookup, opt_def):
     return opt  # TODO
+
+
+def validate_sh_opt(opt_fn, lookup_opt_fn, opt_def_fn):
+
+    opt_path = os.path.join(SET_UP_PATH, opt_fn)
+    opt_lookup_path = os.path.join(SET_UP_PATH, lookup_opt_fn)
+    opt_def_path = os.path.join(SET_UP_PATH, opt_def_fn)
+
+    with open(opt_path, 'r', encoding='utf-8') as f:
+        opt = yaml.load(f)
+
+    with open(opt_lookup_path, 'r', encoding='utf-8') as f:
+        opt_lookup = yaml.load(f)
+
+    with open(opt_def_path, 'r', encoding='utf-8') as f:
+        opt_def = yaml.load(f)
+
+    deep_keys = [
+        'archive',
+        'output',
+    ]
+    for dk in deep_keys:
+        if opt.get(dk) is not None:
+            opt[dk + '.<<lookup>>'] = opt.pop(dk)
+
+    opt_unflat = utils.unflatten_dict_keys(opt)
+    allowed_keys = [
+        'output',
+        'results_id',
+        'grid_spec',
+    ]
+    check_invalid_key(opt_unflat, allowed_keys)
+    valid_opt = {}
+    for k, v in opt_unflat.items():
+        if k == 'output':
+            valid_opt.update({k: validate_hv_output(v, opt_lookup)})
+        else:
+            valid_opt.update({k: v})
+
+    print('valid_opt: {}'.format(valid_opt))
+    return valid_opt

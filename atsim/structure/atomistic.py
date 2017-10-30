@@ -1221,6 +1221,59 @@ class AtomisticStructure(object):
     def get_sym_ops(self):
         return spglib.get_symmetry(self.spglib_cell)
 
+    def shift_atoms(self, shift, wrap=False):
+        """
+        Perform a rigid shift on all atoms, in fractional supercell coordinates.
+
+        Parameters
+        ----------
+        shift : list or tuple of length three or ndarry of shape (3,) of float
+            Fractional supercell coordinates to translate all atoms by.
+        wrap : bool
+            If True, wrap atoms to within the supercell edges after shift.
+        """
+
+        shift = np.array(shift)[:, np.newaxis]
+        shift_std = np.dot(self.supercell, shift)
+        self.atom_sites += shift_std
+
+        if wrap:
+            self.wrap_atoms_to_supercell()
+
+    def add_surface_vac(self, thickness, dir_idx):
+        """
+        Extend the supercell in a given direction.
+
+        Supercell vector given by direction index `dir_idx` is extended such
+        that it's component in the direction normal to the other two supercell
+        vectors is a particular `thickness`.
+
+        Parameters
+        ----------
+        thickness : float
+            Thickness of vacuum to add
+        dir_idx : int 0, 1 or 2
+            Supercell direction in which to add vacuum
+        """
+
+        if dir_idx not in [0, 1, 2]:
+            raise ValueError('`dir_idx` must be 0, 1 or 2.')
+
+        non_dir_idx = [i for i in [0, 1, 2] if i != dir_idx]
+        v1v2 = self.supercell[:, non_dir_idx]
+        v3 = self.supercell[:, dir_idx]
+
+        n = np.cross(v1v2[:, 0], v1v2[:, 1])
+        n_unit = n / np.linalg.norm(n)
+        v3_mag = np.linalg.norm(v3)
+        v3_unit = v3 / v3_mag
+        d = thickness / np.dot(n_unit, v3_unit)
+
+        v3_mag_new = v3_mag + d
+        v3_new = v3_unit * v3_mag_new
+
+        self.supercell[:, dir_idx] = v3_new
+
 
 class BulkCrystal(AtomisticStructure):
     """

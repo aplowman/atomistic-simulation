@@ -168,6 +168,8 @@ def write_jobscript(path, calc_paths, method, num_cores, sge, job_array,
     if module_load is not None:
         add_line(js_path, 1, '')
         add_line(js_path, 2, 'module load {}'.format(module_load))
+        delete_line(js_path, '#$ -V')
+        replace_in_file(js_path, '#!/bin/bash', '#!/bin/bash --login')
 
     # Make replacements in template file:
     replace_in_file(js_path, '<replace_with_dir_list>', dir_list_path_scratch)
@@ -1351,6 +1353,7 @@ def main(opt):
         'relative_shift': True,
         'boundary_vac': True,
         'boundary_vac_flat': True,
+        'gamma_surface': False,
     }
 
     # Get unique representation of this series:

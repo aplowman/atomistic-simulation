@@ -42,10 +42,11 @@ elif args[1] == 'plot':
     makeplots.main(mp_opt)
 
 elif args[1] == 'series_helper':
-    if len(args) != 3:
-        raise ValueError('Specify SID to series_helper.')
-    from atsim.simulation import series_helpers
-    series_helpers.refine_gamma_surface(args[2])
+    from atsim.simulation import serieshelper
+    opt_fn = OPT_FILE_NAMES['serieshelper']
+    sh_opt = options_parser.validate_sh_opt(opt_fn, opt_lkup_fn, opt_def_fn)
+    serieshelper.main(sh_opt)
+    # series_helpers.refine_gamma_surface(args[2])
 
 else:
     print('Invalid option.')

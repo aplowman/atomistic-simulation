@@ -362,6 +362,7 @@ def validate_ms_base_structure(opt, opt_lookup):
             'bound_vac',
             'transls',
             'term_plns',
+            'uvw_vecs',
         ]
         check_invalid_key(csl_params_opt, allowed_keys)
         return csl_params_opt
@@ -378,7 +379,11 @@ def validate_ms_base_structure(opt, opt_lookup):
         'type',
         'overlap_tol',
     ]
-    allowed_keys_gb_from_structure = allowed_keys_all + [
+    allowed_keys_gb = [
+        'relative_shift_args',
+        'wrap',
+    ]
+    allowed_keys_gb_from_structure = allowed_keys_all + allowed_keys_gb + [
         'csl',
         'csl_params',
     ]
@@ -398,9 +403,9 @@ def validate_ms_base_structure(opt, opt_lookup):
         'box_lat'
     ]
     allowed_keys = {
-        'csl_bicrystal': allowed_keys_csl,
+        'csl_bicrystal': allowed_keys_csl + allowed_keys_gb,
         'csl_bulk_bicrystal': allowed_keys_csl,
-        'csl_surface_bicrystal': allowed_keys_csl_surf,
+        'csl_surface_bicrystal': allowed_keys_csl_surf + allowed_keys_gb,
         'csl_bicrystal_from_structure': allowed_keys_gb_from_structure,
         'bulk': allowed_keys_bulk,
     }
@@ -575,7 +580,7 @@ def validate_ms_constraints(opt, opt_lookup):
                 {k: validate_ms_atom_constraints(v, opt_lookup)})
         else:
             valid_const.update({k: v})
-
+            
     return valid_const
 
 

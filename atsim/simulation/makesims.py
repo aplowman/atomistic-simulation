@@ -1013,8 +1013,6 @@ def process_castep_opt(castep_opt, sym_ops=None):
 
         if len(inv_sym_idx) == 0:
             raise ValueError('The bicrystal does not have inversion symmetry.')
-        if len(inv_sym_idx) > 1:
-            raise ValueError('Multiple inversion sym ops found!.')
 
         inv_sym_trans = sym_trans[inv_sym_idx[0]]
 
@@ -1281,11 +1279,13 @@ def make_base_structure(bs_opt, crystal_structures):
         imp_id = bs_opt['import']['id']
         imp_sim_idx = bs_opt['import']['sim_idx']
         imp_opt_step = bs_opt['import']['opt_step']
+        imp_tile = bs_opt['import'].get('tile')
 
         imp_pick_pth = os.path.join(imp_archive, imp_id, 'sims.pickle')
         imp_pick = readwrite.read_pickle(imp_pick_pth)
         imp_as = imp_pick['all_sims'][imp_sim_idx]
-        base_as = imp_as.generate_structure(opt_idx=imp_opt_step)
+        base_as = imp_as.generate_structure(
+            opt_idx=imp_opt_step, tile=imp_tile)
 
     return base_as
 
@@ -1354,6 +1354,7 @@ def main(opt):
         'boundary_vac': True,
         'boundary_vac_flat': True,
         'gamma_surface': False,
+        'lookup': False,
     }
 
     # Get unique representation of this series:

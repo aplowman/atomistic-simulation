@@ -364,6 +364,7 @@ def validate_ms_base_structure(opt, opt_lookup):
             'bound_vac',
             'transls',
             'term_plns',
+            'uvw_vecs',
         ]
         check_invalid_key(csl_params_opt, allowed_keys)
         return csl_params_opt
@@ -635,7 +636,7 @@ def validate_ms_constraints(opt, opt_lookup):
                 {k: validate_ms_atom_constraints(v, opt_lookup)})
         else:
             valid_const.update({k: v})
-
+            
     return valid_const
 
 

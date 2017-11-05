@@ -60,7 +60,7 @@ class AtomisticSimulation(object):
             reorder_map_inv = np.argsort(reorder_map)
 
             # atoms reordered based on original species_idx
-            atom_sites = atom_sites[reorder_map_inv]
+            atom_sites = atom_sites[:, reorder_map_inv]
 
             # cell_constraints = self.options['constraints']['cell']
             # prt(cell_constraints, 'cell_constraints')

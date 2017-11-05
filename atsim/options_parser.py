@@ -382,6 +382,7 @@ def validate_ms_base_structure(opt, opt_lookup):
         'import',
         'overlap_tol',
         'archive',
+        'tile',
     ]
     allowed_keys_gb = [
         'relative_shift_args',
@@ -472,6 +473,7 @@ def validate_bs_import(opt, opt_lookup):
         'sim_idx',
         'opt_step',
         'archive',
+        'tile',
     ]
     check_invalid_key(opt_unflat, allowed_keys)
     valid_import = {}

@@ -16,7 +16,7 @@ class AtomisticSimulation(object):
         self.options = options
         self.results = None
 
-    def generate_structure(self, opt_idx=-1):
+    def generate_structure(self, opt_idx=-1, tile=None):
         """
         Generates an AtomisticStructure object for a given optimisation step 
         after the simulation has run.
@@ -25,6 +25,11 @@ class AtomisticSimulation(object):
         ----------
         opt_idx : int, optional
             The optimisation step from which to generate the structure.
+
+        tile : tuple of int, optional
+            The integer number of times to tile the supercell in each
+            supercell direction. Default is None, in which cas the supercell 
+            is not tiled.
 
         """
 
@@ -57,6 +62,9 @@ class AtomisticSimulation(object):
         opt_structure = AtomisticStructure(
             atom_sites, supercell, all_species=all_species,
             all_species_idx=all_species_idx)
+
+        if tile is not None:
+            opt_structure.tile_supercell(tile)
 
         return opt_structure
 

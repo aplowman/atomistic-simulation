@@ -1441,6 +1441,10 @@ def map_species_to_castep(species, species_idx):
     for i in range(len(species)):
         map_unsort.append(np.where(species_idx == i)[0])
 
-    map_idx = np.concatenate(utils.index_lst(map_unsort, atom_z_srt_idx))
+    map_sort = []
+    for i in atom_z_srt_idx:
+        map_sort.append(map_unsort[i])
+
+    map_idx = np.concatenate(map_sort)
 
     return map_idx

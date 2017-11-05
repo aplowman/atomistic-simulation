@@ -685,6 +685,13 @@ def arguments(print_args=True):
     return args, posargs
 
 
+def prt(obj, name):
+    if isinstance(obj, np.ndarray):
+        print('{} {} {}: \n{}\n'.format(name, obj.shape, obj.dtype, obj))
+    else:
+        print('{}: \n{}\n'.format(name, obj))
+
+
 def flatten_dict_keys(d, base_k=None, delim='.'):
 
     flat_d = {}

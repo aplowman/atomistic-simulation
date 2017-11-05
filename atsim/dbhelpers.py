@@ -119,6 +119,6 @@ def upload_dropbox_dir(dbx, local_path, dropbox_path, overwrite=False,
                 if not dst_fn.startswith('/'):
                     dst_fn = '/' + dst_fn
 
-                print('Uploading file: {} to {}'.format(src_fn, dst_fn))
+                print('Uploading file: {}'.format(fn))
                 upload_dropbox_file(dbx, src_fn, dst_fn,
                                     overwrite=overwrite, autorename=autorename)

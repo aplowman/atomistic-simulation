@@ -293,7 +293,7 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
         else:
             fxy_grp = 'fix_xy'
             fxy_grp_ln = 'group {} id '.format(fxy_grp)
-            fxy_grp_ln += ('{:d} ' * nfxy).format(*(fix_xy_idx-1))
+            fxy_grp_ln += ('{:d} ' * nfxy).format(*(fix_xy_idx))
             fix_lns.append(fxy_grp_ln)
 
         fix_lns.append('fix {:d} {} setforce 0.0 0.0 NULL'.format(fix_count,
@@ -308,7 +308,7 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
         else:
             fxz_grp = 'fix_xz'
             fxz_grp_ln = 'group {} id '.format(fxz_grp)
-            fxz_grp_ln += ('{:d} ' * nfxz).format(*(fix_xz_idx-1))
+            fxz_grp_ln += ('{:d} ' * nfxz).format(*(fix_xz_idx))
             fix_lns.append(fxz_grp_ln)
 
         fix_lns.append('fix {:d} {} setforce 0.0 NULL 0.0'.format(fix_count,
@@ -323,7 +323,7 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
         else:
             fyz_grp = 'fix_yz'
             fyz_grp_ln = 'group {} id '.format(fyz_grp)
-            fyz_grp_ln += ('{:d} ' * nfyz).format(*(fix_yz_idx-1))
+            fyz_grp_ln += ('{:d} ' * nfyz).format(*(fix_yz_idx))
             fix_lns.append(fyz_grp_ln)
 
         fix_lns.append('fix {:d} {} setforce NULL 0.0 0.0'.format(fix_count,
@@ -338,11 +338,11 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
         else:
             fxyz_grp = 'fix_xyz'
             fxyz_grp_ln = 'group {} id '.format(fxyz_grp)
-            fxyz_grp_ln += ('{:d} ' * nfxyz).format(*(fix_xyz_idx-1))
+            fxyz_grp_ln += ('{:d} ' * nfxyz).format(*(fix_xyz_idx))
             fix_lns.append(fxyz_grp_ln)
 
         fix_lns.append('fix {:d} {} setforce 0.0 0.0 0.0'.format(fix_count,
-                                                                 fxy_grp))
+                                                                 fxyz_grp))
         fix_count += 1
 
     # computes are used in the dump files

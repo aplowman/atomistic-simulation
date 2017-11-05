@@ -25,5 +25,19 @@ ALLOWED_SERIES_KEYS = {
     'point_defect_charge': VLD_SRS_NM_VLS_SSS,
     'point_defect_idx': VLD_SRS_NM_VLS_SSS,
     'gamma_surface': VLD_SRS_NM_VLS + ['grid_spec', 'preview'],
+    'cs_vol_range': VLD_SRS_NM_VLS_SSS,
+    'cs_ca_range': VLD_SRS_NM_VLS_SSS,
+    'lookup': VLD_SRS_NM + ['src', 'parent_series', 'parent_val']
 }
 SERIES_NAMES = list(ALLOWED_SERIES_KEYS.keys())
+
+# Options file names
+OPT_FILE_NAMES = {
+    'makesims': 'makesims.yml',
+    'process': 'process.yml',
+    'harvest': 'harvest.yml',
+    'makeplots': 'makeplots.yml',
+    'serieshelper': 'serieshelper.yml',
+    'lookup': 'lookup.yml',
+    'defaults': 'defaults.yml',
+}

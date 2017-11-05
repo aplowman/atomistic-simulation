@@ -1,7 +1,7 @@
 import copy
 import numpy as np
 from atsim import utils
-from atsim.utils import dict_from_list
+from atsim.utils import dict_from_list, get_unique_idx
 from atsim.readwrite import format_list, format_dict
 
 
@@ -37,7 +37,39 @@ PREDEFINED_VARS = {
         'name': 'atoms_gb_dist_change',
         'id': 'atoms_gb_dist_change',
     },
+    'find_inv_sym': {
+        'type': 'parameter',
+        'name': 'castep',
+        'idx': ('find_inv_sym',),
+        'id': 'find_inv_sym',
+    }
+
 }
+
+
+def get_srs_vals(out, series_id):
+
+    srs_vals = []
+    series_names = out['series_name']
+
+    for i in series_id:
+        if i in series_names:
+            i_idx = series_names.index(i)
+            i_vals = utils.get_col(out['series_id']['val'], i_idx)
+        else:
+            i_vals = dict_from_list(
+                out['variables'], {'id': i})['vals']
+        srs_vals.append(i_vals)
+
+    srs_vals = utils.transpose_list(srs_vals)
+
+    sesh_ids = np.array(out['session_id'])[out['session_id_idx']]
+    num_sims = len(sesh_ids)
+
+    if len(srs_vals) == 0:
+        srs_vals = [[0] for _ in range(num_sims)]
+
+    return srs_vals
 
 
 def is_bicrystal(sim):
@@ -84,7 +116,10 @@ def get_depends(compute_name, inc_id=True, inc_val=True, **kwargs):
         'name': compute_name,
     }
     if inc_id:
-        d.update({'id': compute_name})
+        if compute_name != 'gamma_surface_info':
+            d.update({'id': compute_name})
+        else:
+            d.update({'id': kwargs['info_name']})
 
     out = []
     if compute_name == 'gb_energy':
@@ -151,26 +186,34 @@ def get_depends(compute_name, inc_id=True, inc_val=True, **kwargs):
             'opt_step': kwargs['opt_step'],
             'series_id': kwargs['series_id'],
             'unit': kwargs['unit'],
+            'use_gb_energy': kwargs['use_gb_energy'],
         })
 
-        out = (get_depends('gb_energy', inc_id=inc_id, inv_val=inc_val,
-                           energy_src=kwargs['energy_src'],
-                           opt_step=kwargs['opt_step'],
-                           series_id=kwargs['series_id'],
-                           unit=kwargs['unit']) +
-               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+        if kwargs.get('use_gb_energy', False):
+            energy_depends = get_depends('gb_energy', inc_id=inc_id, inc_val=inc_val,
+                                         energy_src=kwargs['energy_src'],
+                                         opt_step=kwargs['opt_step'],
+                                         series_id=kwargs['series_id'],
+                                         unit=kwargs['unit'])
+        else:
+            energy_depends = get_depends('energy', inc_id=inc_id, inc_val=inc_val,
+                                         energy_src=kwargs['energy_src'],
+                                         opt_step=kwargs['opt_step'],)
+
+        out = (energy_depends +
+               get_depends('gamma_surface_info', inc_id=inc_id, inc_val=inc_val,
                            info_name='row_idx') +
-               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+               get_depends('gamma_surface_info', inc_id=inc_id, inc_val=inc_val,
                            info_name='col_idx') +
-               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+               get_depends('gamma_surface_info', inc_id=inc_id, inc_val=inc_val,
                            info_name='x_std_vals') +
-               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+               get_depends('gamma_surface_info', inc_id=inc_id, inc_val=inc_val,
                            info_name='y_std_vals') +
-               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+               get_depends('gamma_surface_info', inc_id=inc_id, inc_val=inc_val,
                            info_name='x_frac_vals') +
-               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+               get_depends('gamma_surface_info', inc_id=inc_id, inc_val=inc_val,
                            info_name='y_frac_vals') +
-               get_depends('gamma_surface_info', inc_id=inc_id, inv_val=inc_val,
+               get_depends('gamma_surface_info', inc_id=inc_id, inc_val=inc_val,
                            info_name='grid_shape')
                ) + [PREDEFINED_VARS['gb_boundary_vac']] + out
 
@@ -185,6 +228,17 @@ def get_depends(compute_name, inc_id=True, inc_val=True, **kwargs):
                 'opt_step': opt_step,
             })
 
+    elif compute_name == 'rms_forces':
+
+        d.update({
+            'forces_src': kwargs['forces_src'],
+        })
+        opt_step = kwargs.get('opt_step')
+        if opt_step is not None:
+            d.update({
+                'opt_step': opt_step,
+            })
+
     elif compute_name == 'atoms_gb_dist_change':
 
         out = [
@@ -192,6 +246,25 @@ def get_depends(compute_name, inc_id=True, inc_val=True, **kwargs):
             PREDEFINED_VARS['gb_dist_final'],
             PREDEFINED_VARS['sup_type'],
         ] + out
+
+    elif compute_name == 'difference':
+
+        d.update({
+            'x_id': kwargs['x_id'],
+            'y_id': kwargs['y_id'],
+            'x_args': kwargs['x_args'],
+            'y_args': kwargs['y_args'],
+            'series_id': kwargs['series_id'],
+        })
+
+        if kwargs.get('forward_diff') is not None:
+            d.update({'forward_diff': kwargs['forward_diff']})
+
+        out = (get_depends(kwargs['x_id'], **kwargs['x_args'],
+                           inc_id=inc_id, inc_val=inc_val) +
+               get_depends(kwargs['y_id'], **kwargs['y_args'],
+                           inc_id=inc_id, inc_val=inc_val) +
+               out)
 
     # If the d dict is not in out, add it:
     d_out = dict_from_list(out, d)
@@ -235,6 +308,50 @@ def supercell_type(out, sim, sim_idx):
 
     else:
         return COMPATIBILITY_LOOKUP[sim.options['base_structure']['type']]
+
+
+def get_rms_force(forces):
+    """
+    Parameters
+    ----------
+    forces : ndarray of shape (M, 3, N)
+        Array representing the force components on N atoms
+        for M steps.
+    """
+    if len(forces) == 0:
+        return None
+
+    forces_rshp = forces.reshape(forces.shape[0], -1)
+    forces_rms = np.sqrt(np.mean(forces_rshp ** 2, axis=1))
+
+    return forces_rms
+
+
+def rms_forces(out, sim, sim_idx, forces_src, opt_step=None):
+    err_msg = 'Forces source "{}" not available from {} output.'
+    method = sim.options['method']
+    allowed_frc_srcs = {
+        'castep': ['forces_constrained', 'forces_unconstrained',
+                   'forces_constrained_sym'],
+        'lammps': []
+    }
+    if forces_src not in allowed_frc_srcs[method]:
+        raise ValueError(err_msg.format(forces_src, method.upper()))
+
+    forces = sim.results[forces_src]
+
+    print('in rms_forces!')
+
+    if opt_step is None:
+        f_rms = get_rms_force(forces)
+
+    else:
+        if not isinstance(opt_step, int):
+            raise ValueError('`opt_step` must be an integer.')
+        f_rms = get_rms_force(forces)[opt_step]
+
+    print('f_rms: {}'.format(f_rms))
+    return f_rms
 
 
 def energy(out, sim, sim_idx, energy_src, opt_step=None):
@@ -287,7 +404,10 @@ def gb_area(out, sim, sim_idx):
 def gb_boundary_vac(out, sim, sim_idx):
 
     if is_bicrystal(sim):
-        return sim.structure.boundary_vac
+        try:
+            return sim.structure.boundary_vac
+        except AttributeError:
+            return 0.0
     else:
         return None
 
@@ -296,6 +416,17 @@ def gb_thickness(out, sim, sim_idx):
 
     if is_bicrystal(sim):
         return sim.structure.bicrystal_thickness
+    else:
+        return None
+
+
+def gb_relative_shift(out, sim, sim_idx):
+
+    if is_bicrystal(sim):
+        try:
+            return sim.structure.relative_shift
+        except AttributeError:
+            return [0, 0]
     else:
         return None
 
@@ -366,25 +497,12 @@ def gb_energy(out, req_vars):
     """
 
     energy, num_atoms, area, sup_type = [req_vars[i]['vals'] for i in range(4)]
-    series_names = out['series_name']
     series_id = req_vars[-1]['series_id']
     unit = req_vars[-1]['unit']
     sesh_ids = np.array(out['session_id'])[out['session_id_idx']]
     num_sims = len(sesh_ids)
 
-    srs_vals = []
-    for i in series_id:
-        if i in series_names:
-            i_idx = series_names.index(i)
-            i_vals = utils.get_col(out['series_id']['val'], i_idx)
-        else:
-            i_vals = dict_from_list(
-                out['variables'], {'id': i})['vals']
-        srs_vals.append(i_vals)
-    srs_vals = utils.transpose_list(srs_vals)
-
-    if len(srs_vals) == 0:
-        srs_vals = [[0] for _ in range(num_sims)]
+    srs_vals = get_srs_vals(out, series_id)
 
     gb_idx = []
     bulk_idx = []
@@ -500,127 +618,139 @@ def gamma_surface_info(out, req_vars, common_series_info):
 
 def master_gamma(out, req_vars):
 
-    (energy, num_atoms, gb_area, sup_type, gb_energy, csi_idx,
-     grid_idx, point_idx, row_idx, col_idx, x_std_vals,
-     y_std_vals, x_frac_vals, y_frac_vals, grid_shape,
-     boundary_vac) = [req_vars[i]['vals'] for i in range(16)]
+    use_gb_energy = req_vars[-1].get('use_gb_energy', False)
+    if use_gb_energy:
+        (energy, num_atoms, gb_area, sup_type, gb_energy, csi_idx,
+         grid_idx, point_idx, row_idx, col_idx, x_std_vals,
+         y_std_vals, x_frac_vals, y_frac_vals, grid_shape,
+         boundary_vac) = [req_vars[i]['vals'] for i in range(16)]
+        gs_energy = gb_energy
 
-    print('energy: {}'.format(energy))
-    print('num_atoms: {}'.format(num_atoms))
-    print('gb_area: {}'.format(gb_area))
-    print('sup_type: {}'.format(sup_type))
-    print('gb_energy: {}'.format(gb_energy))
+    else:
+        (energy, csi_idx, grid_idx, point_idx, row_idx, col_idx, x_std_vals,
+         y_std_vals, x_frac_vals, y_frac_vals, grid_shape,
+         boundary_vac) = [req_vars[i]['vals'] for i in range(12)]
+        gs_energy = energy
 
-    print('csi_idx: {}'.format(csi_idx))
-    print('grid_idx: {}'.format(grid_idx))
-    print('point_idx: {}'.format(point_idx))
+    num_sims = len(gs_energy)
 
-    print('row_idx: {}'.format(row_idx))
-    print('col_idx: {}'.format(col_idx))
-    print('x_std_vals: {}'.format(x_std_vals))
-    print('y_std_vals: {}'.format(y_std_vals))
-    print('x_frac_vals: {}'.format(x_frac_vals))
-    print('y_frac_vals: {}'.format(y_frac_vals))
-    print('grid_shape: {}'.format(grid_shape))
-    print('boundary_vac: {}'.format(boundary_vac))
+    en_fit = [None for _ in range(num_sims)]
+    exp_fit = [None for _ in range(num_sims)]
+    en_master = [None for _ in range(num_sims)]
+    exp_master = [None for _ in range(num_sims)]
+    fit_coeffs = [None for _ in range(num_sims)]
+    fit_in_range = [None for _ in range(num_sims)]
+    en_master_in_range = [None for _ in range(num_sims)]
+    exp_master_in_range = [None for _ in range(num_sims)]
+    parsed_grid_pos = {}
 
-    num_sims = len(gb_energy)
+    # Collating by grid position over all boundary expansions
+    for idx, (en, ri, ci, bv) in enumerate(zip(gs_energy, row_idx, col_idx, boundary_vac)):
 
-    # Get first valid gamma shape:
-    for en_idx, en in enumerate(gb_energy):
-        if en is not None:
-            shp = grid_shape[en_idx]
-            break
+        if (ri, ci) in parsed_grid_pos:
+            fit_idx = parsed_grid_pos.get((ri, ci))
+            if bv in exp_fit[fit_idx]:
+                raise ValueError('Multiple energies found for row_idx {}, '
+                                 'col_idx {}, boundary_vac: {}'.format(ri, ci, bv))
+            else:
+                exp_fit[fit_idx].append(bv)
+                en_fit[fit_idx].append(en)
 
-    all_E = {}
-    X = np.ones(tuple(shp), dtype=float) * np.nan
-    Y = np.ones(tuple(shp), dtype=float) * np.nan
-    XY_frac = np.ones(tuple(shp) + (2,), dtype=float) * np.nan
-    first_en_idx = np.ones(tuple(shp), dtype=float) * np.nan
-
-    for en_idx, en in enumerate(gb_energy):
-
-        if en is None:
-            continue
-
-        ri = row_idx[en_idx]
-        ci = col_idx[en_idx]
-        srs_v = boundary_vac[en_idx]
-        print('srs_v: {}, type(srs_v): {}'.format(srs_v, type(srs_v)))
-
-        if all_E.get(srs_v) is None:
-            blank = np.ones(tuple(shp), dtype=float) * np.nan
-            all_E.update({srs_v: blank})
-
-        all_E[srs_v][ri, ci] = en
-
-        if np.isnan(X[ri][ci]):
-            X[ri, ci] = x_std_vals[en_idx]
-            Y[ri, ci] = y_std_vals[en_idx]
-            XY_frac[ri, ci] = [x_frac_vals[en_idx], y_frac_vals[en_idx]]
-            first_en_idx[ri, ci] = en_idx
+        else:
+            en_fit[idx] = [en]
+            exp_fit[idx] = [bv]
+            parsed_grid_pos.update({(ri, ci): idx})
 
     # Fitting
-    nrows = shp[0]
-    ncols = shp[1]
-    fit_grid_E = [[[] for i in range(ncols)] for _ in range(nrows)]
-    fit_grid_vac = [[[] for i in range(ncols)] for _ in range(nrows)]
+    for idx in range(num_sims):
 
-    fitted_E = np.ones((nrows, ncols), dtype=float) * np.nan
-    fitted_vac = np.ones((nrows, ncols), dtype=float) * np.nan
-    fitted_p1d = np.ones((nrows, ncols, 3), dtype=float) * np.nan
+        x = exp_fit[idx]
+        y = en_fit[idx]
 
-    for ri in range(nrows):
-        for ci in range(ncols):
-            for k, v in sorted(all_E.items()):
+        if y is None:
+            continue
 
-                fit_grid_E[ri][ci].append(v[ri][ci])
-                fit_grid_vac[ri][ci].append(k)
+        # Remove energies and expansions corresponding to grid positions where
+        # there are not enough boundary vacuums for fitting:
+        if len(y) < 3:
+            exp_fit[idx] = None
+            en_fit[idx] = None
 
-            x = np.array(fit_grid_vac[ri][ci])
-            y = np.array(fit_grid_E[ri][ci])
+        else:
+            # Fit to a quadratic:
+            z = np.polyfit(x, y, 2)
+            p1d = np.poly1d(z)
+            dpdx = np.polyder(p1d)
+            min_x = np.asscalar(-dpdx[0] / dpdx[1])
+            min_y = np.asscalar(p1d(min_x))
 
-            # Get nonNaN values from y
-            y_fin_idx = np.isfinite(y)
-            y = y[y_fin_idx]
-            x = x[y_fin_idx]
+            en_master[idx] = min_y
+            exp_master[idx] = min_x
+            fit_coeffs[idx] = p1d.coeffs.tolist()
+            is_good = (min(x) < min_x) and (min_x < max(x))
+            fit_in_range[idx] = is_good
 
-            if len(x) > 2:
-                z = np.polyfit(x, y, 2)
-                p1d = np.poly1d(z)
-                dpdx = np.polyder(p1d)
-                min_x = -dpdx[0] / dpdx[1]
-                min_y = p1d(min_x)
+            if is_good:
+                en_master_in_range[idx] = min_y
+                exp_master_in_range[idx] = min_x
 
-                fitted_vac[ri, ci] = min_x
-                fitted_E[ri, ci] = min_y
-                fitted_p1d[ri, ci] = p1d.coeffs
-
-    first_en_idx = first_en_idx.reshape(-1,).astype(int)
-
-    fitted_p1d = fitted_p1d.reshape(-1, 3)
-    all_fitted_p1d = np.ones((num_sims, 3), dtype=float) * np.nan
-    all_fitted_p1d[first_en_idx] = fitted_p1d
-
-    E_min_flat = fitted_E.reshape(-1)
-    all_E_min_flat = np.ones((num_sims,), dtype=float) * np.nan
-    all_E_min_flat[first_en_idx] = E_min_flat
-
-    vac_min_flat = fitted_vac.reshape(-1)
-    all_vac_min_flat = np.ones((num_sims,), dtype=float) * np.nan
-    all_vac_min_flat[first_en_idx] = vac_min_flat
-
-    req_vars[-1]['vals'] = {
-        'X': X.tolist(),
-        'Y': Y.tolist(),
-        'XY_frac': XY_frac.tolist(),
-        'E': {k: v.tolist() for k, v in all_E.items()},
-        'E_min': fitted_E.tolist(),
-        'vac_min': fitted_vac.tolist(),
-        'fits': all_fitted_p1d.tolist(),
-        'vac_min_flat': all_vac_min_flat.tolist(),
-        'E_min_flat': all_E_min_flat.tolist(),
+    out = {
+        'en_fit': en_fit,
+        'exp_fit': exp_fit,
+        'en_master': en_master,
+        'en_master_in_range': en_master_in_range,
+        'exp_master': exp_master,
+        'exp_master_in_range': exp_master_in_range,
+        'fit_coeffs': fit_coeffs,
+        'fit_in_range': fit_in_range,
     }
+
+    req_vars[-1]['vals'] = out
+
+
+def difference(out, req_vars):
+
+    x_id = req_vars[-1]['x_id']
+    y_id = req_vars[-1]['y_id']
+    forward_diff = req_vars[-1].get('forward_diff', False)
+
+    x = dict_from_list(req_vars, {'id': x_id})
+    y = dict_from_list(req_vars, {'id': y_id})
+
+    x_vals = x['vals']
+    y_vals = y['vals']
+
+    srs_vals = get_srs_vals(out, req_vars[-1]['series_id'])
+    unique_srs, unique_srs_idx = get_unique_idx(srs_vals)
+
+    x_arr = np.array(x_vals, dtype=float)
+    y_arr = np.array(y_vals, dtype=float)
+
+    out = np.ones(len(x_arr), dtype=float) * np.nan
+    for usi in unique_srs_idx:
+
+        xi = x_arr[usi]
+        yi = y_arr[usi]
+
+        srt_idx = np.argsort(xi)
+
+        xis = xi[srt_idx]
+        yis = yi[srt_idx]
+
+        yis_d = np.diff(yis)
+
+        if forward_diff:
+            concat_lst = [yis_d, [np.nan]]
+        else:
+            concat_lst = [[np.nan], yis_d]
+
+        diff = np.concatenate(concat_lst)
+        diff = diff[np.argsort(srt_idx)]  # go back to original order
+
+        out[usi] = diff
+
+    req_vars[-1]['vals'] = utils.nan_to_none(out)
+
 
 
 # Single-compute functions are passed individual AtomisticSimulation objects:
@@ -628,10 +758,12 @@ SINGLE_COMPUTE_LOOKUP = {
     'num_atoms': num_atoms,
     'energy': energy,
     'energy_per_atom': energy_per_atom,
+    'rms_forces': rms_forces,
     'gb_area': gb_area,
     'supercell_type': supercell_type,
     'gb_thickness': gb_thickness,
     'gb_boundary_vac': gb_boundary_vac,
+    'gb_relative_shift': gb_relative_shift,
     'atoms_gb_dist_initial': atoms_gb_dist_initial,
     'atoms_gb_dist_final': atoms_gb_dist_final,
     'atoms_gb_dist_change': atoms_gb_dist_change,
@@ -644,4 +776,5 @@ MULTI_COMPUTE_LOOKUP = {
     'gb_energy': gb_energy,
     'gamma_surface_info': gamma_surface_info,
     'master_gamma': master_gamma,
+    'difference': difference,
 }

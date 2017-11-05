@@ -1,0 +1,152 @@
+results_id: 2017-10-05-1111_55418
+plots:
+  # - filename: gamma-surf
+  #   lib: mpl
+  #   subplot_series: ['gb_boundary_vac',]
+  #   axes:
+  #     - [[x1, y1]]
+  #   axes_props.x1.label: 'x'
+  #   axes_props.y1.label: 'y'
+  #   data:
+  #     - x.id: x_std_vals
+  #       y.id: y_std_vals
+  #       z.id: energy
+  #       row_idx_id: row_idx
+  #       col_idx_id: col_idx
+  #       shape_id: grid_shape
+  #       type: contour
+  #       axes_idx: [0, 0]
+  #       name: Energy (eV)
+  #     - x.id: x_std_vals
+  #       y.id: y_std_vals
+  #       type: marker
+  #       marker.size: 1
+  #       name: Data
+  #       axes_idx: [0, 0]
+  #       legend: False
+
+  # - filename: fits
+  #   lib: mpl
+  #   axes:
+  #     - [[x1, y1]]
+  #   subplot_series: [row_idx, col_idx]
+  #   subplot_rows: 19
+  #   axes_props.x1.label: 'GB expansion (ang)'
+  #   axes_props.y1.label: 'Total energy (eV)'
+  #   data:
+  #     - xmin: -1
+  #       xmax: 2
+  #       coeffs.id: master_gamma
+  #       coeffs.idx: !!python/tuple [fit_coeffs]
+  #       name: fits
+  #       type: poly
+  #       axes_idx: [0, 0]
+  #     - x.id: master_gamma
+  #       x.idx: !!python/tuple [exp_fit]
+  #       y.id: master_gamma
+  #       y.idx: !!python/tuple [en_fit]
+  #       axes_idx: [0, 0]
+  #       type: marker
+  #       marker.size: 10
+  #       name: Data
+  #     - x.id: master_gamma
+  #       y.id: master_gamma
+  #       x.idx: !!python/tuple [exp_master]
+  #       y.idx: !!python/tuple [en_master]
+  #       axes_idx: [0, 0]
+  #       type: marker
+  #       marker.size: 20
+  #       name: minimum
+
+  - filename: gamma-surf-master
+    lib: mpl
+    axes:
+      - [[x1, y1]]
+      - [[x2, y2]]
+      - [[x3, y3]]
+      - [[x4, y4]]
+    axes_props.x1.label: 'x'
+    axes_props.y1.label: 'y'
+    axes_props.x2.label: 'x'
+    axes_props.y2.label: 'y'
+    axes_props.x3.label: 'x'
+    axes_props.y3.label: 'y'
+    axes_props.x4.label: 'x'
+    axes_props.y4.label: 'y'    
+    data:
+      - x.id: x_std_vals
+        y.id: y_std_vals
+        z.id: master_gamma
+        z.idx: !!python/tuple [en_master]
+        row_idx_id: row_idx
+        col_idx_id: col_idx
+        shape_id: grid_shape
+        type: contour
+        name: Fitted energy (eV) [all]
+        axes_idx: [0, 0]
+
+      - x.id: x_std_vals
+        y.id: y_std_vals
+        type: marker
+        name: Data
+        marker.size: 1
+        axes_idx: [0, 0]
+        legend: False
+
+      - x.id: x_std_vals
+        y.id: y_std_vals
+        z.id: master_gamma
+        z.idx: !!python/tuple [exp_master]
+        row_idx_id: row_idx
+        col_idx_id: col_idx
+        shape_id: grid_shape
+        type: contour
+        name: Fitted GB expansion (ang) [all]
+        axes_idx: [1, 0]
+
+      - x.id: x_std_vals
+        y.id: y_std_vals
+        type: marker
+        name: Data
+        marker.size: 1
+        axes_idx: [1, 0]
+        legend: False
+
+      - x.id: x_std_vals
+        y.id: y_std_vals
+        z.id: master_gamma
+        z.idx: !!python/tuple [en_master_in_range]
+        row_idx_id: row_idx
+        col_idx_id: col_idx
+        shape_id: grid_shape
+        type: contour
+        name: Fitted energy (eV) [in-range]
+        axes_idx: [2, 0]
+
+      - x.id: x_std_vals
+        y.id: y_std_vals
+        type: marker
+        name: Data
+        marker.size: 1
+        axes_idx: [2, 0]
+        legend: False
+
+      - x.id: x_std_vals
+        y.id: y_std_vals
+        z.id: master_gamma
+        z.idx: !!python/tuple [exp_master_in_range]
+        row_idx_id: row_idx
+        col_idx_id: col_idx
+        shape_id: grid_shape
+        type: contour
+        name: Fitted GB expansion (ang) [in-range]
+        axes_idx: [3, 0]
+
+      - x.id: x_std_vals
+        y.id: y_std_vals
+        type: marker
+        name: Data
+        marker.size: 1
+        axes_idx: [3, 0]
+        legend: False        
+

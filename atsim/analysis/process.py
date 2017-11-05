@@ -157,8 +157,8 @@ def main(opt, s_id):
     if len(error_idx) > 0:
         raise ValueError('Errors found! Exiting process.py.')
 
-    off_fls = base_opt['scratch']['offline_files']
-    move_offline_files(s_id, src_path, off_fls)
+    # off_fls = base_opt['scratch']['offline_files']
+    # move_offline_files(s_id, src_path, off_fls)
 
     if not os.path.isdir(src_path):
         raise ValueError('Source path is not a directory: {}'.format(src_path))

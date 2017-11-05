@@ -1,0 +1,52 @@
+method: lammps
+make_plots: True
+sub_dirs: []
+append_db: True
+upload_plots: True
+
+stage: <<default>>
+archive: <<default>>
+database: <<default>>
+scratch: <<local-1>>
+
+crystal_structures:
+  - <<α_Zr_MA#3_opt>>
+
+base_structure: <<csl_bicrystal__hex_0001_Σ13__tilt_A__[1,1,2]>>
+base_structure.overlap_tol: 0.5
+base_structure.maintain_inv_sym: True
+# base_structure.relative_shift_args.shift: [0.25, 0.5]
+# base_structure.boundary_vac_args.vac_thickness: 0.1
+# base_structure: <<bulk__[1,0,0]_[0,1,0]_[0,0,1]>>
+
+# base_structure.import.id: 2017-10-05-1345_79151  # from Archive
+# base_structure.import.opt_step: -1  # final optimised structure
+
+constraints.cell.fix_lengths: all
+constraints.cell.fix_angles: all
+constraints.atom.fix_xy_idx: all
+# constraints.atom.fix_xz_idx: all
+# constraints.atom.fix_yz_idx: all
+# constraints.atom.fix_xyz_idx: [10]
+
+lammps: <<Zr_eam>>
+
+# castep.find_inv_sym: false
+# castep.cell.kpoint_mp_spacing: 0.040
+# castep.param: <<default_go>>
+# castep.param.cut_off_energy: 360 eV
+# castep.param.xc_functional: PBE
+# castep.checkpoint: True
+# castep.seedname: sim
+
+series:
+  - - name: boundary_vac
+      start: -0.5
+      step: 0.5
+      stop: 2.0
+  - - name: gamma_surface
+      preview: True
+      grid_spec:
+        # max_sep: [0.5, 0.5]
+        # size: [12, 24]
+        size: [2, 2]

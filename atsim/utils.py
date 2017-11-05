@@ -734,3 +734,54 @@ def unflatten_dict_keys(d, delim='.'):
                         sub_d = prev_sub_d[ks]
 
     return unflat_d
+
+
+def nan_to_none(arr):
+    """
+    Convert a Numpy array to a (nested) list with np.nan replaced by None
+
+    Notes
+    -----
+    The inverse can be done by specifying the dtype: np.array(lst, dtype=float)
+    """
+
+    none_idx = np.where(np.isnan(arr))
+    arr = arr.astype(object)
+    arr[none_idx] = None
+    return arr.tolist()
+
+
+def get_unique_idx(a):
+    unique = []
+    unique_idx = []
+    for ai_idx, ai in enumerate(a):
+        if ai in unique:
+            unique_idx[unique.index(ai)].append(ai_idx)
+        elif None in ai:
+            continue
+        else:
+            unique.append(ai)
+            unique_idx.append([ai_idx])
+    return unique, unique_idx
+
+
+def get_row_col_idx(idx, nrows, ncols):
+    """
+    For a grid defined by number of rows and columns, get the row and column indices 
+    from a single index which increments first columns and then rows.
+
+    """
+    ridx = int(np.floor(idx / ncols))
+    cidx = int(idx - (ridx * ncols))
+    return ridx, cidx
+
+
+def get_key_max(lst, key):
+    """Get the maximum value of a key in a list of dicts"""
+    maxv = None
+    for d_idx, d in enumerate(lst):
+        if d_idx == 0:
+            maxv = d[key]
+        elif d[key] > maxv:
+            maxv = d[key]
+    return maxv

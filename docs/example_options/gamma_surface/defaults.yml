@@ -1,0 +1,8 @@
+plots:
+  fmt: [png]
+  lib: mpl
+  subplot_width: 600
+  subplot_height: 600
+  file_series: []
+  subplot_series: []
+  trace_series: []

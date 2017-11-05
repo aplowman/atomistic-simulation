@@ -14,6 +14,10 @@ import warnings
 import spglib
 
 
+class AtomisticStructureException(Exception):
+    pass
+
+
 class AtomisticStructure(object):
     """
     Class to represent crystals of atoms
@@ -171,12 +175,12 @@ class AtomisticStructure(object):
         self._overlap_tol = overlap_tol
 
         if all_species is None:
-            self._all_species = all_species
+            self._all_species = None
         else:
             self._all_species = np.array(all_species)
 
         if all_species_idx is None:
-            self._all_species_idx = all_species_idx
+            self._all_species_idx = None
         else:
             self._all_species_idx = utils.parse_as_int_arr(all_species_idx)
 
@@ -903,6 +907,25 @@ class AtomisticStructure(object):
         # Update attributes:
         self.atom_sites = as_std_wrp
 
+    def add_point_defects(self, point_defects):
+        """
+        Add point defects to the structure.
+
+        Parameters
+        ----------
+        point_defects : list of PointDefect objects
+
+        """
+        pass
+
+    def add_atom(self, coords, species, crystal_idx, is_frac_coords=False):
+        """Add an atom to the structure."""
+        pass
+
+    def remove_atom(self, atom_idx):
+        """Remove an atom from the structure."""
+        pass
+
     @property
     def atom_sites_frac(self):
         return np.dot(np.linalg.inv(self.supercell), self.atom_sites)
@@ -1053,8 +1076,7 @@ class AtomisticStructure(object):
             return self._all_species
 
         else:
-            all_sp, _ = self.get_all_species()
-            return all_sp
+            return self.get_all_species()[0]
 
     @property
     def all_species_idx(self):
@@ -1064,8 +1086,7 @@ class AtomisticStructure(object):
             return self._all_species_idx
 
         else:
-            _, all_sp_idx = self.get_all_species()
-            return all_sp_idx
+            return self.get_all_species()[1]
 
     @property
     def crystal_centres(self):
@@ -1073,6 +1094,33 @@ class AtomisticStructure(object):
 
         return [geometry.get_box_centre(c['crystal'], origin=c['origin'])
                 for c in self.crystals]
+
+    def tile_supercell(self, tiles):
+        """
+        Tile supercell and atoms by some integer factors in each supercell 
+        direction.
+
+        Parameters
+        ----------
+        tiles : tuple or list of length 3
+            Number of repeats in each supercell direction.
+
+        """
+        invalid_msg = ('`tiles` must be a tuple or list of three integers '
+                       'greater than 0.')
+        if len(tiles) != 3:
+            raise ValueError(invalid_msg)
+
+        for t in tiles:
+            if not isinstance(t, int) or t < 1:
+                raise ValueError(invalid_msg)
+
+        tiled_atoms, tiled_all_species_idx = self.get_tiled_atoms(tiles)
+        tiled_sup = self.supercell * tiles
+
+        self.atom_sites = tiled_atoms
+        self._all_species_idx = tiled_all_species_idx
+        self.supercell = tiled_sup
 
     def get_tiled_atoms(self, tiles):
         """
@@ -1092,26 +1140,28 @@ class AtomisticStructure(object):
 
         """
 
-        invalid_msg = ('`tiles` must be a tuple or list of 3 integers greater'
-                       ' than 0.')
+        invalid_msg = ('`tiles` must be a tuple or list of three integers '
+                       'greater than 0.')
         if len(tiles) != 3:
             raise ValueError(invalid_msg)
 
         as_tiled = np.copy(self.atom_sites)
+        all_species_idx_tiled = np.copy(self.all_species_idx)
         for t_idx, t in enumerate(tiles):
 
             if t == 1:
                 continue
 
-            if not isinstance(t, int) or t == 0:
+            if not isinstance(t, int) or t < 1:
                 raise ValueError(invalid_msg)
 
             v = self.supercell[:, t_idx:t_idx + 1]
             all_t = (v * np.arange(1, t)).T[:, :, np.newaxis]
             as_tiled_t = np.hstack(all_t + as_tiled)
+            all_species_idx_tiled = np.tile(all_species_idx_tiled, t)
             as_tiled = np.hstack([as_tiled, as_tiled_t])
 
-        return as_tiled
+        return as_tiled, all_species_idx_tiled
 
     def get_interatomic_dist(self, periodic=True):
         """
@@ -1137,7 +1187,7 @@ class AtomisticStructure(object):
 
         """
         if periodic:
-            atms = self.get_tiled_atoms([2, 2, 2])
+            atms = self.get_tiled_atoms([2, 2, 2])[0]
         else:
             atms = self.atom_sites
 
@@ -1164,11 +1214,65 @@ class AtomisticStructure(object):
         """
         dist = self.get_interatomic_dist()
         if np.any(dist < tol):
-            raise ValueError('Found overlapping atoms. Minimum separation: '
-                             '{:.3f}'.format(np.min(dist)))
+            raise AtomisticStructureException('Found overlapping atoms. '
+                                              'Minimum separation: '
+                                              '{:.3f}'.format(np.min(dist)))
 
     def get_sym_ops(self):
         return spglib.get_symmetry(self.spglib_cell)
+
+    def shift_atoms(self, shift, wrap=False):
+        """
+        Perform a rigid shift on all atoms, in fractional supercell coordinates.
+
+        Parameters
+        ----------
+        shift : list or tuple of length three or ndarry of shape (3,) of float
+            Fractional supercell coordinates to translate all atoms by.
+        wrap : bool
+            If True, wrap atoms to within the supercell edges after shift.
+        """
+
+        shift = np.array(shift)[:, np.newaxis]
+        shift_std = np.dot(self.supercell, shift)
+        self.atom_sites += shift_std
+
+        if wrap:
+            self.wrap_atoms_to_supercell()
+
+    def add_surface_vac(self, thickness, dir_idx):
+        """
+        Extend the supercell in a given direction.
+
+        Supercell vector given by direction index `dir_idx` is extended such
+        that it's component in the direction normal to the other two supercell
+        vectors is a particular `thickness`.
+
+        Parameters
+        ----------
+        thickness : float
+            Thickness of vacuum to add
+        dir_idx : int 0, 1 or 2
+            Supercell direction in which to add vacuum
+        """
+
+        if dir_idx not in [0, 1, 2]:
+            raise ValueError('`dir_idx` must be 0, 1 or 2.')
+
+        non_dir_idx = [i for i in [0, 1, 2] if i != dir_idx]
+        v1v2 = self.supercell[:, non_dir_idx]
+        v3 = self.supercell[:, dir_idx]
+
+        n = np.cross(v1v2[:, 0], v1v2[:, 1])
+        n_unit = n / np.linalg.norm(n)
+        v3_mag = np.linalg.norm(v3)
+        v3_unit = v3 / v3_mag
+        d = thickness / np.dot(n_unit, v3_unit)
+
+        v3_mag_new = v3_mag + d
+        v3_new = v3_unit * v3_mag_new
+
+        self.supercell[:, dir_idx] = v3_new
 
 
 class BulkCrystal(AtomisticStructure):
@@ -1217,3 +1321,87 @@ class BulkCrystal(AtomisticStructure):
                          motif_idx=cb.motif_idx)
 
         self.meta.update({'supercell_type': ['bulk']})
+
+
+class PointDefect(object):
+    """
+    Class to represent a point defect embedded within an AtomisticStructure
+
+    Attributes
+    ----------
+    species : str
+        Chemical symbol of a species or "v" for vacancy
+    atom_site : str
+        Chemical symbol of the species which this defect replaces or "i" for
+        interstitial.
+    index : int
+        The atom site or interstitial site index within the AtomisticStructure.
+    charge : float
+        The defect's electronic charge.
+    interstice_type : str
+        Set to "tetrahedral" or "octahedral" if `atom_site` is "i".
+
+    """
+
+    def __init__(self, species, atom_site, index=None, charge=0, interstice_type=None):
+
+        # Validation
+        if interstice_type not in [None, 'tetrahedral', 'octahedral']:
+            raise ValueError('Interstice type "{}" not understood.'.format(
+                interstice_type))
+
+        if atom_site != 'i' and interstice_type is not None:
+            raise ValueError('Non-interstitial defect specified but '
+                             '`interstice_type` also specified.')
+
+        if species == 'v' and atom_site == 'i':
+            raise ValueError('Cannot add a vacancy defect to an '
+                             'interstitial site!')
+
+        if atom_site == 'i' and interstice_type is None:
+            raise ValueError('`interstice_type` must be specified for '
+                             'interstitial point defect.')
+
+        self.species = species
+        self.atom_site = atom_site
+        self.index = index
+        self.charge = charge
+        self.interstice_type = interstice_type
+
+    def __str__(self):
+        """
+        References
+        ----------
+        https://en.wikipedia.org/wiki/Kr%C3%B6ger%E2%80%93Vink_notation
+
+        """
+        # String representation of the charge in Kroger-Vink notation
+        if self.charge == 0:
+            charge_str = 'x'
+        elif self.charge > 0:
+            charge_str = '•' * abs(self.charge)
+        elif self.charge < 0:
+            charge_str = '′' * abs(self.charge)
+
+        out = '{}_{}^{}'.format(self.species, self.atom_site, charge_str,
+                                self.index)
+
+        if self.index is not None:
+            idx_str_int = 'interstitial' if self.atom_site == 'i' else 'atom'
+            idx_str = 'at {} index {}'.format(idx_str_int, self.index)
+        else:
+            idx_str = ''
+
+        if self.interstice_type is not None:
+            out += ' ({}'.format(self.interstice_type)
+            out += ' ' + idx_str + ')'
+        else:
+            out += ' (' + idx_str + ')'
+
+        return out
+
+    def __repr__(self):
+        return ('PointDefect({!r}, {!r}, index={!r}, charge={!r}, '
+                'interstice_type={!r})').format(
+                    self.species, self.atom_site, self.index, self.charge,
+                    self.interstice_type)

@@ -11,14 +11,15 @@ import time
 import warnings
 from sys import stdout
 from pathlib import Path
-from atsim import utils, dbhelpers, readwrite, geometry
+from atsim import utils, dbhelpers, readwrite, geometry, OPT_FILE_NAMES
 from atsim import readwrite
 from atsim import SERIES_NAMES, SET_UP_PATH, REF_PATH, SCRIPTS_PATH
 from atsim.readwrite import replace_in_file, delete_line, add_line
 from atsim.simulation.sim import AtomisticSimulation
-from atsim.structure.bravais import BravaisLattice
+from atsim.structure.bravais import BravaisLattice, get_hex_a, get_hex_vol
 from atsim.structure.crystal import CrystalStructure
 from atsim.structure import atomistic
+from atsim.structure.atomistic import AtomisticStructureException
 from atsim.structure import bicrystal
 
 JS_TEMPLATE_DIR = os.path.join(SCRIPTS_PATH, 'set_up', 'jobscript_templates')
@@ -167,6 +168,8 @@ def write_jobscript(path, calc_paths, method, num_cores, sge, job_array,
     if module_load is not None:
         add_line(js_path, 1, '')
         add_line(js_path, 2, 'module load {}'.format(module_load))
+        delete_line(js_path, '#$ -V')
+        replace_in_file(js_path, '#!/bin/bash', '#!/bin/bash --login')
 
     # Make replacements in template file:
     replace_in_file(js_path, '<replace_with_dir_list>', dir_list_path_scratch)
@@ -558,6 +561,11 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
 
     # If start, step and stop are provided, generate a set of vals from these:
     if vals is None and start is not None:
+
+        if not np.isclose((start - stop) % step, 0):
+            warnings.warn(
+                'Spacing between series values will not be exactly as specified.')
+
         diff = start - stop if start > stop else stop - start
         num = int(np.round((diff + step) / step))
         vals = np.linspace(start, stop, num=num)
@@ -671,8 +679,8 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
             out.append({
                 'base_structure': {sn: v},
                 'series_id': {'name': sn, 'val': v,
-                              'path': '{}_{}_{}-{}_{}_{}-{}_{}_{}'.format(
-                                  *v.flatten())}
+                              'path': '{}_{}_{}--{}_{}_{}--{}_{}_{}'.format(
+                                  *v.T.flatten())}
             })
 
     elif sn == 'relative_shift':
@@ -715,6 +723,32 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
                               'path': '{:.2f}'.format(v)}
             })
 
+    elif sn == 'cs_vol_range':
+
+        for v in vals:
+
+            out.append({
+                'base_structure': {
+                    'crystal_structure_modify': {
+                        'vol_change': v,
+                    }
+                },
+                'series_id': {'name': sn, 'val': v, 'path': '{:.2f}'.format(v)}
+            })
+
+    elif sn == 'cs_ca_range':
+
+        for v in vals:
+
+            out.append({
+                'base_structure': {
+                    'crystal_structure_modify': {
+                        'ca_change': v,
+                    }
+                },
+                'series_id': {'name': sn, 'val': v, 'path': '{:.2f}'.format(v)}
+            })
+
     extra_update = ss.get('extra_update')
     if extra_update is not None:
         for up_idx, up in enumerate(out):
@@ -746,7 +780,7 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
 
     Notes
     -----
-    Consider two parallel series A, B and a nested series C, so 
+    Consider two parallel series A, B and a nested series C, so
     `all_series_spec` looks like this:
     [
         [A_defn, B_defn], [C_defn],
@@ -780,7 +814,7 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
     [
         [A_defn], [B_defn, C_defn], [D_lookup_defn]
     ]
-    As before, firstly replace definition dict with list of update dicts (and 
+    As before, firstly replace definition dict with list of update dicts (and
     remove the lookup defn):
     [
         [ [A1, A2] ], [ [B1, B2], [C1, C2] ],
@@ -805,7 +839,7 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
     if a matching update dict.
 
     For each element in the lookup parent series, generate a child series if it
-    matches a parent specified in the lookup dict. Note that the child series 
+    matches a parent specified in the lookup dict. Note that the child series
     lengths need not be the same for each parent series element.
     [
         [[A1B1C1], [D1, D2]], [[A1B2C2], [D3]], [[A2B1C1], []], [[A2B2C2], []]
@@ -1178,78 +1212,82 @@ def make_crystal_structures(cs_opt):
     return cs
 
 
+def modify_crystal_structure(cs, vol_change, ca_change):
+    """
+    Regenerate a CrystalStructure with a modified bravais lattice.
+
+    Parameters
+    ----------
+    cs : CrystalStructure object
+    vol_change : float
+        Percentage change in volume
+    ca_change : float
+        Percentage change in c/a ratio
+
+    Returns
+    -------
+    CrystalStructure
+
+    """
+    bl = cs.bravais_lattice
+
+    # Modify hexagonal CrystalStructure
+    if bl.lattice_system != 'hexagonal':
+        raise NotImplementedError('Cannot modify non-hexagonal crystal '
+                                  'structure.')
+
+    # Generate new a and c lattice parameters based on originals and volume and
+    # c/a ratio changes:
+    v = get_hex_vol(bl.a, bl.c)
+    v_new = v * (1 + vol_change / 100)
+
+    ca_new = (bl.c / bl.a) * (1 + ca_change / 100)
+    a_new = get_hex_a(ca_new, v_new)
+    c_new = ca_new * a_new
+
+    bl_new = BravaisLattice('hexagonal', a=a_new, c=c_new)
+    cs_new = CrystalStructure(bl_new, copy.deepcopy(cs.motif))
+    return cs_new
+
+
 def make_base_structure(bs_opt, crystal_structures):
 
-    struct_opt = {}
-    for k, v in bs_opt.items():
-        if k == 'type' or k == 'import' or k == 'sigma':
-            continue
-        elif k == 'crystal_idx':
-            if bs_opt['type'] == 'CSLSurfaceCrystal':
-                struct_opt.update({'surface_idx': v})
-        elif k == 'cs_idx':
-            struct_opt.update({'crystal_structure': crystal_structures[v]})
-        else:
-            struct_opt.update({k: v})
+    if bs_opt.get('import') is None:
+        remove_kys = ['type', 'import', 'sigma', 'crystal_structure_modify']
+        struct_opt = {}
+        for k, v in bs_opt.items():
 
-    base_as = STRUCT_LOOKUP[bs_opt['type']](**struct_opt)
+            if k in remove_kys:
+                continue
 
-    in_struct = bs_opt.get('import')
-    if in_struct is not None:
+            elif k == 'cs_idx':
+                cs = crystal_structures[v]
+                csm = bs_opt.get('crystal_structure_modify')
+                if csm is not None:
+                    cs = modify_crystal_structure(cs, **csm)
+                struct_opt.update({'crystal_structure': cs})
 
-        # Get atom sites/supercell from output of previous calculation
+            else:
+                struct_opt.update({k: v})
 
-        imp_sid = in_struct['sid']
-        imp_pick_pth = os.path.join(HOME_PATH, imp_sid, 'sims.pickle')
+        base_as = STRUCT_LOOKUP[bs_opt['type']](**struct_opt)
+
+    else:
+
+        # Retrieve the initial base AtomisticStructure object from a previous
+        # simulation
+
+        imp_archive = bs_opt['import']['archive']['path']
+        imp_id = bs_opt['import']['id']
+        imp_sim_idx = bs_opt['import']['sim_idx']
+        imp_opt_step = bs_opt['import']['opt_step']
+
+        imp_pick_pth = os.path.join(imp_archive, imp_id, 'sims.pickle')
         imp_pick = readwrite.read_pickle(imp_pick_pth)
-        imp_method = imp_pick['base_options']['method']
-        imp_sim = imp_pick['all_sims'][0]  # For now just the first sim
-        imp_rel_idx = in_struct['relax_idx']
-        imp_atom_basis = in_struct['atom_basis']
-
-        if imp_method == 'castep':
-            raise NotImplementedError('Have not sorted CASTEP import yet.')
-
-        elif imp_method == 'lammps':
-            imp_sup = imp_sim.results['supercell'][imp_rel_idx]
-            imp_atoms = imp_sim.results['atoms'][imp_rel_idx]
-            imp_atoms_frac = np.dot(np.linalg.inv(imp_sup), imp_atoms)
-
-        new_supercell = base_as.supercell
-        if imp_atom_basis == 'fractional':
-            # Import fractional atom coordinates into new supercell
-            new_atoms = np.dot(new_supercell, imp_atoms_frac)
-
-        elif imp_atom_basis == 'cart':
-            # Import atoms and supercell
-            new_supercell = imp_sup
-            new_atoms = imp_atoms
-
-        # For now, it's all Zr...
-        base_as = atomistic.AtomisticStructure(
-            new_atoms,
-            new_supercell,
-            all_species=['Zr'],
-            all_species_idx=np.zeros((new_atoms.shape[1],)))
+        imp_as = imp_pick['all_sims'][imp_sim_idx]
+        base_as = imp_as.generate_structure(opt_idx=imp_opt_step)
 
     return base_as
-
-
-def make_series_structure(ss_opt, crystal_structures):
-
-    srs_struct_opt = {}
-    for k, v in ss_opt.items():
-        if k == 'type' or k == 'import' or k == 'sigma':
-            continue
-        elif k == 'crystal_idx':
-            if ss_opt['type'] == 'CSLSurfaceCrystal':
-                srs_struct_opt.update({'surface_idx': v})
-        elif k == 'cs_idx':
-            srs_struct_opt.update({'crystal_structure': crystal_structures[v]})
-        else:
-            srs_struct_opt.update({k: v})
-
-    return STRUCT_LOOKUP[ss_opt['type']](**srs_struct_opt)
 
 
 def plot_gamma_surface_grids(opt, common_series_info, stage):
@@ -1315,30 +1353,8 @@ def main(opt):
         'relative_shift': True,
         'boundary_vac': True,
         'boundary_vac_flat': True,
+        'gamma_surface': False,
     }
-    log = []
-
-    # TEMP
-    """
-    keys in opt:
-        ['archive', 
-        'upload_plots', 
-        'crystal_structures', 
-        'offline_files', 
-        'scratch', 
-        'subdirs', 
-        'constraints', 
-        'castep', 
-        'series', 
-        'method', 
-        'base_structure', 
-        'append_db', 
-        'database', 
-        'make_plots',
-        'stage']
-
-    """
-    ####
 
     # Get unique representation of this series:
     opt['time_stamp'] = time.time()
@@ -1359,13 +1375,17 @@ def main(opt):
     scratch = Scratch(session_id=s_id, **opt['scratch'])
     archive = Archive(session_id=s_id, scratch=scratch, **opt['archive'])
 
-    # log.append('Making stage directory at: {}.'.format(stage_path))
     os.makedirs(stage.path, exist_ok=False)
 
     crys_structs = None
     if opt.get('crystal_structures') is not None:
         crys_structs = make_crystal_structures(opt['crystal_structures'])
     base_as = make_base_structure(opt['base_structure'], crys_structs)
+
+    # Copy makesims options file
+    opt_path = stage.get_path(OPT_FILE_NAMES['makesims'])
+    shutil.copy(os.path.join(
+        SET_UP_PATH, OPT_FILE_NAMES['makesims']), opt_path)
 
     # Save current options dict
     opt_p_str_path = stage.get_path('opt_processed.txt')
@@ -1414,6 +1434,7 @@ def main(opt):
             return
 
     # Generate simulation series:
+    skipped_sims = []
     num_sims = len(all_upd)
     for upd_idx, upd in enumerate(all_upd):
 
@@ -1422,7 +1443,12 @@ def main(opt):
 
         srs_opt = copy.deepcopy(opt)
         utils.update_dict(srs_opt, upd)
-        srs_as = make_series_structure(srs_opt['base_structure'], crys_structs)
+        try:
+            srs_as = make_base_structure(
+                srs_opt['base_structure'], crys_structs)
+        except AtomisticStructureException as e:
+            skipped_sims.append(upd_idx)
+            continue
 
         # Form the directory path for this sim
         # and find out which series affect the structure (for plotting purposes):
@@ -1474,7 +1500,8 @@ def main(opt):
         asim.write_input_files()
         all_sims.append(asim)
 
-    print('Completed making {} sim(s).'.format(num_sims))
+    print('Completed making {} sim(s). {} sims were skipped: {}.'.format(
+        num_sims, len(skipped_sims), skipped_sims))
 
     # Save all sims as pickle file:
     pick_path = stage.get_path('sims.pickle')

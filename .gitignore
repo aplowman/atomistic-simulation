@@ -108,3 +108,4 @@ atsim/ref/*
 test.py
 notebooks
 process_output
+docs/example_options/gamma_surface/lookup.yml

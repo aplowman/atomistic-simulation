@@ -5,12 +5,11 @@ import json
 import copy
 from pathlib import Path
 from atsim.readwrite import read_pickle, write_pickle, format_list, format_dict
-from atsim import utils, plotting, vectors, SCRIPTS_PATH, REF_PATH
+from atsim import utils, plotting, vectors, SCRIPTS_PATH, REF_PATH, OPT_FILE_NAMES
 from atsim.simsio import castep, lammps
 from atsim.analysis import compute_funcs
 from atsim.analysis.compute_funcs import get_depends, SINGLE_COMPUTE_LOOKUP, MULTI_COMPUTE_LOOKUP
-from atsim.set_up.harvest_opt import HARVEST_OPT
-from atsim.utils import dict_from_list
+from atsim.utils import dict_from_list, get_unique_idx
 
 
 # List of multi computes which require the common series info list:
@@ -31,296 +30,7 @@ VAR_ALLOWED_REQUIRED = {
 VAR_STD_KEYS = VAR_REQ_KEYS + ['display_name', 'idx', 'vals', ]
 
 
-def make_plots(out):
-
-    def format_title(name, val):
-        d = zip(name, val)
-        t = ['{}: {},'.format(i, out) for i, out in d]
-        return ' '.join(t)[:-1]
-
-    series_names = out['series_name']
-    sesh_ids = out['session_id_idx']
-    num_sims = len(sesh_ids)
-
-    vrs = out['variables']
-
-    for pl_idx, pl in enumerate(out['plots']):
-
-        fmt = pl['fmt']
-        lib = pl['lib']
-        fn = pl['filename']
-        file_srs = pl['file_series']
-        subplot_srs = pl['subplot_series']
-        trace_srs = pl['trace_series']
-        all_data_defn = pl['data']
-
-        all_data = []
-        for ii_idx, i in enumerate(all_data_defn):
-
-            if i['type'] == 'poly':
-                x_vals = np.linspace(i['xmin'], i['xmax'])
-                coeff_vals = dict_from_list(vrs, {'id': i['coeff_id']})['vals']
-                if i.get('coeff_idx') is not None:
-                    for sub_idx in i['coeff_idx']:
-                        coeff_vals = coeff_vals[sub_idx]
-
-                poly_y = []
-                poly_x = []
-                for k in coeff_vals:
-                    if k is None:
-                        poly_y.append(None)
-                        poly_x.append(None)
-                    else:
-                        p1d = np.poly1d(k)
-                        poly_y.append(p1d(x_vals))
-                        poly_x.append(x_vals)
-
-                ex_lst = ['type', 'coeff_id', 'coeff_idx', 'xmin', 'xmax']
-                d = {
-                    'type': 'marker',
-                    'x': {
-                        'vals': poly_x,
-                    },
-                    'y': {
-                        'vals': poly_y,
-                    },
-                    **{k: v for k, v in i.items() if k not in ex_lst}
-                }
-
-            else:
-                x_defn = dict_from_list(vrs, {'id': i['x']['id']})
-                y_defn = dict_from_list(vrs, {'id': i['y']['id']})
-
-                x, y = i['x'], i['y']
-                x['vals'], y['vals'] = x_defn['vals'], y_defn['vals']
-
-                if i['x'].get('idx') is not None:
-                    for sub_idx in i['x']['idx']:
-                        x['vals'] = x['vals'][sub_idx]
-
-                if i['y'].get('idx') is not None:
-                    for sub_idx in i['y']['idx']:
-                        y['vals'] = y['vals'][sub_idx]
-                d = {
-                    'x': x,
-                    'y': y,
-                    **{k: v for k, v in i.items() if k not in ['x', 'y', 'z']}
-                }
-
-            if i['type'] == 'contour':
-
-                z_defn = dict_from_list(vrs, {'id': i['z']['id']})
-                z = i['z']
-                z['vals'] = z_defn['vals']
-                d.update({'z': z, })
-
-                if i['z'].get('idx') is not None:
-                    for sub_idx in i['z']['idx']:
-                        z['vals'] = z['vals'][sub_idx]
-
-                if not i.get('grid', False):
-
-                    row_idx = dict_from_list(vrs, {'id': i['row_idx_id']})
-                    col_idx = dict_from_list(vrs, {'id': i['col_idx_id']})
-                    shp = dict_from_list(vrs, {'id': i['shape_id']})
-
-                    # Grid shape will be a list with a value for each sim.
-                    # Later, we take the first valid shape for a given data
-                    # set.
-
-                    d.update({
-                        'row_idx': row_idx['vals'],
-                        'col_idx': col_idx['vals'],
-                        'shape': shp['vals'],
-                    })
-
-            all_data.append(d)
-
-        all_types_srs = [file_srs, subplot_srs, trace_srs]
-        all_types_srs_vals = [[], [], []]
-        for srs_type_idx, srs_type in enumerate(all_types_srs):
-
-            for i in srs_type:
-
-                if i in series_names:
-                    i_idx = series_names.index(i)
-                    i_vals = utils.get_col(out['series_id']['val'], i_idx)
-                else:
-                    i_vals = dict_from_list(
-                        out['variables'], {'id': i})['vals']
-
-                all_types_srs_vals[srs_type_idx].append(i_vals)
-
-        all_types_srs_vals = [utils.transpose_list(
-            i) for i in all_types_srs_vals]
-
-        file_srs_vals = all_types_srs_vals[0]
-        subplot_srs_vals = all_types_srs_vals[1]
-        trace_srs_vals = all_types_srs_vals[2]
-
-        if len(file_srs_vals) == 0:
-            file_srs_vals = [[0] for _ in range(num_sims)]
-
-        if len(subplot_srs_vals) == 0:
-            subplot_srs_vals = [[0] for _ in range(num_sims)]
-
-        if len(trace_srs_vals) == 0:
-            trace_srs_vals = [[0] for _ in range(num_sims)]
-
-        unique_fsv = []
-        unique_fsv_idx = []
-        for f_idx, f in enumerate(file_srs_vals):
-            if f in unique_fsv:
-                unique_fsv_idx[unique_fsv.index(f)].append(f_idx)
-            elif None in f:
-                continue
-            else:
-                unique_fsv.append(f)
-                unique_fsv_idx.append([f_idx])
-
-        unique_ssv = []
-        unique_ssv_idx = []
-        for s_idx, s in enumerate(subplot_srs_vals):
-            if s in unique_ssv:
-                unique_ssv_idx[unique_ssv.index(s)].append(s_idx)
-            elif None in s:
-                continue
-            else:
-                unique_ssv.append(s)
-                unique_ssv_idx.append([s_idx])
-
-        unique_tsv = []
-        unique_tsv_idx = []
-        for t_idx, t in enumerate(trace_srs_vals):
-            if t in unique_tsv:
-                unique_tsv_idx[unique_tsv.index(t)].append(t_idx)
-            elif None in t:
-                continue
-            else:
-                unique_tsv.append(t)
-                unique_tsv_idx.append([t_idx])
-
-        all_f = []
-        for f in unique_fsv_idx:
-            all_s = []
-            for s in unique_ssv_idx:
-                all_t = []
-                for t in unique_tsv_idx:
-                    all_i = []
-                    for i in t:
-                        if i in f and i in s:
-                            all_i.append(i)
-                    all_t.append(all_i)
-                all_s.append(all_t)
-            all_f.append(all_s)
-
-        figs = []
-        for f_idx, f in enumerate(all_f):
-
-            subplots = []
-            for s_idx, s in enumerate(f):
-                traces = []
-                for t_idx, t in enumerate(s):
-                    sub_traces = []
-                    for d_idx, d in enumerate(all_data):
-
-                        x_d = utils.index_lst(d['x']['vals'], t)
-                        y_d = utils.index_lst(d['y']['vals'], t)
-
-                        trm_idx = utils.trim_common_nones(
-                            x_d, y_d, ret_idx=True)
-
-                        if trm_idx is None:
-                            trm_idx = []
-
-                        yn_idx = [i_idx for i_idx,
-                                  i in enumerate(y_d) if i is None]
-
-                        x_d = utils.index_lst(x_d, yn_idx, not_idx=True)
-                        y_d = utils.index_lst(y_d, yn_idx, not_idx=True)
-
-                        trm_idx += yn_idx
-
-                        if d['type'] in ['line', 'marker']:
-
-                            if isinstance(x_d[0], list):
-                                x_d = x_d[0]
-                                y_d = y_d[0]
-
-                            if d.get('sort'):
-                                srt_idx = np.argsort(x_d)
-                                x_d = list(np.array(x_d)[srt_idx])
-                                y_d = list(np.array(y_d)[srt_idx])
-
-                        x = copy.deepcopy(d['x'])
-                        x['vals'] = x_d
-
-                        y = copy.deepcopy(d['y'])
-                        y['vals'] = y_d
-
-                        st_dict = {
-                            'x': x,
-                            'y': y,
-                            'type': d['type'],
-                            'title': format_title(trace_srs, unique_tsv[t_idx]),
-                            **{k: v for k, v in d.items() if k not in ['x', 'y', 'z']},
-                        }
-
-                        if d['type'] == 'contour':
-
-                            z_d = copy.copy(utils.index_lst(d['z']['vals'], t))
-                            z = copy.deepcopy(d['z'])
-                            z_d[:] = [j for j_idx, j in enumerate(
-                                z_d) if j_idx not in trm_idx]
-                            z['vals'] = z_d
-
-                            st_dict.update({'z': z})
-
-                            if not d.get('grid', False):
-
-                                row_idx = utils.index_lst(d['row_idx'], t)
-                                col_idx = utils.index_lst(d['col_idx'], t)
-                                shp = utils.index_lst(d['shape'], t)
-
-                                for i in [row_idx, col_idx, shp]:
-                                    i[:] = [j for j_idx, j in enumerate(
-                                        i) if j_idx not in trm_idx]
-
-                                # Take the shape as that from the first
-                                # datapoint:
-
-                                shp = shp[0]
-
-                                st_dict.update({
-                                    'row_idx': row_idx,
-                                    'col_idx': col_idx,
-                                    'shape': shp,
-                                })
-
-                        sub_traces.append(st_dict)
-
-                    traces.append(sub_traces)
-
-                subplots.append({
-                    'traces': traces,
-                    'title': format_title(subplot_srs, unique_ssv[s_idx]) or pl['filename'],
-                })
-
-            figs.append({
-                'subplots': subplots,
-                'title': format_title(file_srs, unique_fsv[f_idx]),
-                **{k: v for k, v in pl.items() if k not in ['subplots']},
-            })
-
-        if pl['lib'] == 'mpl':
-            save_dir = os.path.join(out['output_path'], out['rid'])
-            plotting.plot_many_mpl(figs, save_dir=save_dir)
-        else:
-            raise NotImplementedError(
-                'Library "{}" not supported.'.format(pl['lib']))
-
-
-def read_results(sid, skip_idx=None, overwrite=False, query_all=False):
+def read_results(sid, archive_path, skip_idx=None, overwrite=False, query_all=False):
     """
     Parameters
     ----------
@@ -342,10 +52,11 @@ def read_results(sid, skip_idx=None, overwrite=False, query_all=False):
         the remaining simulations. Default is False.
 
     """
-
-    sid_path = os.path.join(HARVEST_OPT['archive_path'], sid)
+    sid_path = os.path.join(archive_path, sid)
     sims = read_pickle(os.path.join(sid_path, 'sims.pickle'))
-    method = sims['base_options']['method']
+    # Get options from first sim if they don't exist (legacy compatiblity)
+    base_opt = sims.get('base_options', sims['all_sims'][0].options)
+    method = base_opt['method']
 
     s_count = 0
     for s_idx, sim_i in enumerate(sims['all_sims']):
@@ -357,8 +68,22 @@ def read_results(sid, skip_idx=None, overwrite=False, query_all=False):
         srs_paths = []
         srs_id = sim_i.options.get('series_id')
         if srs_id is not None:
-            for srs_id_lst in srs_id:
-                srs_paths.append('_'.join([i['path'] for i in srs_id_lst]))
+
+            # (legacy compatibility)
+            if isinstance(srs_id, dict) and len(srs_id) == 1:
+
+                new_srs_id = []
+                for k, v in srs_id.items():
+                    new_srs_id.append([{'name': k, **v}])
+                srs_id = new_srs_id
+
+            if not isinstance(srs_id, dict):
+                for srs_id_lst in srs_id:
+                    srs_paths.append('_'.join([i['path'] for i in srs_id_lst]))
+
+            else:
+                raise ValueError('Cannot parse `series_id` option from '
+                                 's_idx: {}'.format(s_idx))
 
         calc_path = os.path.join(sid_path, 'calcs', *srs_paths)
 
@@ -555,7 +280,6 @@ def collate_results(res_opt, skip_idx=None, debug=False):
 
     computes = []
     add_vars = []
-    plots = res_opt.get('plots', [])
 
     # Make a list of all variable ids
     var_ids = []
@@ -597,16 +321,15 @@ def collate_results(res_opt, skip_idx=None, debug=False):
         'session_id_idx': [],
         'idx': [],
         'series_name': [],
-        'plots': plots,
         'variables': ordered_vars,
         'rid': rs_id,
-        'output_path': res_opt['output_path'],
+        'output_path': res_opt['output']['path'],
     }
 
     # Get a list of lists of sims:
     all_sims = []
     for sid in res_opt['sid']:
-        path = os.path.join(res_opt['archive_path'], sid)
+        path = os.path.join(res_opt['archive']['path'], sid)
         pick_path = os.path.join(path, 'sims.pickle')
         pick = read_pickle(pick_path)
         all_sims.append(pick['all_sims'])
@@ -616,8 +339,19 @@ def collate_results(res_opt, skip_idx=None, debug=False):
     for series_sims in all_sims:
         sm_0 = series_sims[0]
         sm_0_opt = sm_0.options
-        if sm_0_opt.get('series_id') is not None:
-            for series_id_list in sm_0_opt['series_id']:
+
+        srs_id = sm_0_opt.get('series_id')
+        if srs_id is not None:
+
+            # (legacy compatibility)
+            if isinstance(srs_id, dict) and len(srs_id) == 1:
+
+                new_srs_id = []
+                for k, v in srs_id.items():
+                    new_srs_id.append([{'name': k, **v}])
+                srs_id = new_srs_id
+
+            for series_id_list in srs_id:
                 for series_id_sublist in series_id_list:
                     nm = series_id_sublist['name']
                     if nm not in all_srs_name:
@@ -638,13 +372,14 @@ def collate_results(res_opt, skip_idx=None, debug=False):
     for sid_idx, sid in enumerate(res_opt['sid']):
 
         skips = skip_idx[sid_idx]
-        path = os.path.join(res_opt['archive_path'], sid)
+        path = os.path.join(res_opt['archive']['path'], sid)
 
         # Open the pickle file associated with this simulation series:
         pick_path = os.path.join(path, 'sims.pickle')
         pick = read_pickle(pick_path)
         sims = pick['all_sims']
-        base_opt = pick['base_options']
+        # Get options from first sim if they don't exist (legacy compatiblity)
+        base_opt = pick.get('base_options', sims[0].options)
         all_csi.append(pick.get('common_series_info'))
 
         # Loop through each simulation for this series
@@ -663,6 +398,16 @@ def collate_results(res_opt, skip_idx=None, debug=False):
             out['idx'].append(sm_idx)
 
             srs_id = sm.options.get('series_id')
+            if srs_id is not None:
+
+                # (legacy compatibility)
+                if isinstance(srs_id, dict) and len(srs_id) == 1:
+
+                    new_srs_id = []
+                    for k, v in srs_id.items():
+                        new_srs_id.append([{'name': k, **v}])
+                    srs_id = new_srs_id
+
             if srs_id is None:
                 srs_id = [[]]
 
@@ -697,7 +442,15 @@ def collate_results(res_opt, skip_idx=None, debug=False):
                 all_sub_idx = vr.get('idx')
                 if all_sub_idx is not None:
                     for sub_idx in all_sub_idx:
-                        val = val[sub_idx]
+                        if vr_type == 'parameter':
+                            try:
+                                val = val[sub_idx]
+                            except KeyError:
+                                val = vr.get('default')
+                                break
+
+                        else:
+                            val = val[sub_idx]
 
                 # To ensure the data is JSON compatible:
                 if isinstance(val, np.ndarray):
@@ -745,6 +498,7 @@ def main(harvest_opt):
     sids = harvest_opt['sid']
     skip_idx = harvest_opt['skip_idx']
     overwrite = harvest_opt.get('overwrite', False)
+    archive_path = harvest_opt['archive']['path']
     debug = harvest_opt.get('debug', False)
 
     if skip_idx is None or len(skip_idx) == 0:
@@ -759,30 +513,23 @@ def main(harvest_opt):
             skip_idx = [[] for _ in range(len(sids))]
 
     for s_idx, s in enumerate(sids):
-        read_results(s, skip_idx=skip_idx[s_idx], overwrite=overwrite)
+        read_results(s, archive_path,
+                     skip_idx=skip_idx[s_idx], overwrite=overwrite)
 
     # Compute additional properties
     out = collate_results(harvest_opt, skip_idx=skip_idx, debug=debug)
 
-    # Save the JSON file in the results directory of the first listed SID
-    res_dir = os.path.join(harvest_opt['output_path'], out['rid'])
+    res_dir = os.path.join(harvest_opt['output']['path'], out['rid'])
 
     os.makedirs(res_dir, exist_ok=True)
     json_fn = 'results.json'
     json_path = os.path.join(res_dir, json_fn)
 
     # Save a copy of the input results options
-    src_path = os.path.join(SCRIPTS_PATH, 'set_up', 'harvest_opt.py')
-    dst_path = os.path.join(res_dir, 'harvest_opt.py')
+    src_path = os.path.join(SCRIPTS_PATH, 'set_up', OPT_FILE_NAMES['harvest'])
+    dst_path = os.path.join(res_dir, OPT_FILE_NAMES['harvest'])
     shutil.copy(src_path, res_dir)
 
     with open(json_path, 'w', encoding='utf-8', newline='') as jf:
         print('Saving {} in {}'.format(json_fn, res_dir))
         json.dump(out, jf, sort_keys=True, indent=4)
-
-    # Generate plots
-    make_plots(out)
-
-
-if __name__ == '__main__':
-    main(HARVEST_OPT)

@@ -1,0 +1,57 @@
+archive: <<jerry>>
+output: <<default>>
+overwrite: False
+debug: False
+
+sid: [
+  2017-10-05-2240_81362
+]
+
+skip_idx: [
+  [],
+]
+
+variables:
+  - name: energy
+    type: compute
+    energy_src: final_energy
+    opt_step: -1
+    id: energy
+
+  - name: gb_boundary_vac
+    type: compute
+    id: gb_boundary_vac
+
+  - name: gamma_surface_info
+    type: compute
+    id: row_idx
+    info_name: row_idx
+
+  - name: gamma_surface_info
+    type: compute
+    id: col_idx
+    info_name: col_idx
+
+  - name: gamma_surface_info
+    type: compute
+    id: grid_shape
+    info_name: grid_shape
+
+  - name: gamma_surface_info
+    type: compute
+    id: x_std_vals
+    info_name: x_std_vals
+
+  - name: gamma_surface_info
+    type: compute
+    id: y_std_vals
+    info_name: y_std_vals
+
+  - name: master_gamma
+    type: compute
+    id: master_gamma
+    energy_src: final_energy
+    opt_step: -1
+    use_gb_energy: False
+    series_id: []
+    unit: J/m^2

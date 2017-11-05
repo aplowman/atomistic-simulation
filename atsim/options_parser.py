@@ -4,6 +4,7 @@ from atsim import utils
 from atsim import SET_UP_PATH, SERIES_NAMES, ALLOWED_SERIES_KEYS
 import copy
 import os
+import warnings
 
 
 def get_scratch_lookup_name(lookup_name, method):
@@ -72,7 +73,7 @@ def get_base_structure_defn(opt, opt_lookup):
             raise ValueError(
                 'Σ value not specified in CSL supercell type.')
         else:
-            sigma = csl_str[-1]
+            sigma = int(csl_str.split('Σ')[1])
             csl_vecs = opt_lookup['csl_vecs'][csl_str]
             if sup_type == 'csl_bulk_bicrystal':
                 csl_vecs = csl_vecs[bulk_idx]
@@ -107,7 +108,7 @@ def get_base_structure_defn(opt, opt_lookup):
                 'size must be of shape (3, 3): {}'.format(size_str))
 
         base_structure.update({
-            'box_lat': size,
+            'box_lat': size.T,
         })
 
     # Reassign opt:
@@ -250,7 +251,7 @@ def validate_ms_opt(opt_fn, lookup_opt_fn):
     for k, v in opt_unflat.items():
 
         if k == 'archive':
-            valid_opt.update({k: validate_ms_archive(v, opt_lookup)})
+            valid_opt.update({k: validate_archive(v, opt_lookup)})
 
         elif k == 'stage':
             valid_opt.update({k: validate_ms_stage(v, opt_lookup)})
@@ -287,7 +288,7 @@ def validate_ms_opt(opt_fn, lookup_opt_fn):
     return valid_opt
 
 
-def validate_ms_archive(opt, opt_lookup):
+def validate_archive(opt, opt_lookup):
     opt = check_lookup('archive', opt, opt_lookup) or opt
     allowed_keys = ['dropbox', 'path']
     check_invalid_key(opt, allowed_keys)
@@ -339,6 +340,7 @@ def validate_ms_scratch(opt, opt_lookup, method):
         'module_load',
         'job_array',
         'offline_files',
+        'selective_submission',
     ]
     check_invalid_key(opt, allowed_keys)
     valid_scratch = {}
@@ -367,21 +369,27 @@ def validate_ms_base_structure(opt, opt_lookup):
         check_invalid_key(csl_params_opt, allowed_keys)
         return csl_params_opt
 
-    print('opt: {}'.format(opt))
-
     if '<<lookup>>' in opt:
         opt = get_base_structure_defn(opt, opt_lookup)
 
     print('opt: {}'.format(opt))
 
-    sup_type = opt['type']
     allowed_keys_all = [
         'type',
         'overlap_tol',
+        'import',
+    ]
+    allowed_keys_import = [
+        'import',
+        'overlap_tol',
+        'archive',
+        'tile',
     ]
     allowed_keys_gb = [
         'relative_shift_args',
+        'boundary_vac_args',
         'wrap',
+        'maintain_inv_sym',
     ]
     allowed_keys_gb_from_structure = allowed_keys_all + allowed_keys_gb + [
         'csl',
@@ -410,11 +418,20 @@ def validate_ms_base_structure(opt, opt_lookup):
         'bulk': allowed_keys_bulk,
     }
     allowed_types = list(allowed_keys.keys())
-    if sup_type not in allowed_types:
-        raise ValueError(
-            'base_structure.type: {} is unknown.'.format(sup_type))
-    check_invalid_key(opt, allowed_keys[sup_type])
 
+    if 'import' not in opt:
+
+        sup_type = opt['type']
+
+        if sup_type not in allowed_types:
+            raise ValueError(
+                'base_structure.type: {} is unknown.'.format(sup_type))
+        allowed_keys = allowed_keys[sup_type]
+
+    else:
+        allowed_keys = allowed_keys_import
+
+    check_invalid_key(opt, allowed_keys)
     valid_bs = {}
     for k, v in opt.items():
         if k == 'csl_params':
@@ -432,10 +449,44 @@ def validate_ms_base_structure(opt, opt_lookup):
         elif k == 'box_lat':
             valid_bs.update({k: np.array(v)})
 
+        elif k == 'import':
+            valid_bs.update({k: validate_bs_import(v, opt_lookup)})
+
         else:
             valid_bs.update({k: v})
 
     return valid_bs
+
+
+def validate_bs_import(opt, opt_lookup):
+
+    deep_keys = [
+        'archive',
+    ]
+    for dk in deep_keys:
+        if opt.get(dk) is not None:
+            opt[dk + '.<<lookup>>'] = opt.pop(dk)
+
+    opt_unflat = utils.unflatten_dict_keys(opt)
+
+    allowed_keys = [
+        'id',
+        'sim_idx',
+        'opt_step',
+        'archive',
+        'tile',
+    ]
+    check_invalid_key(opt_unflat, allowed_keys)
+    valid_import = {}
+
+    for k, v in opt_unflat.items():
+
+        if k == 'archive':
+            valid_import.update({k: validate_archive(v, opt_lookup)})
+        else:
+            valid_import.update({k: v})
+
+    return valid_import
 
 
 def validate_ms_crystal_structures(opt, opt_lookup):
@@ -524,7 +575,12 @@ def validate_ms_series(opt):
         if srs_nm not in SERIES_NAMES:
             raise ValueError('Series name "{}" not allowed.'.format(srs_nm))
         check_invalid_key(srs_itm, ALLOWED_SERIES_KEYS[srs_nm])
-        return srs_itm
+
+        valid_srs = copy.deepcopy(srs_itm)
+        if srs_itm['name'] == 'box_lat':
+            valid_srs['vals'] = [np.array(i) for i in valid_srs['vals']]
+
+        return valid_srs
 
     if opt is None:
         opt = [[]]
@@ -631,6 +687,59 @@ def validate_ms_lammps(opt, opt_lookup):
     return opt
 
 
+def validate_hv_opt(opt_fn, lookup_opt_fn, opt_def_fn):
+    """Function to validate harvest.yml options."""
+
+    opt_path = os.path.join(SET_UP_PATH, opt_fn)
+    opt_lookup_path = os.path.join(SET_UP_PATH, lookup_opt_fn)
+    opt_def_path = os.path.join(SET_UP_PATH, opt_def_fn)
+
+    with open(opt_path, 'r', encoding='utf-8') as f:
+        opt = yaml.load(f)
+
+    with open(opt_lookup_path, 'r', encoding='utf-8') as f:
+        opt_lookup = yaml.load(f)
+
+    with open(opt_def_path, 'r', encoding='utf-8') as f:
+        opt_def = yaml.load(f)
+
+    deep_keys = [
+        'archive',
+        'output',
+    ]
+    for dk in deep_keys:
+        if opt.get(dk) is not None:
+            opt[dk + '.<<lookup>>'] = opt.pop(dk)
+
+    opt_unflat = utils.unflatten_dict_keys(opt)
+
+    allowed_keys = [
+        'archive',
+        'output',
+        'overwrite',
+        'debug',
+        'sid',
+        'skip_idx',
+        'variables',
+    ]
+    check_invalid_key(opt_unflat, allowed_keys)
+
+    valid_opt = {}
+    for k, v in opt_unflat.items():
+
+        if k == 'archive':
+            valid_opt.update({k: validate_archive(v, opt_lookup)})
+        elif k == 'output':
+            valid_opt.update({k: validate_hv_output(v, opt_lookup)})
+        elif k == 'variables':
+            valid_opt.update(
+                {k: validate_hv_variables(v, opt_lookup, opt_def)})
+        else:
+            valid_opt.update({k: v})
+
+    return valid_opt
+
+
 def validate_ps_opt(opt_fn, lookup_opt_fn):
     opt_path = os.path.join(SET_UP_PATH, opt_fn)
     opt_lookup_path = os.path.join(SET_UP_PATH, lookup_opt_fn)
@@ -665,4 +774,208 @@ def validate_ps_opt(opt_fn, lookup_opt_fn):
         else:
             valid_opt.update({k: v})
 
+    return valid_opt
+
+
+def validate_mp_opt(opt_fn, lookup_opt_fn, opt_def_fn):
+    """Function to validate makeplots.yml options."""
+
+    opt_path = os.path.join(SET_UP_PATH, opt_fn)
+    opt_lookup_path = os.path.join(SET_UP_PATH, lookup_opt_fn)
+    opt_def_path = os.path.join(SET_UP_PATH, opt_def_fn)
+
+    with open(opt_path, 'r', encoding='utf-8') as f:
+        opt = yaml.load(f)
+
+    with open(opt_lookup_path, 'r', encoding='utf-8') as f:
+        opt_lookup = yaml.load(f)
+
+    with open(opt_def_path, 'r', encoding='utf-8') as f:
+        opt_def = yaml.load(f)
+
+    allowed_keys = [
+        'results_id',
+        'plots',
+    ]
+
+    valid_opt = {}
+    for k, v in opt.items():
+
+        if k == 'plots':
+            valid_opt.update({k: validate_mp_plots(v, opt_lookup, opt_def)})
+        else:
+            valid_opt.update({k: v})
+
+    return valid_opt
+
+
+def validate_mp_plots(opt, opt_lookup, opt_def):
+
+    allowed_keys = [
+        'fmt',
+        'lib',
+        'filename',
+        'subplot_width',
+        'subplot_height',
+        'file_series',
+        'subplot_series',
+        'trace_series',
+        'data',
+        'axes',
+        'axes_props',
+        'subplot_rows',
+        'subplot_cols',
+    ]
+
+    valid_opt = []
+    for plt_idx, plt in enumerate(opt):
+
+        if isinstance(plt, str):
+            if '<<' in plt and '>>' in plt:
+                plt = {'<<lookup>>': plt}
+
+        plt = check_lookup('plots', plt, opt_lookup) or plt
+        plt_opt = utils.unflatten_dict_keys(plt)
+        plt_opt = {**opt_def['plots'], **plt_opt}
+
+        check_invalid_key(plt_opt, allowed_keys)
+        valid_plt = {}
+        for k, v in plt_opt.items():
+            if k == 'data':
+                valid_plt.update({k: validate_mp_data(v, opt_lookup)})
+            else:
+                valid_plt.update({k: v})
+
+        valid_opt.append(valid_plt)
+
+    return valid_opt
+
+
+def validate_mp_data(opt, opt_lookup):
+
+    def validate_xyz(xyz_opt, opt_lookup):
+        allowed_keys = [
+            'id',
+            'idx',
+            'label',
+            'reverse',
+        ]
+        check_invalid_key(xyz_opt, allowed_keys)
+        return xyz_opt
+
+    allowed_keys_all = [
+        'type',
+        'x',
+        'y',
+        'axes_idx',
+        'name',
+        'sort',
+        'legend',
+    ]
+    allowed_keys_2d = allowed_keys_all
+    allowed_keys_line = allowed_keys_2d + [
+        'line',
+    ]
+    allowed_keys_marker = allowed_keys_2d + [
+        'marker',
+    ]
+    allowed_keys_3d = allowed_keys_all + [
+        'z',
+        'row_idx_id',
+        'col_idx_id',
+        'shape_id',
+    ]
+    allowed_keys_contour = allowed_keys_3d + [
+        'show_points',  # something to show scatter points
+        'grid',  # something to say x,y,z data are 2D
+    ]
+    allowed_keys_poly = allowed_keys_all + [
+        'coeffs',
+        'xmin',
+        'xmax',
+    ]
+    allowed_keys = {
+        'line': allowed_keys_line,
+        'marker': allowed_keys_marker,
+        'contour': allowed_keys_contour,
+        'poly': allowed_keys_poly,
+    }
+    allowed_types = list(allowed_keys.keys())
+
+    valid_opt = []
+    for dat_idx, dat in enumerate(opt):
+
+        if isinstance(dat, str):
+            if '<<' in dat and '>>' in dat:
+                dat = {'<<lookup>>': dat}
+
+        dat = check_lookup('plots_data', dat, opt_lookup) or dat
+        dat_opt = utils.unflatten_dict_keys(dat)
+
+        plt_type = dat_opt['type']
+        if plt_type not in allowed_types:
+            raise ValueError('Plot type is unknown: "{}"'.format(plt_type))
+        check_invalid_key(dat_opt, allowed_keys[plt_type])
+
+        valid_dat = {}
+        for k, v in dat_opt.items():
+            if k in ['x', 'y', 'z']:
+                valid_dat.update({k: validate_xyz(v, opt_lookup)})
+            else:
+                valid_dat.update({k: v})
+
+        valid_opt.append(valid_dat)
+
+    return valid_opt
+
+
+def validate_hv_output(opt, opt_lookup):
+    opt = check_lookup('output', opt, opt_lookup) or opt
+    allowed_keys = ['path']
+    check_invalid_key(opt, allowed_keys)
+    return opt
+
+
+def validate_hv_variables(opt, opt_lookup, opt_def):
+    return opt  # TODO
+
+
+def validate_sh_opt(opt_fn, lookup_opt_fn, opt_def_fn):
+
+    opt_path = os.path.join(SET_UP_PATH, opt_fn)
+    opt_lookup_path = os.path.join(SET_UP_PATH, lookup_opt_fn)
+    opt_def_path = os.path.join(SET_UP_PATH, opt_def_fn)
+
+    with open(opt_path, 'r', encoding='utf-8') as f:
+        opt = yaml.load(f)
+
+    with open(opt_lookup_path, 'r', encoding='utf-8') as f:
+        opt_lookup = yaml.load(f)
+
+    with open(opt_def_path, 'r', encoding='utf-8') as f:
+        opt_def = yaml.load(f)
+
+    deep_keys = [
+        'archive',
+        'output',
+    ]
+    for dk in deep_keys:
+        if opt.get(dk) is not None:
+            opt[dk + '.<<lookup>>'] = opt.pop(dk)
+
+    opt_unflat = utils.unflatten_dict_keys(opt)
+    allowed_keys = [
+        'output',
+        'results_id',
+        'grid_spec',
+    ]
+    check_invalid_key(opt_unflat, allowed_keys)
+    valid_opt = {}
+    for k, v in opt_unflat.items():
+        if k == 'output':
+            valid_opt.update({k: validate_hv_output(v, opt_lookup)})
+        else:
+            valid_opt.update({k: v})
+
+    print('valid_opt: {}'.format(valid_opt))
     return valid_opt

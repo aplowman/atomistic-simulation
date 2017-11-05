@@ -4,6 +4,7 @@ import numpy as np
 from atsim import vectors, utils
 from atsim import readwrite
 from atsim.readwrite import format_arr
+import mendeleev
 
 
 def get_castep_cell_constraints(lengths_equal, angles_equal, fix_lengths,
@@ -1409,3 +1410,37 @@ def read_cell_file(cellfile):
         }
 
         return lattice_data
+
+
+def map_species_to_castep(species, species_idx):
+    """
+    Generate an index array which maps a species index array in the same way 
+    that CASTEP internally reorders atoms.
+
+    CASTEP orders atoms first by atomic number (proton number) and then by 
+    their original order. This function can be used to reorder atom coordinates
+    in this way.
+
+    Parameters
+    ----------
+    species : ndarray of shape (N, ) of str
+        Unique chemical symbols indexed by `species_idx`.
+    species_idx : ndarray of shape (M, ) of int
+
+    Returns
+    -------
+    ndarray of shape (M, ) of int
+        Index array which reorders `species_idx`
+
+    """
+
+    atom_z = [mendeleev.element(i).atomic_number for i in species]
+    atom_z_srt_idx = np.argsort(atom_z)
+
+    map_unsort = []
+    for i in range(len(species)):
+        map_unsort.append(np.where(species_idx == i)[0])
+
+    map_idx = np.concatenate(utils.index_lst(map_unsort, atom_z_srt_idx))
+
+    return map_idx

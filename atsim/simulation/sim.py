@@ -7,6 +7,8 @@ from atsim.structure.atomistic import AtomisticStructure
 from atsim.structure.crystal import CrystalBox, CrystalStructure
 from atsim.simsio import castep, lammps
 
+from atsim.utils import prt
+
 
 class AtomisticSimulation(object):
 
@@ -45,23 +47,42 @@ class AtomisticSimulation(object):
         # Get supercell and atom sites from given optimisation step
         method = self.options['method']
 
+        species_orig = self.structure.all_species
+        species_idx_orig = self.structure.all_species_idx
+
         if method == 'castep':
+
             supercell = self.results['geom']['cells'][opt_idx]
             atom_sites = self.results['geom']['ions'][opt_idx]
-            all_species = self.results['geom']['species']
-            all_species_idx = self.results['geom']['species_idx']
+
+            reorder_map = castep.map_species_to_castep(
+                species_orig, species_idx_orig)
+            reorder_map_inv = np.argsort(reorder_map)
+
+            # atoms reordered based on original species_idx
+            atom_sites = atom_sites[reorder_map_inv]
+
+            # cell_constraints = self.options['constraints']['cell']
+            # prt(cell_constraints, 'cell_constraints')
+
+            # if (cell_constraints['fix_lengths'] == 'abc' and
+            #         cell_constraints['fix_angles'] == 'abc'):
+
+            #     # supercell remains fixed, we can include crystal definitions:
+            #     crystals = self.structure.crystals
+            #     crystal_idx = self.structure.crystal_idx
+            #     prt(crystals, 'crystals')
+            #     prt(crystal_idx, 'crystal_idx')
+            #     exit()
 
         elif method == 'lammps':
+
             supercell = self.results['supercell'][opt_idx]
             atom_sites = self.results['atoms'][opt_idx]
 
-            # Assume no reordering of species
-            all_species = self.structure.all_species
-            all_species_idx = self.structure.all_species_idx
-
         opt_structure = AtomisticStructure(
-            atom_sites, supercell, all_species=all_species,
-            all_species_idx=all_species_idx)
+            atom_sites, supercell, all_species=species_orig,
+            all_species_idx=species_idx_orig)
 
         if tile is not None:
             opt_structure.tile_supercell(tile)

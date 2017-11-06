@@ -1240,7 +1240,7 @@ class AtomisticStructure(object):
         if wrap:
             self.wrap_atoms_to_supercell()
 
-    def add_surface_vac(self, thickness, dir_idx):
+    def add_vac(self, thickness, dir_idx, position=1):
         """
         Extend the supercell in a given direction.
 
@@ -1254,10 +1254,24 @@ class AtomisticStructure(object):
             Thickness of vacuum to add
         dir_idx : int 0, 1 or 2
             Supercell direction in which to add vacuum
+        position : float
+            Fractional coordinate along supercell vector given by `dir_idx` at
+            which to add the vacuum. By default, adds vacuum to the far face of
+            the supercell, such that atom Cartesian coordinates are not
+            affected. Must be between 0 (inclusive) and 1 (inclusive).
         """
+
+        # TODO: validate it does what we want. Maybe revert back to calling it
+        # `add_surface_vac`.
+
+        warnings.warn('!! Untested function... !!')
 
         if dir_idx not in [0, 1, 2]:
             raise ValueError('`dir_idx` must be 0, 1 or 2.')
+
+        if position < 0 or position > 1:
+            raise ValueError('`position` must be between 0 (inclusive) and 1 '
+                             '(inclusive).')
 
         non_dir_idx = [i for i in [0, 1, 2] if i != dir_idx]
         v1v2 = self.supercell[:, non_dir_idx]
@@ -1273,6 +1287,11 @@ class AtomisticStructure(object):
         v3_new = v3_unit * v3_mag_new
 
         self.supercell[:, dir_idx] = v3_new
+
+        asf = self.atom_sites_frac
+        shift_idx = np.where(asf[dir_idx] > position)[0]
+
+        self.atom_sites[:, shift_idx] += (n_unit * thickness)
 
 
 class BulkCrystal(AtomisticStructure):

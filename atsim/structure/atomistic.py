@@ -1348,13 +1348,13 @@ class PointDefect(object):
 
     Attributes
     ----------
-    species : str
-        Chemical symbol of a species or "v" for vacancy
-    atom_site : str
+    defect_species : str
+        Chemical symbol of the defect species or "v" for vacancy
+    host_species : str
         Chemical symbol of the species which this defect replaces or "i" for
         interstitial.
     index : int
-        The atom site or interstitial site index within the AtomisticStructure.
+        The atom or interstitial site index within the AtomisticStructure.
     charge : float
         The defect's electronic charge.
     interstice_type : str

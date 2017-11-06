@@ -3,10 +3,8 @@ import os
 from plotly import graph_objs
 from plotly.offline import plot, iplot
 from atsim.structure.bravais import BravaisLattice
-from atsim import geometry, vectors, readwrite
+from atsim import geometry, vectors, readwrite, REF_PATH
 from atsim.simsio import castep
-
-REF_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ref')
 
 
 class CrystalBox(object):

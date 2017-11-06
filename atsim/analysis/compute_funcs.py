@@ -752,7 +752,6 @@ def difference(out, req_vars):
     req_vars[-1]['vals'] = utils.nan_to_none(out)
 
 
-
 # Single-compute functions are passed individual AtomisticSimulation objects:
 SINGLE_COMPUTE_LOOKUP = {
     'num_atoms': num_atoms,

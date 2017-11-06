@@ -115,8 +115,8 @@ class BravaisLattice(object):
 
     """
 
-    def __init__(self, lattice_system, centring_type=None,
-                 a=None, b=None, c=None, α=None, β=None, γ=None, degrees=True, align='ax'):
+    def __init__(self, lattice_system, centring_type=None, a=None, b=None,
+                 c=None, α=None, β=None, γ=None, degrees=True, align='ax'):
         """Constructor method for BravaisLattice object."""
 
         if centring_type is None:

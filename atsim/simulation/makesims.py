@@ -674,12 +674,15 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
 
     elif sn == 'box_lat':
 
-        for v in vals:
+        num_digts = len(str(len(vals)))
+        pad_fmt = '{{:0{}d}}'.format(num_digts)
+
+        for v_idx, v in enumerate(vals):
 
             out.append({
                 'base_structure': {sn: v},
                 'series_id': {'name': sn, 'val': v,
-                              'path': '{}_{}_{}--{}_{}_{}--{}_{}_{}'.format(
+                              'path': (pad_fmt + '__').format(v_idx) + '{}_{}_{}--{}_{}_{}--{}_{}_{}'.format(
                                   *v.T.flatten())}
             })
 

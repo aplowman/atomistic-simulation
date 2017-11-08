@@ -3,8 +3,9 @@ import os
 from plotly import graph_objs
 from plotly.offline import plot, iplot
 from atsim.structure.bravais import BravaisLattice
-from atsim import geometry, vectors, readwrite, REF_PATH
+from atsim import geometry, vectors, readwrite, REF_PATH, plotting, utils
 from atsim.simsio import castep
+from beautifultable import BeautifulTable
 
 
 class CrystalBox(object):
@@ -316,13 +317,15 @@ class CrystalStructure(object):
     Parameters
     ----------
     bravais_lattice : BravaisLattice
-    motif : dict
-        atom_sites : ndarray of shape (3, P)
+    motif : dict with the following keys:
+        atom_sites : ndarray of shape (3, N)
             Array of column vectors representing positions of the atoms
             associated with each lattice site. Given in fractional coordinates
             of the lattice unit cell.
-        species : list of length P of str
+        species : ndarray or list of length P of str
             Species names associated with each atom site.
+        species_idx : ndarray or list of length N of int
+            Array which maps each atom site to a chemical symbol in `species`.
 
     Attributes
     ----------
@@ -382,135 +385,271 @@ class CrystalStructure(object):
         Constructor method for CrystalStructure object.
         """
 
+        # Validation:
+
+        allowed_motif_keys = [
+            'atom_sites',
+            'species',
+            'species_idx',
+            'atom_labels',
+            'bulk_interstitials',
+            'bulk_interstitials_idx',
+            'bulk_interstitials_names',
+        ]
+        required_motif_keys = [
+            allowed_motif_keys[0],
+            allowed_motif_keys[1],
+            allowed_motif_keys[2],
+        ]
+        for k in required_motif_keys:
+            if k not in motif:
+                raise ValueError('Motif key: `{}` is required.'.format(k))
+
+        for k, v in motif.items():
+            if k not in allowed_motif_keys:
+                raise ValueError('Motif key: "{}" is not allowed.'.format(k))
+
+        num_motif_atom_sites = motif['atom_sites'].shape[1]
+        num_species_idx = len(motif['species_idx'])
+        if num_species_idx != num_motif_atom_sites:
+            raise ValueError('`species_idx` has length: {}, '
+                             'but number of atom sites in the motif '
+                             'is: {}.'.format(num_species_idx, num_motif_atom_sites))
+
+        if (np.max(motif['species_idx']) > len(motif['species']) - 1):
+            raise ValueError(
+                'Motif key `species_idx` should index motif key `species`.')
+
+        bulk_interstitials = None
+        bulk_interstitials_idx = None
+        bulk_interstitials_names = None
+
+        if motif.get('bulk_interstitials') is not None:
+
+            bkii = 'bulk_interstitials_idx'
+            bkin = 'bulk_interstitials_names'
+
+            bulk_int_info = [i in motif for i in [bkii, bkin]]
+
+            missing_msg = ('Either specify both `{}` and `{}` in the motif or '
+                           'neither.'.format(bkii, bkii))
+
+            if any(bulk_int_info):
+
+                if not all(bulk_int_info):
+                    raise ValueError(missing_msg)
+
+                else:
+                    if (np.max(motif[bkii]) > len(motif[bkin]) - 1):
+                        raise ValueError('Motif key `{}` should index motif '
+                                         'key `{}`.'.format(bkii, bkin))
+
+                    num_bkii = motif['bulk_interstitials'].shape[1]
+                    num_bkii_idx = len(motif[bkii])
+                    if num_bkii != num_bkii_idx:
+                        raise ValueError('`{}` has length: {}, but number of '
+                                         'bulk interstitial sites in the '
+                                         'motif is: {}.'.format(bkii, num_bkii_idx, num_bkii))
+
+                    bulk_interstitials_idx = np.array(motif[bkii])
+                    bulk_interstitials_names = np.array(motif[bkin])
+
+            bulk_interstitials = np.array(motif['bulk_interstitials'])
+
+        self.bulk_interstitials_frac = bulk_interstitials
+        self.bulk_interstitials = np.dot(
+            bravais_lattice.vecs, bulk_interstitials)
+        self.bulk_interstitials_idx = bulk_interstitials_idx
+        self.bulk_interstitials_names = bulk_interstitials_names
+
         self.bravais_lattice = bravais_lattice
         self.motif = motif
-        self.lat_sites_frac = bravais_lattice.lat_sites_frac
-        self.lat_sites_std = bravais_lattice.lat_sites_std
 
-        # Add atomic motif to each lattice site
-        self.atom_sites_frac = np.concatenate(
-            self.lat_sites_frac + motif['atom_sites'].T.reshape(
-                (-1, 3, 1)), axis=1)
+        # Lattice sites
+        lat_sites_frac = bravais_lattice.lat_sites_frac
+        lat_sites_std = bravais_lattice.lat_sites_std
+        num_lat_sites = lat_sites_frac.shape[1]
+        self.lattice_sites_frac = lat_sites_frac
+        self.lattice_sites_std = lat_sites_std
 
-        # Get unique species in the motif
-        species_set = []
-        for m in motif['species']:
-            if m not in species_set:
-                species_set.append(m)
+        # Atom sites: add atomic motif to each lattice site to get
+        motif_rs = motif['atom_sites'].T.reshape((-1, 3, 1))
+        utils.prt(motif_rs, 'motif_rs')
+        atom_sites_frac = np.concatenate(lat_sites_frac + motif_rs, axis=1)
+        utils.prt(atom_sites_frac, 'atom_sites_frac')
+        atom_sites_std = np.dot(self.bravais_lattice.vecs, atom_sites_frac)
+        num_atom_sites = atom_sites_frac.shape[1]
+        self.atom_sites_frac = atom_sites_frac
+        self.atom_sites_std = atom_sites_std
 
-        # Label species by their repetition in the motif
-        species_motif = []
-        species_map = []
-        species_count = [0] * len(species_set)
-        for m in motif['species']:
-            set_idx = species_set.index(m)
-            species_map.append(set_idx)
-            i = species_count[set_idx]
-            species_count[set_idx] += 1
-            species_motif.append(m + ' #{}'.format(i + 1))
+        # Map atom sites to species
+        species = np.array(motif['species'])
+        # utils.prt(species, 'species')
+        motif_species_idx = np.array(motif['species_idx'])
+        # utils.prt(motif_species_idx, 'motif_species_idx')
+        species_idx = np.repeat(motif_species_idx, num_lat_sites)
+        # utils.prt(species_idx, 'species_idx')
 
-        # motif index (indexes species_motif) for a single lattice site:
-        self.lat_site_motif_idx = np.arange(self.motif['atom_sites'].shape[1])
+        species_count = np.ones(len(motif_species_idx)) * np.nan
 
-        # motif index (indexes species_motif) for all lattice sites:
-        self.motif_idx = np.repeat(self.lat_site_motif_idx,
-                                   self.lat_sites_frac.shape[1])
+        for i in range(len(species)):
+            w = np.where(motif_species_idx == i)[0]
+            species_count[w] = np.arange(len(w))
 
-        # species index (indexes species_set) for a single lattice site:
-        lat_site_species_idx = np.copy(self.lat_site_motif_idx)
-        for sm_idx, sm in enumerate(species_map):
-            if sm_idx != sm:
-                lat_site_species_idx[lat_site_species_idx == sm_idx] = sm
+        species_count = species_count.astype(int)
+        species_count = np.tile(species_count.astype(int), num_lat_sites)
 
-        self.lat_site_species_idx = lat_site_species_idx
+        self.species = species
+        self.species_idx = species_idx
 
-        # species index (indexes species_set) for all lattice sites:
-        self.species_idx = np.repeat(self.lat_site_species_idx,
-                                     self.lat_sites_frac.shape[1])
+        # Atom labels: additional optional per-atom info
+        atom_labels = {
+            'species_count': species_count.astype(int)
+        }
 
-        self.species_set = species_set
-        self.species_motif = species_motif
+        if motif.get('atom_labels') is not None:
 
-        self.atom_sites_std = np.dot(
-            self.bravais_lattice.vecs, self.atom_sites_frac)
+            allowed_labels = ['bulk_coord_num', ]
 
-    def visualise(self, periodic_sites=False):
+            for k, v in motif['atom_labels'].items():
+
+                # Validation:
+                if k not in allowed_labels:
+                    raise ValueError(
+                        'Atom label: "{}" is not allowed.'.format(k))
+
+                if len(v) != num_motif_atom_sites:
+                    raise ValueError('Motif atom label: "{}" has length: {}, '
+                                     'but number of atom sites in the motif '
+                                     'is: {}.'.format(k, len(v), num_motif_atom_sites))
+
+                atom_labels.update({k: np.tile(v, num_lat_sites)})
+
+        self.atom_labels = atom_labels
+
+    def visualise(self, show_iplot=False, plot_2d='xyz', use_interstitial_names=False,
+                  atom_label=None):
         """
-        Plot the crystal structure using Plotly.
-
         Parameters
         ----------
-        periodic_sites : bool, optional
-            If True, show atom and lattice sites in the unit cell which are
-            periodically equivalent. Helpful for visualising lattices. Default
-            is False.
-
-        Returns
-        -------
-        None
+        use_interstitial_names : bool, optional
+            If True, bulk interstitial sites are plotted by names given in 
+            `bulk_interstials_names` according to `bulk_interstitials_idx`.
+        atom_label : str, optional
+            If True, atoms are grouped according to one of their atom labels.
+            For instance, if set to `species_count`, which is an atom label
+            that is automatically added to the CrystalStructure, atoms will be
+            grouped by their position in the motif within their species. So for
+            a motif which has two X atoms, these atoms will be plotted on
+            separate traces: "X (#1)" and "X (#2)".
 
         """
-
-        # Get the data for the Bravais lattice:
-        b_data = self.bravais_lattice.get_fig_data(periodic_sites)
 
         # Get colours for atom species:
         atom_cols = readwrite.read_pickle(
             os.path.join(REF_PATH, 'jmol_colours.pickle'))
 
-        for sp_idx, sp_name in enumerate(self.species_motif):
+        points = []
 
-            atom_idx = np.where(self.motif_idx == sp_idx)[0]
-            atom_sites_sp = self.atom_sites_std[:, atom_idx]
-            sp_col = str(atom_cols[self.motif['species'][sp_idx]])
+        for i in range(len(self.species)):
 
-            atom_site_props = {
-                'mode': 'markers',
-                'marker': {
+            atom_idx = np.where(self.species_idx == i)[0]
+            sp = self.species[i]
+            sp_col = 'rgb' + str(atom_cols[sp])
+
+            # Atoms
+            if atom_label:
+
+                lab_vals = self.atom_labels[atom_label]
+                utils.prt(lab_vals, 'lab_vals')
+
+                if atom_label not in self.atom_labels:
+                    raise ValueError('Atom label "{}" does not exist for this '
+                                     'CrystalStructure.'.format(atom_label))
+
+                unique_vals = np.unique(lab_vals)
+                utils.prt(unique_vals, 'unique_vals')
+
+                for i in unique_vals:
+                    w = np.where(lab_vals == i)[0]
+                    utils.prt(w, 'w')
+
+                    atom_idx = np.intersect1d(atom_idx, w)
+                    utils.prt(atom_idx, 'atom_idx')
+
+                    # Special treatment for `species_count` atom label:
+                    if atom_label == 'species_count':
+                        atom_name = '{} (#{})'.format(sp, i + 1)
+                    else:
+                        atom_name = '{} ({}: {})'.format(sp, atom_label, i)
+
+                    points.append({
+                        'data': self.atom_sites_std[:, atom_idx],
+                        'colour': sp_col,
+                        'symbol': 'o',
+                        'name': atom_name,
+                    })
+
+            else:
+                points.append({
+                    'data': self.atom_sites_std[:, atom_idx],
+                    'colour': sp_col,
                     'symbol': 'o',
-                    'size': 7,
-                    'color': 'rgb' + sp_col
-                },
-                'name': sp_name,
-                'legendgroup': sp_name,
+                    'name': '{}'.format(sp),
+                })
+
+        # Lattice sites:
+        points.append({
+            'data': self.lattice_sites_std,
+            'colour': 'gray',
+            'symbol': 'x',
+            'name': 'Lattice sites'
+        })
+
+        # Bulk interstitials
+        if self.bulk_interstitials is not None:
+
+            if use_interstitial_names:
+
+                if self.bulk_interstitials_names is None:
+                    raise ValueError('Cannot plot bulk interstitials by name '
+                                     ' when `bulk_interstials_names` is not assigned.')
+
+                for i in range(self.bulk_interstitials_names.shape[0]):
+
+                    w = np.where(self.bulk_interstitials_idx == i)[0]
+
+                    bi_sites = self.bulk_interstitials[:, w]
+                    bi_name = self.bulk_interstitials_names[i]
+
+                    points.append({
+                        'data': bi_sites,
+                        'colour': 'orange',
+                        'symbol': 'x',
+                        'name': '{} bulk interstitials'.format(bi_name),
+                    })
+
+            else:
+
+                points.append({
+                    'data': self.bulk_interstitials,
+                    'colour': 'orange',
+                    'symbol': 'x',
+                    'name': 'Bulk interstitials',
+                })
+
+        boxes = [
+            {
+                'edges': self.bravais_lattice.vecs,
+                'name': 'Unit cell',
+                'colour': 'navy'
             }
+        ]
 
-            # Add traces for this atom species to the Bravais lattice data:
-            b_data.append(
-                graph_objs.Scatter3d(
-                    x=self.atom_sites_std[0, atom_idx],
-                    y=self.atom_sites_std[1, atom_idx],
-                    z=self.atom_sites_std[2, atom_idx],
-                    **atom_site_props
-                )
-            )
-
-            # Add traces for atom numbers
-            b_data.append(
-                graph_objs.Scatter3d(
-                    x=self.atom_sites_std[0, atom_idx],
-                    y=self.atom_sites_std[1, atom_idx],
-                    z=self.atom_sites_std[2, atom_idx],
-                    **{
-                        'mode': 'text',
-                        'text': [str(i) for i in atom_idx],
-                        'name': 'Atom index',
-                        'legendgroup': 'Atom index',
-                        'showlegend': True if sp_idx == 0 else False,
-                        'visible': 'legendonly'
-                    }
-                )
-            )
-
-        layout = graph_objs.Layout(
-            width=650,
-            scene={
-                'aspectmode': 'data'
-            }
-        )
-
-        fig = graph_objs.Figure(data=b_data, layout=layout)
-        iplot(fig)
+        f3d, f2d = plotting.plot_geometry_plotly(points, boxes)
+        if show_iplot:
+            iplot(f3d)
+            iplot(f2d)
 
     def __repr__(self):
 
@@ -521,27 +660,42 @@ class CrystalStructure(object):
 
     def __str__(self):
 
-        motif_str = ''
-        for sp_idx, sp in enumerate(self.species_motif):
-            motif_str += sp + ' @ ' + str(
-                self.motif['atom_sites'][:, sp_idx]) + '\n'
+        atoms_str = BeautifulTable()
+        atoms_str.numeric_precision = 4
+        atoms_str.intersection_char = ''
+        column_headers = ['Number', 'Species',  'x', 'y', 'z']
 
-        return ('{!s}-{!s} Bravais lattice + {!s}-atom motif\n\n'
-                'Lattice parameters:\n'
-                'a = {!s}\nb = {!s}\nc = {!s}\n'
-                'α = {!s}°\nβ = {!s}°\nγ = {!s}°\n'
-                '\nLattice vectors = \n{!s}\n'
-                '\nLattice sites (fractional) = \n{!s}\n'
-                '\nLattice sites (Cartesian) = \n{!s}\n'
-                '\nMotif in fractional coordinates of '
-                'unit cell = \n{!s}\n').format(
-                    self.bravais_lattice.lattice_system,
-                    self.bravais_lattice.centring_type,
-                    self.motif['atom_sites'].shape[1],
-                    self.bravais_lattice.a, self.bravais_lattice.b,
-                    self.bravais_lattice.c, self.bravais_lattice.α,
-                    self.bravais_lattice.β, self.bravais_lattice.γ,
-                    self.bravais_lattice.vecs,
-                    self.bravais_lattice.lat_sites_frac,
-                    self.bravais_lattice.lat_sites_std,
-                    motif_str)
+        for i in self.atom_labels.keys():
+            column_headers.append(i)
+
+        atoms_str.column_headers = column_headers
+
+        for idx, si in enumerate(self.species_idx):
+            row = [
+                idx, self.species[si],
+                *(self.atom_sites_frac[:, idx]),
+                *[v[idx] for k, v in self.atom_labels.items()]
+            ]
+            atoms_str.append_row(row)
+
+        ret = ('{!s}-{!s} Bravais lattice + {!s}-atom motif\n\n'
+               'Lattice parameters:\n'
+               'a = {!s}\nb = {!s}\nc = {!s}\n'
+               'α = {!s}°\nβ = {!s}°\nγ = {!s}°\n'
+               '\nLattice vectors = \n{!s}\n'
+               '\nLattice sites (fractional) = \n{!s}\n'
+               '\nLattice sites (Cartesian) = \n{!s}\n'
+               '\nAtoms (fractional coordinates of '
+               'unit cell) = \n{!s}\n').format(
+            self.bravais_lattice.lattice_system,
+            self.bravais_lattice.centring_type,
+            self.motif['atom_sites'].shape[1],
+            self.bravais_lattice.a, self.bravais_lattice.b,
+            self.bravais_lattice.c, self.bravais_lattice.α,
+            self.bravais_lattice.β, self.bravais_lattice.γ,
+            self.bravais_lattice.vecs,
+            self.bravais_lattice.lat_sites_frac,
+            self.bravais_lattice.lat_sites_std,
+            atoms_str)
+
+        return ret

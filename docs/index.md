@@ -1,6 +1,45 @@
 ---
 source: ['makesims_opt.yml']
 ---
+
+# Options for generating simulations
+## method
+`"lammps" | "castep"`
+
+Sets the modelling software to use.
+
+## stage
+Sets options which detemine where on the local machine the simulations should be generated
+### stage.path
+`string`
+
+The absolute path on the local machine in which the simulaton series directory will be generated.
+
+## database
+Sets options for access to the database.
+### database.dropbox
+`boolean`
+
+If `True`, the database is assumed to be located (or will be generated) on Dropbox. If False, the database is assumed to be located on the local machine.
+
+## check
+For each `check`, if "all", the check is performed after the generation of both the base structure and the series structures. If "base", the check is performed after the generation of the base structure only. If "series", the check is performed after the generation of each series structure. If "none", the check is not performed at all.
+### check.atoms_overlap
+`"all" | "base" | "series" | "none"`
+
+`default: "none"`
+
+Determines when to check if any atoms are closer than the distance defined in `base_structure.overlap_tol`. 
+
+### check.bicrystal_inversion_symmetry
+`"all" | "base" | "series" | "none"`
+
+`default: "none"`
+
+Determines when to check if the generated bicrystal exhibits inversion symmetry through the centre of its one crystals. 
+
+
+<!-- 
 # Example options
 
 {% for c in page.source %}
@@ -191,4 +230,4 @@ Each variable is represented as a dict inside the `variables` list. Each variabl
 * `compute`
 * `series_id`
 
-The variable `id` is chosen as a unique identifier for the variable. This then allows us to reference the variable later on (for instance in the data for a plot).
+The variable `id` is chosen as a unique identifier for the variable. This then allows us to reference the variable later on (for instance in the data for a plot). -->

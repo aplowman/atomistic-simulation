@@ -77,8 +77,6 @@ class Bicrystal(AtomisticStructure):
         self.relative_shift = [0, 0]
         self.rot_mat = rot_mat
 
-        self.check_inv_symmetry()
-
         # Invoke additional methods:
         if reorient:
             self.reorient_to_lammps()
@@ -227,9 +225,6 @@ class Bicrystal(AtomisticStructure):
             'origin': grn_b_org_vac
         })
 
-        self.check_overlapping_atoms(self._overlap_tol)
-        self.check_inv_symmetry()
-
     def apply_boundary_vac_flat(self, vac_thickness):
         """
         Apply boundary vacuum to the supercell without affecting the atom
@@ -319,9 +314,6 @@ class Bicrystal(AtomisticStructure):
             # Update attribute:
             self.supercell = sup_shift
 
-        self.check_overlapping_atoms(self._overlap_tol)
-        self.check_inv_symmetry()
-
     def wrap_atoms_to_supercell(self):
         """
         Wrap atoms to within the boundary plane as defined by the supercell.
@@ -338,7 +330,6 @@ class Bicrystal(AtomisticStructure):
                 'Cannot wrap atoms within this supercell type.')
 
         super().wrap_atoms_to_supercell(dirs=self.boundary_idx)
-        self.check_inv_symmetry()
 
     def check_inv_symmetry(self):
         """
@@ -357,6 +348,19 @@ class Bicrystal(AtomisticStructure):
             if len(inv_sym) == 0:
                 raise ValueError('The bicrystal does not have inversion '
                                  'symmetry.')
+
+    def check_atomic_environment(self, checks_list):
+        """Invoke checks of the atomic environment."""
+
+        super().check_atomic_environment(checks_list)
+
+        allowed_checks = {
+            'bicrystal_inversion_symmetry': self.check_inv_symmetry,
+        }
+
+        for chk, func in allowed_checks.items():
+            if chk in checks_list:
+                func()
 
 
 def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,

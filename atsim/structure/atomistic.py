@@ -184,8 +184,6 @@ class AtomisticStructure(object):
         else:
             self._all_species_idx = utils.parse_as_int_arr(all_species_idx)
 
-        self.check_overlapping_atoms(overlap_tol)
-
     def visualise(self, proj_2d=False, show_iplot=True, save=False,
                   save_args=None, sym_op=None, wrap_sym_op=False,
                   atoms_3d=False, ret_fig=False):
@@ -1097,7 +1095,7 @@ class AtomisticStructure(object):
 
     def tile_supercell(self, tiles):
         """
-        Tile supercell and atoms by some integer factors in each supercell 
+        Tile supercell and atoms by some integer factors in each supercell
         direction.
 
         Parameters
@@ -1193,25 +1191,26 @@ class AtomisticStructure(object):
 
         return vectors.get_vec_distances(atms)
 
-    def check_overlapping_atoms(self, tol):
+    def check_overlapping_atoms(self, tol=None):
         """
-        Returns True if any atoms are overlapping within a tolerance.abs
+        Checks if any atoms are overlapping within a tolerance.
 
         Parameters
         ----------
-        tol : float
-            Distance below which atoms are considered to be overlapping.abs
+        tol : float, optional
+            Distance below which atoms are considered to be overlapping. By,
+            default uses the value assigned on object initialisation as
+            `_overlap_tol`.
 
         Raises
         ------
-        ValueError
-            If any atoms are found to overlap.
-
-        Returns
-        -------
-        None
+        AtomisticStructureException
+            If any atoms are found to overlap within `tol`.
 
         """
+        if tol is None:
+            tol = self._overlap_tol
+
         dist = self.get_interatomic_dist()
         if np.any(dist < tol):
             raise AtomisticStructureException('Found overlapping atoms. '
@@ -1292,6 +1291,17 @@ class AtomisticStructure(object):
         shift_idx = np.where(asf[dir_idx] > position)[0]
 
         self.atom_sites[:, shift_idx] += (n_unit * thickness)
+
+    def check_atomic_environment(self, checks_list):
+        """Invoke checks of the atomic environment."""
+
+        allowed_checks = {
+            'atoms_overlap': self.check_overlapping_atoms,
+        }
+
+        for chk, func in allowed_checks.items():
+            if chk in checks_list:
+                func()
 
 
 class BulkCrystal(AtomisticStructure):

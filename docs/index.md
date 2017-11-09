@@ -2,58 +2,9 @@
 source: ['makesims_opt.yml']
 ---
 
+# Options for generating simulations: `makesims.yml`
+
 {% include index.html %}
-
-<!-- <style>
-    .doc-group {
-        margin-left: 1em;
-
-    }
-</style>
-
-<div class="doc-group">
-<span class="opt-name">stage</span>
-<div class="doc-group">
-<span class="opt-name">stage.path</span>
-</div>
-</div>
-
-# Options for generating simulations
-<span class="hi">method</span>
-`"lammps" | "castep"`
-
-Sets the modelling software to use.
-
-## stage
-Sets options which detemine where on the local machine the simulations should be generated
-### stage.path
-`string`
-
-The absolute path on the local machine in which the simulaton series directory will be generated.
-
-## database
-Sets options for access to the database.
-### database.dropbox
-`boolean`
-
-If `True`, the database is assumed to be located (or will be generated) on Dropbox. If False, the database is assumed to be located on the local machine.
-
-## check
-For each `check`, if "all", the check is performed after the generation of both the base structure and the series structures. If "base", the check is performed after the generation of the base structure only. If "series", the check is performed after the generation of each series structure. If "none", the check is not performed at all.
-### check.atoms_overlap
-`"all" | "base" | "series" | "none"`
-
-`default: "none"`
-
-Determines when to check if any atoms are closer than the distance defined in `base_structure.overlap_tol`. 
-
-### check.bicrystal_inversion_symmetry
-`"all" | "base" | "series" | "none"`
-
-`default: "none"`
-
-Determines when to check if the generated bicrystal exhibits inversion symmetry through the centre of its one crystals.  -->
-
 
 <!-- 
 # Example options

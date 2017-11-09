@@ -2,8 +2,24 @@
 source: ['makesims_opt.yml']
 ---
 
+{% include index.html %}
+
+<!-- <style>
+    .doc-group {
+        margin-left: 1em;
+
+    }
+</style>
+
+<div class="doc-group">
+<span class="opt-name">stage</span>
+<div class="doc-group">
+<span class="opt-name">stage.path</span>
+</div>
+</div>
+
 # Options for generating simulations
-## method
+<span class="hi">method</span>
 `"lammps" | "castep"`
 
 Sets the modelling software to use.
@@ -36,7 +52,7 @@ Determines when to check if any atoms are closer than the distance defined in `b
 
 `default: "none"`
 
-Determines when to check if the generated bicrystal exhibits inversion symmetry through the centre of its one crystals. 
+Determines when to check if the generated bicrystal exhibits inversion symmetry through the centre of its one crystals.  -->
 
 
 <!-- 

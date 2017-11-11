@@ -39,6 +39,7 @@ class CrystalBox(object):
         List of element symbols for species present in the crystal.
 
     TODO: correct docstring
+    TODO: add methods: `translate` and `rotate` (then Bicrystal will be easier)
 
     """
 
@@ -81,8 +82,8 @@ class CrystalBox(object):
             (half-)closed/open depending on the specified edge conditions.
 
         TODO:
-        -   Check that plotting atom indices is correct, think it's not.
-        -   Add proper support for cs_orientation and cs_origin.
+        - Refactor repeated code (e.g. we repeat stuff for atoms, lattice 
+        sites and bulk interstitial sites).
 
         """
 
@@ -257,8 +258,12 @@ class CrystalStructure(object):
     atom_sites_std : ndarray of shape (3, M)
     atom_sites_frac : ndarray of shape (3, M)
 
-    TODO: finish docstring
+    TODO: finish/correct docstring
     TODO: update from_file to work with species/species_idx
+    TODO: consider renaming bulk_interstitials: maybe a dict with keys: sites
+          names, name_idx ? call it just interstitials? Doesn't necessarily makes
+          sense to discriminate the bulkness of the interstitials in this class
+          because there will be by nature bulk interstitials.
 
     """
     @classmethod

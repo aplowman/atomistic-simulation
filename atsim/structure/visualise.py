@@ -33,6 +33,9 @@ def visualise(structure, show_iplot=False, plot_2d='xyz', use_interstitial_names
         plotted on separate traces: "X (#1)" and "X (#2)". Note that atoms
         are always grouped by species (e.g. "X").
 
+    TODO: change `use_atom_labels` to `group_atoms_by` (can also have 
+    `group_interstices_by` and `group_lattice_sites_by`)
+
     """
 
     if use_atom_labels is None:

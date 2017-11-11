@@ -1366,33 +1366,34 @@ class PointDefect(object):
     index : int
         The atom or interstitial site index within the AtomisticStructure.
     charge : float
-        The defect's electronic charge.
+        The defect's electronic charge relative to that of the site it occupies.
     interstice_type : str
-        Set to "tetrahedral" or "octahedral" if `atom_site` is "i".
+        Set to "tetrahedral" or "octahedral" if `host_species` is "i".
 
     """
 
-    def __init__(self, species, atom_site, index=None, charge=0, interstice_type=None):
+    def __init__(self, defect_species, host_species, index=None, charge=0,
+                 interstice_type=None):
 
         # Validation
         if interstice_type not in [None, 'tetrahedral', 'octahedral']:
             raise ValueError('Interstice type "{}" not understood.'.format(
                 interstice_type))
 
-        if atom_site != 'i' and interstice_type is not None:
+        if host_species != 'i' and interstice_type is not None:
             raise ValueError('Non-interstitial defect specified but '
                              '`interstice_type` also specified.')
 
-        if species == 'v' and atom_site == 'i':
+        if defect_species == 'v' and host_species == 'i':
             raise ValueError('Cannot add a vacancy defect to an '
                              'interstitial site!')
 
-        if atom_site == 'i' and interstice_type is None:
+        if host_species == 'i' and interstice_type is None:
             raise ValueError('`interstice_type` must be specified for '
                              'interstitial point defect.')
 
-        self.species = species
-        self.atom_site = atom_site
+        self.defect_species = defect_species
+        self.host_species = host_species
         self.index = index
         self.charge = charge
         self.interstice_type = interstice_type
@@ -1412,11 +1413,11 @@ class PointDefect(object):
         elif self.charge < 0:
             charge_str = '′' * abs(self.charge)
 
-        out = '{}_{}^{}'.format(self.species, self.atom_site, charge_str,
+        out = '{}_{}^{}'.format(self.defect_species, self.host_species, charge_str,
                                 self.index)
 
         if self.index is not None:
-            idx_str_int = 'interstitial' if self.atom_site == 'i' else 'atom'
+            idx_str_int = 'interstitial' if self.host_species == 'i' else 'atom'
             idx_str = 'at {} index {}'.format(idx_str_int, self.index)
         else:
             idx_str = ''
@@ -1432,5 +1433,5 @@ class PointDefect(object):
     def __repr__(self):
         return ('PointDefect({!r}, {!r}, index={!r}, charge={!r}, '
                 'interstice_type={!r})').format(
-                    self.species, self.atom_site, self.index, self.charge,
+                    self.defect_species, self.atom_site, self.index, self.charge,
                     self.interstice_type)

@@ -1,8 +1,7 @@
 import numpy as np
 import os
-from plotly import graph_objs
-from plotly.offline import plot, iplot
 from atsim.structure.bravais import BravaisLattice
+from atsim.structure.visualise import visualise as struct_visualise
 from atsim import geometry, vectors, readwrite, REF_PATH, plotting, utils
 from atsim.simsio import castep
 from beautifultable import BeautifulTable
@@ -336,6 +335,8 @@ class CrystalStructure(object):
     atom_sites_std : ndarray of shape (3, M)
     atom_sites_frac : ndarray of shape (3, M)
 
+    TODO: finish docstring
+
     """
     @classmethod
     def from_file(cls, path, lattice_system, centring_type=None, filetype='.cell'):
@@ -466,11 +467,10 @@ class CrystalStructure(object):
         self.motif = motif
 
         # Lattice sites
-        lat_sites_frac = bravais_lattice.lat_sites_frac
-        lat_sites_std = bravais_lattice.lat_sites_std
+        lat_sites_frac = bravais_lattice.lattice_sites_frac
         num_lat_sites = lat_sites_frac.shape[1]
+        self.lattice_sites = bravais_lattice.lattice_sites
         self.lattice_sites_frac = lat_sites_frac
-        self.lattice_sites_std = lat_sites_std
 
         # Atom sites: add atomic motif to each lattice site to get
         motif_rs = motif['atom_sites'].T.reshape((-1, 3, 1))
@@ -530,129 +530,8 @@ class CrystalStructure(object):
     def atom_sites_frac(self):
         return np.dot(np.linalg.inv(self.bravais_lattice.vecs), self.atom_sites)
 
-    def visualise(self, show_iplot=False, plot_2d='xyz', use_interstitial_names=False,
-                  atom_label=None):
-        """
-        Parameters
-        ----------
-        use_interstitial_names : bool, optional
-            If True, bulk interstitial sites are plotted by names given in 
-            `bulk_interstials_names` according to `bulk_interstitials_idx`.
-        atom_label : str, optional
-            If True, atoms are grouped according to one of their atom labels.
-            For instance, if set to `species_count`, which is an atom label
-            that is automatically added to the CrystalStructure, atoms will be
-            grouped by their position in the motif within their species. So for
-            a motif which has two X atoms, these atoms will be plotted on
-            separate traces: "X (#1)" and "X (#2)".
-
-        """
-
-        # Get colours for atom species:
-        atom_cols = readwrite.read_pickle(
-            os.path.join(REF_PATH, 'jmol_colours.pickle'))
-
-        points = []
-
-        for i in range(len(self.species)):
-
-            atom_idx = np.where(self.species_idx == i)[0]
-            sp = self.species[i]
-            sp_col = 'rgb' + str(atom_cols[sp])
-
-            # Atoms
-            if atom_label:
-
-                lab_vals = self.atom_labels[atom_label]
-                utils.prt(lab_vals, 'lab_vals')
-
-                if atom_label not in self.atom_labels:
-                    raise ValueError('Atom label "{}" does not exist for this '
-                                     'CrystalStructure.'.format(atom_label))
-
-                unique_vals = np.unique(lab_vals)
-                utils.prt(unique_vals, 'unique_vals')
-
-                for i in unique_vals:
-                    w = np.where(lab_vals == i)[0]
-                    utils.prt(w, 'w')
-
-                    atom_idx = np.intersect1d(atom_idx, w)
-                    utils.prt(atom_idx, 'atom_idx')
-
-                    # Special treatment for `species_count` atom label:
-                    if atom_label == 'species_count':
-                        atom_name = '{} (#{})'.format(sp, i + 1)
-                    else:
-                        atom_name = '{} ({}: {})'.format(sp, atom_label, i)
-
-                    points.append({
-                        'data': self.atom_sites[:, atom_idx],
-                        'colour': sp_col,
-                        'symbol': 'o',
-                        'name': atom_name,
-                    })
-
-            else:
-                points.append({
-                    'data': self.atom_sites[:, atom_idx],
-                    'colour': sp_col,
-                    'symbol': 'o',
-                    'name': '{}'.format(sp),
-                })
-
-        # Lattice sites:
-        points.append({
-            'data': self.lattice_sites_std,
-            'colour': 'gray',
-            'symbol': 'x',
-            'name': 'Lattice sites'
-        })
-
-        # Bulk interstitials
-        if self.bulk_interstitials is not None:
-
-            if use_interstitial_names:
-
-                if self.bulk_interstitials_names is None:
-                    raise ValueError('Cannot plot bulk interstitials by name '
-                                     ' when `bulk_interstials_names` is not assigned.')
-
-                for i in range(self.bulk_interstitials_names.shape[0]):
-
-                    w = np.where(self.bulk_interstitials_idx == i)[0]
-
-                    bi_sites = self.bulk_interstitials[:, w]
-                    bi_name = self.bulk_interstitials_names[i]
-
-                    points.append({
-                        'data': bi_sites,
-                        'colour': 'orange',
-                        'symbol': 'x',
-                        'name': '{} bulk interstitials'.format(bi_name),
-                    })
-
-            else:
-
-                points.append({
-                    'data': self.bulk_interstitials,
-                    'colour': 'orange',
-                    'symbol': 'x',
-                    'name': 'Bulk interstitials',
-                })
-
-        boxes = [
-            {
-                'edges': self.bravais_lattice.vecs,
-                'name': 'Unit cell',
-                'colour': 'navy'
-            }
-        ]
-
-        f3d, f2d = plotting.plot_geometry_plotly(points, boxes)
-        if show_iplot:
-            iplot(f3d)
-            iplot(f2d)
+    def visualise(self, **kwargs):
+        struct_visualise(self, **kwargs)
 
     def __repr__(self):
 
@@ -698,8 +577,8 @@ class CrystalStructure(object):
             self.bravais_lattice.c, self.bravais_lattice.α,
             self.bravais_lattice.β, self.bravais_lattice.γ,
             self.bravais_lattice.vecs,
-            self.bravais_lattice.lat_sites_frac,
-            self.bravais_lattice.lat_sites_std,
+            self.bravais_lattice.lattice_sites_frac,
+            self.bravais_lattice.lattice_sites,
             atoms_str)
 
         return ret

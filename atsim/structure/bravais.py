@@ -299,11 +299,11 @@ class BravaisLattice(object):
                 [2 / 3, 1 / 3, 2 / 3],
             ]).T
 
-        # Find lattice sites in Cartesian basis:
-        lat_sites_std = np.dot(vecs, lat_sites_frac)
+        self.lattice_sites_frac = lat_sites_frac
 
-        self.lat_sites_frac = lat_sites_frac
-        self.lat_sites_std = vectors.snap_arr_to_val(lat_sites_std, 0, 1e-15)
+    @property
+    def lattice_sites(self):
+        return np.dot(self.vecs, self.lattice_sites_frac)
 
     def visualise(self, periodic_sites=False):
         """

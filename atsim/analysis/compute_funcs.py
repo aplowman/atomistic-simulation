@@ -183,7 +183,8 @@ def get_depends(compute_name, inc_id=True, inc_val=True, **kwargs):
 
         d.update({
             'energy_src': kwargs['energy_src'],
-            'opt_step': kwargs['opt_step']
+            'opt_step': kwargs['opt_step'],
+            'series_id': kwargs['series_id'],
         })
 
         out = (get_depends('energy', inc_id=inc_id, inc_val=inc_val,
@@ -632,6 +633,10 @@ def gamma_surface_info(out, req_vars, common_series_info):
 def gb_minimum_expansion(out, req_vars):
 
     energy, boundary_vac = [req_vars[i]['vals'] for i in range(2)]
+    series_id = req_vars[-1]['series_id']
+    srs_vals = get_srs_vals(out, series_id)
+    print('srs_vals: \n{}\n'.format(srs_vals))
+    # exit()
 
     num_sims = len(energy)
 
@@ -644,22 +649,27 @@ def gb_minimum_expansion(out, req_vars):
     fit_coeffs = [None for _ in range(num_sims)]
     fit_in_range = [None for _ in range(num_sims)]
 
+    parsed_series_elems = []
+
     # Collating by grid position over all boundary expansions
     fit_idx = None
     for idx, (en, bv) in enumerate(zip(energy, boundary_vac)):
 
-        if idx == 0:
-            en_fit[idx] = [en]
-            exp_fit[idx] = [bv]
-            fit_idx = idx
+        if srs_vals[idx] in parsed_series_elems:
+            fit_idx = parsed_series_elems.index(srs_vals[idx])
 
-        else:
             if bv in exp_fit[fit_idx]:
                 raise ValueError('Multiple energies found for '
                                  'boundary_vac: {}'.format(bv))
             else:
                 exp_fit[fit_idx].append(bv)
                 en_fit[fit_idx].append(en)
+
+        else:
+            parsed_series_elems.append(srs_vals[idx])
+            fit_idx = len(parsed_series_elems) - 1
+            en_fit[idx] = [en]
+            exp_fit[idx] = [bv]
 
     # Fitting
     for idx in range(num_sims):

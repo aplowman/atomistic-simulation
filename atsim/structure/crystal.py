@@ -5,6 +5,7 @@ from atsim.structure.visualise import visualise as struct_visualise
 from atsim import geometry, vectors, readwrite, REF_PATH, plotting, utils
 from atsim.simsio import castep
 from beautifultable import BeautifulTable
+from atsim.utils import prt
 
 
 class CrystalBox(object):
@@ -36,6 +37,8 @@ class CrystalBox(object):
         Identifies the species for each of the M atoms.
     species : list of str
         List of element symbols for species present in the crystal.
+
+    TODO: correct docstring
 
     """
 
@@ -101,6 +104,9 @@ class CrystalBox(object):
         b_box_origin_bv = bounding_box['bound_box_origin_bv'][:, 0]
 
         self.bounding_box = bounding_box
+
+        prt(bounding_box, 'bounding_box')
+
         self.crystal_structure = crystal_structure
 
         # Get all lattice sites within the bounding box, as column vectors:
@@ -112,33 +118,45 @@ class CrystalBox(object):
             range(b_box_origin_bv[2],
                   b_box_origin_bv[2] + b_box_bv[2] + 1))).reshape((3, -1))
 
-        # Consider all lattice sites within each unit cell origin:
-        ls_lat = np.concatenate(
-            unit_cell_origins + crystal_structure.lat_sites_frac.T.reshape(
-                (-1, 3, 1)), axis=1)
+        tol = 1e-14
 
-        # Transform lattice sites to original box basis
+        # Consider all lattice sites within each unit cell origin:
+        ls_rs = crystal_structure.lattice_sites_frac.T.reshape((-1, 3, 1))
+        ls_lat = np.concatenate(unit_cell_origins + ls_rs, axis=1)
         ls_std = np.dot(lat_vecs, ls_lat)
         ls_box = np.dot(box_vecs_inv, ls_std)
-
-        # Get all atom sites within the bounding box, as column vectors:
-        as_lat = np.concatenate(
-            ls_lat + crystal_structure.motif['atom_sites'].T.reshape(
-                (-1, 3, 1)), axis=1)
-
-        as_std = np.dot(lat_vecs, as_lat)
-        as_box = np.dot(box_vecs_inv, as_std)
-
-        species_idx = np.repeat(crystal_structure.lat_site_species_idx,
-                                ls_lat.shape[1])
-        motif_idx = np.repeat(crystal_structure.lat_site_motif_idx,
-                              ls_lat.shape[1])
-
-        tol = 1e-14
         ls_box = vectors.snap_arr_to_val(ls_box, 0, tol)
         ls_box = vectors.snap_arr_to_val(ls_box, 1, tol)
+
+        # Get all atom sites within the bounding box, as column vectors:
+        as_rs = crystal_structure.atom_sites_frac.T.reshape((-1, 3, 1))
+        as_lat = np.concatenate(unit_cell_origins + as_rs, axis=1)
+        as_std = np.dot(lat_vecs, as_lat)
+        as_box = np.dot(box_vecs_inv, as_std)
         as_box = vectors.snap_arr_to_val(as_box, 0, tol)
         as_box = vectors.snap_arr_to_val(as_box, 1, tol)
+
+        compute_bis = False
+        bulk_interstitials = None
+        bulk_interstitials_idx = None
+        if crystal_structure.bulk_interstitials is not None:
+            compute_bis = True
+            bi_rs = crystal_structure.bulk_interstitials_frac.T.reshape(
+                (-1, 3, 1))
+            bi_lat = np.concatenate(unit_cell_origins + bi_rs, axis=1)
+            bi_std = np.dot(lat_vecs, bi_lat)
+            bi_box = np.dot(box_vecs_inv, bi_std)
+            bi_box = vectors.snap_arr_to_val(bi_box, 0, tol)
+            bi_box = vectors.snap_arr_to_val(bi_box, 1, tol)
+
+            bulk_interstitials_idx = np.repeat(
+                crystal_structure.bulk_interstitials_idx,
+                unit_cell_origins.shape[1])
+
+            cnd_bi = np.ones(bi_box.shape[1], dtype=bool)
+
+        species_idx = np.repeat(
+            crystal_structure.species_idx, unit_cell_origins.shape[1])
 
         # Form a boolean edge condition array based on `edge_condtions`. Start
         # by allowing all sites:
@@ -150,163 +168,67 @@ class CrystalBox(object):
             if pt[0] == '1':
                 cnd_lat = np.logical_and(cnd_lat, ls_box[dir_idx] >= 0)
                 cnd_atm = np.logical_and(cnd_atm, as_box[dir_idx] >= 0)
+                if compute_bis:
+                    cnd_bi = np.logical_and(cnd_bi, bi_box[dir_idx] >= 0)
 
             elif pt[0] == '0':
                 cnd_lat = np.logical_and(cnd_lat, ls_box[dir_idx] > 0)
                 cnd_atm = np.logical_and(cnd_atm, as_box[dir_idx] > 0)
+                if compute_bis:
+                    cnd_bi = np.logical_and(cnd_bi, bi_box[dir_idx] > 0)
 
             if pt[1] == '1':
                 cnd_lat = np.logical_and(cnd_lat, ls_box[dir_idx] <= 1)
                 cnd_atm = np.logical_and(cnd_atm, as_box[dir_idx] <= 1)
+                if compute_bis:
+                    cnd_bi = np.logical_and(cnd_bi, bi_box[dir_idx] <= 1)
 
             elif pt[1] == '0':
                 cnd_lat = np.logical_and(cnd_lat, ls_box[dir_idx] < 1)
                 cnd_atm = np.logical_and(cnd_atm, as_box[dir_idx] < 1)
+                if compute_bis:
+                    cnd_bi = np.logical_and(cnd_bi, bi_box[dir_idx] < 1)
 
         inbox_lat_idx = np.where(cnd_lat)[0]
         ls_box_in = ls_box[:, inbox_lat_idx]
         ls_std_in = ls_std[:, inbox_lat_idx]
+        ls_std_in = vectors.snap_arr_to_val(ls_std_in, 0, tol)
 
         inbox_atm_idx = np.where(cnd_atm)[0]
         as_box_in = as_box[:, inbox_atm_idx]
         as_std_in = as_std[:, inbox_atm_idx]
-
-        species_idx = species_idx[inbox_atm_idx]
-        motif_idx = motif_idx[inbox_atm_idx]
-
-        ls_std_in = vectors.snap_arr_to_val(ls_std_in, 0, tol)
         as_std_in = vectors.snap_arr_to_val(as_std_in, 0, tol)
 
+        species_idx = species_idx[inbox_atm_idx]
+        atom_labels = {}
+        for k, v in crystal_structure.atom_labels.items():
+            atom_labels.update({
+                k: np.repeat(v, unit_cell_origins.shape[1])[inbox_atm_idx]
+            })
+
         self.box_vecs = box_vecs
-        self.lat_sites_std = ls_std_in
-        self.lat_sites_frac = ls_box_in
-        self.atom_sites_std = as_std_in
+        self.lattice_sites = ls_std_in
+        self.lattice_sites_frac = ls_box_in
+        self.atom_sites = as_std_in
         self.atom_sites_frac = as_box_in
+        self.species = crystal_structure.species
         self.species_idx = species_idx
-        self.motif_idx = motif_idx
-        self.species_set = crystal_structure.species_set
-        self.species_motif = crystal_structure.species_motif
+        self.atom_labels = atom_labels
 
-    def visualise(self):
-        """
-        Plot the crystal structure using Plotly.
+        if compute_bis:
+            inbox_bi_idx = np.where(cnd_bi)[0]
+            bi_box_in = bi_box[:, inbox_bi_idx]
+            bi_std_in = bi_std[:, inbox_bi_idx]
+            bi_std_in = vectors.snap_arr_to_val(bi_std_in, 0, tol)
+            bulk_interstitials = bi_std_in
+            bulk_interstitials_idx = bulk_interstitials_idx[inbox_bi_idx]
 
-        Parameters
-        ----------
-        None
+        self.bulk_interstitials = bulk_interstitials
+        self.bulk_interstitials_idx = bulk_interstitials_idx
+        self.bulk_interstitials_names = crystal_structure.bulk_interstitials_names
 
-        Returns
-        -------
-        None
-
-        """
-
-        box_xyz = geometry.get_box_xyz(self.box_vecs)[0]
-
-        lattice_site_props = {
-            'mode': 'markers',
-            'marker': {
-                'color': 'rgb(100,100,100)',
-                'symbol': 'x',
-                'size': 5
-            },
-            'name': 'Lattice sites',
-            'legendgroup': 'Lattice sites'
-        }
-
-        data = [
-            graph_objs.Scatter3d(
-                x=box_xyz[0],
-                y=box_xyz[1],
-                z=box_xyz[2],
-                mode='lines',
-                name='Crystal box'
-            ),
-            graph_objs.Scatter3d(
-                x=self.lat_sites_std[0],
-                y=self.lat_sites_std[1],
-                z=self.lat_sites_std[2],
-                **lattice_site_props
-            )
-        ]
-
-        bound_box_xyz = geometry.get_box_xyz(
-            self.bounding_box['bound_box'][0],
-            origin=self.bounding_box['bound_box_origin'])[0]
-
-        # Add the bounding box trace:
-        data.append(
-            graph_objs.Scatter3d(
-                x=bound_box_xyz[0],
-                y=bound_box_xyz[1],
-                z=bound_box_xyz[2],
-                mode='lines',
-                marker={
-                    'color': 'red'
-                },
-                name='Bounding box',
-                visible='legendonly'
-            )
-        )
-
-        # Get colours for atom species:
-        atom_cols = readwrite.read_pickle(
-            os.path.join(REF_PATH, 'jmol_colours.pickle'))
-
-        for sp_idx, sp_name in enumerate(self.species_motif):
-
-            atom_idx = np.where(self.motif_idx == sp_idx)[0]
-            atom_sites_sp = self.atom_sites_std[:, atom_idx]
-            sp_col = str(
-                atom_cols[self.crystal_structure.motif['species'][sp_idx]])
-
-            atom_site_props = {
-                'mode': 'markers',
-                'marker': {
-                    'symbol': 'o',
-                    'size': 7,
-                    'color': 'rgb' + sp_col
-                },
-                'name': sp_name,
-                'legendgroup': sp_name,
-            }
-
-            # Add traces for this atom species to the Bravais lattice data:
-            data.append(
-                graph_objs.Scatter3d(
-                    x=self.atom_sites_std[0, atom_idx],
-                    y=self.atom_sites_std[1, atom_idx],
-                    z=self.atom_sites_std[2, atom_idx],
-                    **atom_site_props
-                )
-            )
-
-            # Add traces for atom numbers
-            data.append(
-                graph_objs.Scatter3d(
-                    x=self.atom_sites_std[0, atom_idx],
-                    y=self.atom_sites_std[1, atom_idx],
-                    z=self.atom_sites_std[2, atom_idx],
-                    **{
-                        'mode': 'text',
-                        'text': [str(i) for i in atom_idx],
-                        'name': 'Atom index',
-                        'legendgroup': 'Atom index',
-                        'showlegend': True if sp_idx == 0 else False,
-                        'visible': 'legendonly'
-                    }
-                )
-            )
-
-        layout = graph_objs.Layout(
-            width=650,
-            scene={
-                'aspectmode': 'data'
-            }
-        )
-
-        fig = graph_objs.Figure(data=data, layout=layout)
-        iplot(fig)
+    def visualise(self, **kwargs):
+        struct_visualise(self, **kwargs)
 
 
 class CrystalStructure(object):
@@ -336,6 +258,7 @@ class CrystalStructure(object):
     atom_sites_frac : ndarray of shape (3, M)
 
     TODO: finish docstring
+    TODO: update from_file to work with species/species_idx
 
     """
     @classmethod

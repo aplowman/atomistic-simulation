@@ -479,8 +479,7 @@ class CrystalStructure(object):
         utils.prt(atom_sites_frac, 'atom_sites_frac')
         atom_sites_std = np.dot(self.bravais_lattice.vecs, atom_sites_frac)
         num_atom_sites = atom_sites_frac.shape[1]
-        self.atom_sites_frac = atom_sites_frac
-        self.atom_sites_std = atom_sites_std
+        self.atom_sites = atom_sites_std
 
         # Map atom sites to species
         species = np.array(motif['species'])
@@ -526,6 +525,10 @@ class CrystalStructure(object):
                 atom_labels.update({k: np.tile(v, num_lat_sites)})
 
         self.atom_labels = atom_labels
+
+    @property
+    def atom_sites_frac(self):
+        return np.dot(np.linalg.inv(self.bravais_lattice.vecs), self.atom_sites)
 
     def visualise(self, show_iplot=False, plot_2d='xyz', use_interstitial_names=False,
                   atom_label=None):
@@ -584,7 +587,7 @@ class CrystalStructure(object):
                         atom_name = '{} ({}: {})'.format(sp, atom_label, i)
 
                     points.append({
-                        'data': self.atom_sites_std[:, atom_idx],
+                        'data': self.atom_sites[:, atom_idx],
                         'colour': sp_col,
                         'symbol': 'o',
                         'name': atom_name,
@@ -592,7 +595,7 @@ class CrystalStructure(object):
 
             else:
                 points.append({
-                    'data': self.atom_sites_std[:, atom_idx],
+                    'data': self.atom_sites[:, atom_idx],
                     'colour': sp_col,
                     'symbol': 'o',
                     'name': '{}'.format(sp),
@@ -670,10 +673,11 @@ class CrystalStructure(object):
 
         atoms_str.column_headers = column_headers
 
+        atom_sites_frac = self.atom_sites_frac
         for idx, si in enumerate(self.species_idx):
             row = [
                 idx, self.species[si],
-                *(self.atom_sites_frac[:, idx]),
+                *(atom_sites_frac[:, idx]),
                 *[v[idx] for k, v in self.atom_labels.items()]
             ]
             atoms_str.append_row(row)

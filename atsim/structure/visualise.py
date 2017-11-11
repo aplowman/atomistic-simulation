@@ -129,11 +129,29 @@ def visualise(structure, show_iplot=False, plot_2d='xyz', use_interstitial_names
 
     boxes = []
 
-    boxes.append({
-        'edges': structure.bravais_lattice.vecs,
-        'name': 'Unit cell',
-        'colour': 'navy'
-    })
+    if hasattr(structure, 'bravais_lattice'):
+        # CrystalStructure
+        boxes.append({
+            'edges': structure.bravais_lattice.vecs,
+            'name': 'Unit cell',
+            'colour': 'navy'
+        })
+
+    if hasattr(structure, 'box_vecs'):
+        # CrystalBox
+        boxes.append({
+            'edges': structure.box_vecs,
+            'name': 'Crystal box',
+            'colour': 'green',
+        })
+
+        # Add the bounding box trace:
+        boxes.append({
+            'edges': structure.bounding_box['bound_box'][0],
+            'origin': structure.bounding_box['bound_box_origin'],
+            'name': 'Bounding box',
+            'colour': 'red',
+        })
 
     f3d, f2d = plotting.plot_geometry_plotly(points, boxes)
     if show_iplot:

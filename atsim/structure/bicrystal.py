@@ -530,65 +530,105 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
     crys_b = CrystalBox(crystal_structure, grn_b_std,
                         edge_conditions=edge_conditions[1])
 
-    # Get atom and lattice sites from crystal boxes:
-    as_a = crys_a.atom_sites_std
-    as_b = crys_b.atom_sites_std
-    ls_a = crys_a.lat_sites_std
-    ls_b = crys_b.lat_sites_std
-
     # Rotate crystal B onto A:
-    as_b_rot = np.dot(rot_mat, as_b)
-    ls_b_rot = np.dot(rot_mat, ls_b)
-    grn_b_rot_std = np.dot(rot_mat, grn_b_std)
+    crys_b.rotate(rot_mat)
 
     # Shift crystals to form a supercell at the origin
-    zs_std = - grn_b_rot_std[:, NBI:NBI + 1]
-    as_a_zs = as_a + zs_std
-    as_b_zs = as_b_rot + zs_std
-    ls_a_zs = ls_a + zs_std
-    ls_b_zs = ls_b_rot + zs_std
+    zs = - crys_b.box_vecs[:, NBI:NBI + 1]
+    crys_a.translate(zs)
+    crys_b.translate(zs)
 
-    crystal_idx = np.array([0] * as_a_zs.shape[1] + [1] * as_b_zs.shape[1])
-    lat_crystal_idx = np.array(
-        [0] * ls_a_zs.shape[1] + [1] * ls_b_zs.shape[1])
-    atom_sites = np.hstack([as_a_zs, as_b_zs])
-    lattice_sites = np.hstack([ls_a_zs, ls_b_zs])
+    atom_sites = np.hstack((crys_a.atom_sites, crys_b.atom_sites))
+    lattice_sites = np.hstack((crys_a.lattice_sites, crys_b.lattice_sites))
+
+    crystal_idx = np.array([0] * crys_a.atom_sites.shape[1] +
+                           [1] * crys_b.atom_sites.shape[1])
+    cry_idx_dict = {'crystal_idx': (np.array([0, 1]), crystal_idx)}
+
+    atom_labels = {**cry_idx_dict}
+    for k, v in crys_a.atom_labels.items():
+        atom_labels.update({
+            k: (v[0], np.hstack((v[1], crys_b.atom_labels[k][1])))
+        })
+
+    lat_labels = {**cry_idx_dict}
+    for k, v in crys_a.lattice_labels.items():
+        lat_labels.update({
+            k: (v[0], np.hstack((v[1], crys_b.lattice_labels[k][1])))
+        })
+
+    int_sites, int_labels = None, None
+    if crys_a.interstice_sites is not None:
+        int_sites = np.hstack(
+            (crys_a.interstice_sites, crys_b.interstice_sites))
+        int_labels = {**cry_idx_dict}
+        for k, v in crys_a.interstice_labels.items():
+            int_labels.update({
+                k: (v[0], np.hstack((v[1], crys_b.interstice_labels[k][1])))
+            })
+
+    # # Get atom and lattice sites from crystal boxes:
+    # as_a = crys_a.atom_sites
+    # ls_a = crys_a.lattice_sites
+    # in_a = crys_a.interstice_sites
+
+    # as_b = crys_b.atom_sites
+    # ls_b = crys_b.lattice_sites
+    # in_b = crys_a.interstice_sites
+
+    # # Rotate crystal B onto A:
+    # as_b_rot = np.dot(rot_mat, as_b)
+    # ls_b_rot = np.dot(rot_mat, ls_b)
+    # grn_b_rot_std = np.dot(rot_mat, grn_b_std)
+
+    # # Shift crystals to form a supercell at the origin
+    # zs_std = - grn_b_rot_std[:, NBI:NBI + 1]
+    # as_a_zs = as_a + zs_std
+    # as_b_zs = as_b_rot + zs_std
+    # ls_a_zs = ls_a + zs_std
+    # ls_b_zs = ls_b_rot + zs_std
+
+    # crystal_idx = np.array([0] * as_a_zs.shape[1] + [1] * as_b_zs.shape[1])
+    # lat_crystal_idx = np.array(
+    #     [0] * ls_a_zs.shape[1] + [1] * ls_b_zs.shape[1])
+    # atom_sites = np.hstack([as_a_zs, as_b_zs])
+    # lattice_sites = np.hstack([ls_a_zs, ls_b_zs])
 
     # Define the supercell:
-    sup_std = np.copy(grn_a_std)
-    sup_std[:, NBI] = grn_a_std[:, NBI] - grn_b_rot_std[:, NBI]
+    sup_std = np.copy(crys_a.box_vecs)
+    sup_std[:, NBI] = crys_a.box_vecs[:, NBI] - crys_b.box_vecs[:, NBI]
 
     crystals = [
         {
-            'crystal': grn_a_std,
-            'origin': zs_std,
+            'crystal': crys_a.box_vecs,
+            'origin': zs,
             'cs_idx': 0,
             'cs_orientation': np.eye(3),
             'cs_origin': [0, 0, 0]
         },
         {
-            'crystal': grn_b_rot_std,
-            'origin': zs_std,
+            'crystal': crys_b.box_vecs,
+            'origin': zs,
             'cs_idx': 0,
             'cs_orientation': rot_mat,
             'cs_origin': [0, -1, 0]
         }
     ]
 
-    species_idx = np.hstack([crys_a.species_idx, crys_b.species_idx])
-    motif_idx = np.hstack([crys_a.motif_idx, crys_b.motif_idx])
+    # species_idx = np.hstack([crys_a.species_idx, crys_b.species_idx])
+    # motif_idx = np.hstack([crys_a.motif_idx, crys_b.motif_idx])
 
     # AtomisticStructure parameters
     as_params = {
-        'atom_sites': atom_sites,
         'supercell': sup_std,
+        'atom_sites': atom_sites,
+        'atom_labels': atom_labels,
         'lattice_sites': lattice_sites,
+        'lattice_labels': lat_labels,
+        'interstice_sites': int_sites,
+        'interstice_labels': int_labels,
         'crystals': crystals,
         'crystal_structures': [crystal_structure],
-        'crystal_idx': crystal_idx,
-        'lat_crystal_idx': lat_crystal_idx,
-        'species_idx': species_idx,
-        'motif_idx': motif_idx,
         'overlap_tol': overlap_tol,
     }
 

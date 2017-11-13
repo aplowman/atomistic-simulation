@@ -97,10 +97,9 @@ class AtomisticStructure(object):
 
     """
 
-    def __init__(self, atom_sites, supercell, lattice_sites=None,
-                 crystals=None, crystal_structures=None, crystal_idx=None,
-                 lat_crystal_idx=None, species_idx=None, motif_idx=None,
-                 all_species=None, all_species_idx=None, overlap_tol=1):
+    def __init__(self, supercell, atom_sites, atom_labels, lattice_sites=None,
+                 lattice_labels=None, interstice_sites=None, interstice_labels=None,
+                 crystals=None, crystal_structures=None, overlap_tol=1):
         """Constructor method for AtomisticStructure object."""
 
         # Input validation
@@ -111,80 +110,92 @@ class AtomisticStructure(object):
         #       sites in `lattice_sites'.
         # 3.    Check set of indices in `crystal_idx` resolve in `crystals`.
 
-        if crystal_idx is not None:
-            if len(crystal_idx) != atom_sites.shape[1]:
-                raise ValueError('Length of `crystal_idx` must match number '
-                                 'of atoms specified as column vectors in '
-                                 '`atom_sites`.')
+        # if crystal_idx is not None:
+        #     if len(crystal_idx) != atom_sites.shape[1]:
+        #         raise ValueError('Length of `crystal_idx` must match number '
+        #                          'of atoms specified as column vectors in '
+        #                          '`atom_sites`.')
 
-            c_idx_set = sorted(list(set(crystal_idx)))
-            if c_idx_set[0] < 0 or c_idx_set[-1] >= len(crystals):
-                raise ValueError('Indices in `crystal_idx` must index elements'
-                                 ' in `crystals`.')
+        #     c_idx_set = sorted(list(set(crystal_idx)))
+        #     if c_idx_set[0] < 0 or c_idx_set[-1] >= len(crystals):
+        #         raise ValueError('Indices in `crystal_idx` must index elements'
+        #                          ' in `crystals`.')
 
-        if lat_crystal_idx is not None:
-            if len(lat_crystal_idx) != lattice_sites.shape[1]:
-                raise ValueError('Length of `lat_crystal_idx` must match '
-                                 'number of lattice sites specified as column '
-                                 'vectors in `lattice_sites`.')
+        # if lat_crystal_idx is not None:
+        #     if len(lat_crystal_idx) != lattice_sites.shape[1]:
+        #         raise ValueError('Length of `lat_crystal_idx` must match '
+        #                          'number of lattice sites specified as column '
+        #                          'vectors in `lattice_sites`.')
 
-        if [i is None for i in [all_species, all_species_idx]].count(True) == 1:
-            raise ValueError('Must specify both `all_species` and '
-                             '`all_species_idx`.')
+        # if [i is None for i in [all_species, all_species_idx]].count(True) == 1:
+        #     raise ValueError('Must specify both `all_species` and '
+        #                      '`all_species_idx`.')
 
-        if [i is None for i in [species_idx, motif_idx]].count(True) == 1:
-            raise ValueError('Must specify both `species_idx` and '
-                             '`motif_idx`.')
+        # if [i is None for i in [species_idx, motif_idx]].count(True) == 1:
+        #     raise ValueError('Must specify both `species_idx` and '
+        #                      '`motif_idx`.')
 
-        if [i is None for i in [species_idx, all_species_idx]].count(True) != 1:
-            raise ValueError('Either specify (`all_species` and '
-                             '`all_species_idx`) or (`species_idx` and '
-                             '`motif_idx`), but not both.')
+        # if [i is None for i in [species_idx, all_species_idx]].count(True) != 1:
+        #     raise ValueError('Either specify (`all_species` and '
+        #                      '`all_species_idx`) or (`species_idx` and '
+        #                      '`motif_idx`), but not both.')
 
-        if species_idx is not None:
-            if len(species_idx) != atom_sites.shape[1]:
-                raise ValueError('Length of `species_idx` must match number '
-                                 'of atoms specified as column vectors in '
-                                 '`atom_sites`.')
+        # if species_idx is not None:
+        #     if len(species_idx) != atom_sites.shape[1]:
+        #         raise ValueError('Length of `species_idx` must match number '
+        #                          'of atoms specified as column vectors in '
+        #                          '`atom_sites`.')
 
-        if motif_idx is not None:
-            if len(motif_idx) != atom_sites.shape[1]:
-                raise ValueError('Length of `motif_idx` must match number '
-                                 'of atoms specified as column vectors in '
-                                 '`atom_sites`.')
+        # if motif_idx is not None:
+        #     if len(motif_idx) != atom_sites.shape[1]:
+        #         raise ValueError('Length of `motif_idx` must match number '
+        #                          'of atoms specified as column vectors in '
+        #                          '`atom_sites`.')
 
-        if all_species_idx is not None:
-            if len(all_species_idx) != atom_sites.shape[1]:
-                raise ValueError('Length of `all_species_idx` ({}) must match '
-                                 'number of atoms specified as column vectors '
-                                 'in `atom_sites` ({}).'.format(len(all_species_idx), atom_sites.shape[1]))
+        # if all_species_idx is not None:
+        #     if len(all_species_idx) != atom_sites.shape[1]:
+        #         raise ValueError('Length of `all_species_idx` ({}) must match '
+        #                          'number of atoms specified as column vectors '
+        #                          'in `atom_sites` ({}).'.format(len(all_species_idx), atom_sites.shape[1]))
 
         # Set attributes
         # --------------
         self.atom_sites = atom_sites
+        self.atom_labels = atom_labels
         self.supercell = supercell
         self.meta = {}
 
         self.lattice_sites = lattice_sites
+        self.lattice_labels = lattice_labels
+        self.interstice_sites = interstice_sites
+        self.interstice_labels = interstice_labels
         self.crystals = crystals
         self.crystal_structures = crystal_structures
-        self.crystal_idx = crystal_idx
-        self.lat_crystal_idx = lat_crystal_idx
-        self.species_idx = species_idx
-        self.motif_idx = motif_idx
         self._overlap_tol = overlap_tol
 
-        if all_species is None:
-            self._all_species = None
-        else:
-            self._all_species = np.array(all_species)
+        # if all_species is None:
+        #     self._all_species = None
+        # else:
+        #     self._all_species = np.array(all_species)
 
-        if all_species_idx is None:
-            self._all_species_idx = None
-        else:
-            self._all_species_idx = utils.parse_as_int_arr(all_species_idx)
+        # if all_species_idx is None:
+        #     self._all_species_idx = None
+        # else:
+        #     self._all_species_idx = utils.parse_as_int_arr(all_species_idx)
 
         self.check_overlapping_atoms(overlap_tol)
+
+    @property
+    def species(self):
+        return self.atom_labels['species'][0]
+
+    @property
+    def species_idx(self):
+        return self.atom_labels['species'][1]
+
+    @property
+    def all_species(self):
+        return self.species[self.species_idx]
 
     def visualise(self, proj_2d=False, show_iplot=True, save=False,
                   save_args=None, sym_op=None, wrap_sym_op=False,
@@ -1024,69 +1035,69 @@ class AtomisticStructure(object):
 
         return seps
 
-    def get_all_species(self):
+    # def get_all_species(self):
 
-        all_sp = []
-        all_sp_idx = []
-        all_sp_count = 0
+    #     all_sp = []
+    #     all_sp_idx = []
+    #     all_sp_count = 0
 
-        for c_idx in range(len(self.crystals)):
+    #     for c_idx in range(len(self.crystals)):
 
-            cs = self.crystal_structures[self.crystals[c_idx]['cs_idx']]
+    #         cs = self.crystal_structures[self.crystals[c_idx]['cs_idx']]
 
-            # Local species for this crystal:
-            cs_sp = cs.motif['species']
+    #         # Local species for this crystal:
+    #         cs_sp = cs.motif['species']
 
-            # Local species index for this crystal:
-            c_sp_idx_old = self.species_idx[np.where(
-                self.crystal_idx == c_idx)[0]]
-            c_sp_idx_new = np.array([None] * len(c_sp_idx_old))
+    #         # Local species index for this crystal:
+    #         c_sp_idx_old = self.species_idx[np.where(
+    #             self.crystal_idx == c_idx)[0]]
+    #         c_sp_idx_new = np.array([None] * len(c_sp_idx_old))
 
-            # Need to map the indices from local CrystalStructure to global
-            # AtomisticStructure
+    #         # Need to map the indices from local CrystalStructure to global
+    #         # AtomisticStructure
 
-            cs_sp = reduce(lambda l, x: l if x in l else l + [x], cs_sp, [])
+    #         cs_sp = reduce(lambda l, x: l if x in l else l + [x], cs_sp, [])
 
-            for sp_idx, sp in enumerate(cs_sp):
+    #         for sp_idx, sp in enumerate(cs_sp):
 
-                if sp not in all_sp:
+    #             if sp not in all_sp:
 
-                    new_sp_idx = all_sp_count
-                    all_sp.append(sp)
-                    all_sp_count += 1
+    #                 new_sp_idx = all_sp_count
+    #                 all_sp.append(sp)
+    #                 all_sp_count += 1
 
-                else:
-                    new_sp_idx = all_sp.index(sp)
+    #             else:
+    #                 new_sp_idx = all_sp.index(sp)
 
-                w = np.where(c_sp_idx_old == sp_idx)[0]
-                c_sp_idx_new[w] = new_sp_idx
+    #             w = np.where(c_sp_idx_old == sp_idx)[0]
+    #             c_sp_idx_new[w] = new_sp_idx
 
-            all_sp_idx.extend(c_sp_idx_new)
+    #         all_sp_idx.extend(c_sp_idx_new)
 
-        all_sp = np.array(all_sp)
-        all_sp_idx = np.array(all_sp_idx)
+    #     all_sp = np.array(all_sp)
+    #     all_sp_idx = np.array(all_sp_idx)
 
-        return all_sp, all_sp_idx
+    #     return all_sp, all_sp_idx
 
-    @property
-    def all_species(self):
-        """"""
+    # @property
+    # def all_species(self):
+    #     """"""
 
-        if self.species_idx is None:
-            return self._all_species
+    #     if self.species_idx is None:
+    #         return self._all_species
 
-        else:
-            return self.get_all_species()[0]
+    #     else:
+    #         return self.get_all_species()[0]
 
-    @property
-    def all_species_idx(self):
-        """"""
+    # @property
+    # def all_species_idx(self):
+    #     """"""
 
-        if self.species_idx is None:
-            return self._all_species_idx
+    #     if self.species_idx is None:
+    #         return self._all_species_idx
 
-        else:
-            return self.get_all_species()[1]
+    #     else:
+    #         return self.get_all_species()[1]
 
     @property
     def crystal_centres(self):

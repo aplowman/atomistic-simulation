@@ -7,43 +7,77 @@ Each of these classes share common instance attributes:
     `bulk_interstitial_sites` (optional), `atom_labels` (optional)
 
 """
-
-from atsim import readwrite, REF_PATH, plotting, utils
 import os
 import numpy as np
-from plotly import graph_objs
+from atsim import readwrite, REF_PATH, plotting, utils
+from atsim.utils import prt
 from plotly.offline import plot, iplot
 
 
-def visualise(structure, show_iplot=False, plot_2d='xyz', use_interstitial_names=False,
-              use_atom_labels=None):
+def visualise(structure, show_iplot=False, plot_2d='xyz', group_atoms_by=None,
+              group_lattice_sites_by=None, group_interstices_by=None):
     """
     Parameters
     ----------
     structure : one of CrystalStructure, CrystalBox or AtomisticStructure.
-    use_interstitial_names : bool, optional
-        If True, bulk interstitial sites are plotted by names given in
-        `bulk_interstials_names` according to `bulk_interstitials_idx`.
-    use_atom_labels : list of str, optional
-        If set, atoms are grouped according to one or more of their atom
-        labels. For instance, if set to `species_count`, which is an atom
-        label that is automatically added to the CrystalStructure, atoms
-        will be grouped by their position in the motif within their
-        species. So for a motif which has two X atoms, these atoms will be
-        plotted on separate traces: "X (#1)" and "X (#2)". Note that atoms
-        are always grouped by species (e.g. "X").
+    use_interstice_names : bool, optional
+        If True, bulk interstices are plotted by names given in
+        `interstice_names` according to `interstice_names_idx`.
+    group_atoms_by : list of str, optional
+        If set, atoms are grouped according to one or more of their labels.
+        For instance, if set to `species_count`, which is an atom label that is
+        automatically added to the CrystalStructure, atoms will be grouped by
+        their position in the motif within their species. So for a motif which
+        has two X atoms, these atoms will be plotted on separate traces:
+        "X (#1)" and "X (#2)". Note that atoms are grouped by species
+        (e.g. "X") by default.
+    group_lattice_sites_by : list of str, optional
+        If set, lattice sites are grouped according to one or more of their
+        labels.
+    group_interstices_by : list of str, optional
+        If set, interstices are grouped according to one or more of their
+        labels.
 
-    TODO: change `use_atom_labels` to `group_atoms_by` (can also have 
-    `group_interstices_by` and `group_lattice_sites_by`).
+    TODO: add `colour_{atoms, lattice_sites, interstices}_by` parameters which 
+          will be a string that must be in the corresponding group_{}_by list
+          Or maybe don't have this restriction, would ideally want to be able
+          to colour according to a colourscale e.g. by volume per atom, bond
+          order parameter, etc. Can do this in Plotly by setting 
+          marker.colorscale to an array of the same length as the number of 
+          markers. And for Matplotlib: https://stackoverflow.com/questions/6063876/matplotlib-colorbar-for-scatter
+
+    TODO: consider merging parameters into a dict: 
+          `group_sites_by` = {
+              atoms: [...], lattice_sites: [...], interstices: [...]} etc.
 
     """
 
-    if use_atom_labels is None:
-        use_atom_labels = []
+    if group_atoms_by is None:
+        group_atoms_by = []
 
-    for lab in use_atom_labels:
+    if group_lattice_sites_by is None:
+        group_lattice_sites_by = []
+
+    if group_interstices_by is None:
+        group_interstices_by = []
+
+    for lab in group_atoms_by:
         if lab not in structure.atom_labels.keys():
-            raise ValueError('"{}" is not a valid atom label.'.format(lab))
+            raise ValueError(
+                '"{}" is not a valid atom label.'.format(lab)
+            )
+
+    for lab in group_lattice_sites_by:
+        if lab not in structure.lattice_labels.keys():
+            raise ValueError(
+                '"{}" is not a valid lattice site label.'.format(lab)
+            )
+
+    for lab in group_interstices_by:
+        if lab not in structure.interstice_labels.keys():
+            raise ValueError(
+                '"{}" is not a valid interstice label.'.format(lab)
+            )
 
     # Get colours for atom species:
     atom_cols = readwrite.read_pickle(
@@ -51,84 +85,137 @@ def visualise(structure, show_iplot=False, plot_2d='xyz', use_interstitial_names
 
     points = []
 
-    # Plot atoms by groupings
-    atom_groups_names = ['species']
-    atom_groups = [structure.species[structure.species_idx]]
+    # Add atoms by groupings
+    atom_groups_names = []
+    atom_groups = []
     for k, v in structure.atom_labels.items():
-        if k in use_atom_labels:
+        if k in group_atoms_by:
             atom_groups_names.append(k)
-            atom_groups.append(v)
+            atom_groups.append(v[0][v[1]])
 
-    atom_combs, atom_combs_idx = utils.combination_idx(*atom_groups)
+    atm_col = 'black'
+    atm_sym = 'o'
 
-    for i in range(len(atom_combs)):
+    if len(atom_groups) > 0:
+        atom_combs, atom_combs_idx = utils.combination_idx(*atom_groups)
 
-        c = atom_combs[i]
-        c_idx = atom_combs_idx[i]
-        sp_group_name_idx = atom_groups_names.index('species')
-        sp = c[sp_group_name_idx]
-        sp_col = 'rgb' + str(atom_cols[sp])
+        for ac_idx in range(len(atom_combs)):
 
-        # Special treatment for species and (optionally) species_count:
-        atoms_name = '{}'.format(sp)
-        skip_idx = [sp_group_name_idx]
+            c = atom_combs[ac_idx]
+            c_idx = atom_combs_idx[ac_idx]
+            skip_idx = []
+            atoms_name = 'Atoms'
 
-        if 'species_count' in atom_groups_names:
-            sp_ct_group_name_idx = atom_groups_names.index('species_count')
-            atoms_name += ' #{}'.format(c[sp_ct_group_name_idx] + 1)
-            skip_idx.append(sp_ct_group_name_idx)
+            # Special treatment for species and species_count if grouping requested:
+            if 'species' in atom_groups_names:
+                sp_group_name_idx = atom_groups_names.index('species')
+                sp = c[sp_group_name_idx]
+                atm_col = 'rgb' + str(atom_cols[sp])
 
-        for idx, (i, j) in enumerate(zip(atom_groups_names, c)):
-            if idx in skip_idx:
-                continue
-            atoms_name += '; {}: {}'.format(i, j)
+                atoms_name += ': {}'.format(sp)
+                skip_idx = [sp_group_name_idx]
 
-        points.append({
-            'data': structure.atom_sites[:, c_idx],
-            'symbol': 'o',
-            'colour': sp_col,
-            'name': '{}'.format(atoms_name),
-        })
+                if 'species_count' in atom_groups_names:
+                    sp_ct_group_name_idx = atom_groups_names.index(
+                        'species_count')
+                    atoms_name += ' #{}'.format(c[sp_ct_group_name_idx] + 1)
+                    skip_idx.append(sp_ct_group_name_idx)
 
-    # Lattice sites:
-    points.append({
-        'data': structure.lattice_sites,
-        'colour': 'gray',
-        'symbol': 'x',
-        'name': 'Lattice sites'
-    })
-
-    # Bulk interstitials
-    if structure.bulk_interstitials is not None:
-
-        if use_interstitial_names:
-
-            if structure.bulk_interstitials_names is None:
-                raise ValueError('Cannot plot bulk interstitials by name '
-                                 ' when `bulk_interstials_names` is not assigned.')
-
-            for i in range(structure.bulk_interstitials_names.shape[0]):
-
-                w = np.where(structure.bulk_interstitials_idx == i)[0]
-
-                bi_sites = structure.bulk_interstitials[:, w]
-                bi_name = structure.bulk_interstitials_names[i]
-
-                points.append({
-                    'data': bi_sites,
-                    'colour': 'orange',
-                    'symbol': 'x',
-                    'name': '{} bulk interstitials'.format(bi_name),
-                })
-
-        else:
+            for idx, (i, j) in enumerate(zip(atom_groups_names, c)):
+                if idx in skip_idx:
+                    continue
+                atoms_name += '; {}: {}'.format(i, j)
 
             points.append({
-                'data': structure.bulk_interstitials,
-                'colour': 'orange',
-                'symbol': 'x',
-                'name': 'Bulk interstitials',
+                'data': structure.atom_sites[:, c_idx],
+                'symbol': atm_sym,
+                'colour': atm_col,
+                'name': atoms_name,
             })
+
+    else:
+        points.append({
+            'data': structure.atom_sites,
+            'symbol': atm_sym,
+            'colour': atm_col,
+            'name': 'Atoms',
+        })
+
+    # Add lattice sites by groupings
+    lat_groups_names = []
+    lat_groups = []
+    for k, v in structure.lattice_labels.items():
+        if k in group_lattice_sites_by:
+            lat_groups_names.append(k)
+            lat_groups.append(v[0][v[1]])
+
+    lat_col = 'grey'
+    lat_sym = 'x'
+
+    if len(lat_groups) > 0:
+        lat_combs, lat_combs_idx = utils.combination_idx(*lat_groups)
+
+        for lc_idx in range(len(lat_combs)):
+            c = lat_combs[lc_idx]
+            c_idx = lat_combs_idx[lc_idx]
+            skip_idx = []
+            lats_name = 'Lattice sites'
+
+            for idx, (i, j) in enumerate(zip(lat_groups_names, c)):
+                lats_name += '; {}: {}'.format(i, j)
+
+            points.append({
+                'data': structure.lattice_sites[:, c_idx],
+                'symbol': lat_sym,
+                'colour': lat_col,
+                'name': lats_name,
+            })
+
+    else:
+        points.append({
+            'data': structure.lattice_sites,
+            'symbol': lat_sym,
+            'colour': lat_col,
+            'name': 'Lattice sites',
+        })
+
+    # Add interstices by groupings
+    int_groups_names = []
+    int_groups = []
+    for k, v in structure.interstice_labels.items():
+        if k in group_interstices_by:
+            int_groups_names.append(k)
+            int_groups.append(v[0][v[1]])
+
+    int_col = 'orange'
+    int_sym = 'x'
+
+    if len(int_groups) > 0:
+        int_combs, int_combs_idx = utils.combination_idx(*int_groups)
+
+        for ic_idx in range(len(int_combs)):
+            c = int_combs[ic_idx]
+            c_idx = int_combs_idx[ic_idx]
+            skip_idx = []
+            ints_name = 'Interstices'
+
+            for idx, (i, j) in enumerate(zip(int_groups_names, c)):
+                ints_name += '; {}: {}'.format(i, j)
+
+            points.append({
+                'data': structure.interstice_sites[:, c_idx],
+                'symbol': int_sym,
+                'colour': int_col,
+                'name': ints_name,
+            })
+
+    else:
+        points.append({
+            'data': structure.interstice_sites,
+            'symbol': int_sym,
+            'colour': int_col,
+            'name': 'Interstices',
+        })
 
     boxes = []
 
@@ -144,6 +231,7 @@ def visualise(structure, show_iplot=False, plot_2d='xyz', use_interstitial_names
         # CrystalBox
         boxes.append({
             'edges': structure.box_vecs,
+            'origin': structure.origin,
             'name': 'Crystal box',
             'colour': 'green',
         })

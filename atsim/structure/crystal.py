@@ -8,9 +8,83 @@ from beautifultable import BeautifulTable
 from atsim.utils import prt
 
 
-class CrystalBox(object):
+class Crystal(object):
     """
-    Class to represent a parallelopiped filled with a crystal structure.
+    Class to represent a bounded volume filled with a given CrystalStructure.
+
+    """
+
+    def translate(self, shift):
+        """
+        Translate the crystal.
+
+        Parameters
+        ----------
+        shift : list or ndarray of size 3
+
+        """
+
+        shift = utils.to_col_vec(shift)
+        self.origin += shift
+        self.atom_sites += shift
+        self.lattice_sites += shift
+        if self.interstice_sites is not None:
+            self.interstice_sites += shift
+
+    def rotate(self, rot_mat):
+        """
+        Rotate the crystal about its origin according to a rotation matrix.
+
+        Parameters
+        ----------
+        rot_mat : ndarray of shape (3, 3)
+            Rotation matrix that pre-multiplies column vectors in order to 
+            rotate them about a particular axis and angle.
+
+        """
+
+        origin = np.copy(self.origin)
+        self.translate(-origin)
+
+        self.atom_sites = np.dot(rot_mat, self.atom_sites)
+        self.lattice_sites = np.dot(rot_mat, self.lattice_sites)
+        if self.interstice_sites is not None:
+            self.interstice_sites = np.dot(rot_mat, self.interstice_sites)
+
+        self.translate(origin)
+
+    @property
+    def lattice_sites_frac(self):
+        return np.dot(np.linalg.inv(self.box_vecs.vecs), self.lattice_sites)
+
+    @property
+    def atom_sites_frac(self):
+        return np.dot(np.linalg.inv(self.box_vecs.vecs), self.atom_sites)
+
+    @property
+    def interstice_sites_frac(self):
+        if self.interstice_sites is not None:
+            return np.dot(np.linalg.inv(self.box_vecs.vecs),
+                          self.interstice_sites)
+        else:
+            return None
+
+    @property
+    def species(self):
+        return self.atom_labels['species'][0]
+
+    @property
+    def species_idx(self):
+        return self.atom_labels['species'][1]
+
+    @property
+    def all_species(self):
+        return self.species[self.species_idx]
+
+
+class CrystalBox(Crystal):
+    """
+    Class to represent a parallelopiped filled with a CrystalStructure
 
     Attributes
     ----------
@@ -39,11 +113,84 @@ class CrystalBox(object):
         List of element symbols for species present in the crystal.
 
     TODO: correct docstring
-    TODO: add methods: `translate` and `rotate` (then Bicrystal will be easier)
 
     """
 
-    def __init__(self, crystal_structure, box_vecs, edge_conditions=None):
+    def translate(self, shift):
+        """
+        Translate the crystal box.
+
+        Parameters
+        ----------
+        shift : list or ndarray of size 3
+
+        """
+        shift = utils.to_col_vec(shift)
+        super().translate(shift)
+
+        self.bounding_box['bound_box_origin'] += shift
+
+    def rotate(self, rot_mat):
+        """
+        Rotate the crystal box about its origin according to a rotation matrix.
+
+        Parameters
+        ----------
+        rot_mat : ndarray of shape (3, 3)
+            Rotation matrix that pre-multiplies column vectors in order to 
+            rotate them about a particular axis and angle.
+
+        """
+
+        super().rotate(rot_mat)
+
+        self.box_vecs = np.dot(rot_mat, self.box_vecs)
+        self.bounding_box['bound_box'][0] = np.dot(
+            rot_mat, self.bounding_box['bound_box'][0])
+
+    def _find_valid_sites(self, sites_frac, labels, unit_cell_origins, lat_vecs,
+                          box_vecs_inv, edge_conditions):
+
+        tol = 1e-14
+
+        sts_frac_rs = sites_frac.T.reshape((-1, 3, 1))
+        sts_lat = np.concatenate(unit_cell_origins + sts_frac_rs, axis=1)
+        sts_std = np.dot(lat_vecs, sts_lat)
+        sts_box = np.dot(box_vecs_inv, sts_std)
+        sts_box = vectors.snap_arr_to_val(sts_box, 0, tol)
+        sts_box = vectors.snap_arr_to_val(sts_box, 1, tol)
+
+        # Form a boolean edge condition array based on `edge_condtions`.
+        # Start by allowing all sites:
+        cnd = np.ones(sts_box.shape[1], dtype=bool)
+
+        for dir_idx, pt in enumerate(edge_conditions):
+
+            if pt[0] == '1':
+                cnd = np.logical_and(cnd, sts_box[dir_idx] >= 0)
+            elif pt[0] == '0':
+                cnd = np.logical_and(cnd, sts_box[dir_idx] > 0)
+
+            if pt[1] == '1':
+                cnd = np.logical_and(cnd, sts_box[dir_idx] <= 1)
+            elif pt[1] == '0':
+                cnd = np.logical_and(cnd, sts_box[dir_idx] < 1)
+
+        in_idx = np.where(cnd)[0]
+        sts_box_in = sts_box[:, in_idx]
+        sts_std_in = sts_std[:, in_idx]
+        sts_std_in = vectors.snap_arr_to_val(sts_std_in, 0, tol)
+
+        labels_in = {}
+        for k, v in labels.items():
+            labels_in.update({
+                k: (v[0],
+                    np.repeat(v[1], unit_cell_origins.shape[1])[in_idx])
+            })
+
+        return (sts_std_in, sts_box_in, labels_in)
+
+    def __init__(self, crystal_structure, box_vecs, edge_conditions=None, origin=None):
         """
         Fill a parallelopiped with atoms belonging to a given crystal
         structure.
@@ -68,29 +215,29 @@ class CrystalBox(object):
                 '01': 0 <  x <= 1
                 '10': 0 <= x <  1
                 '11': 0 <= x <= 1
+        origin : list or ndarray of size 3, optional
+            Origin of the crystal box. By default, set to [0, 0, 0].
 
         Notes
         -----
         Algorithm proceeds as follows:
         1.  Form a bounding parallelopiped around the parallelopiped defined by
             `box_vecs`, whose edge vectors are parallel to the lattice vectors.
-        2.  Find all lattice and atom sites within and on the edges/corners of
-            that bounding box.
+        2.  Find all sites within and on the edges/corners of that bounding
+            box.
         3.  Transform sites to the box basis.
-        4.  Find valid lattice and atom sites, whcih have vector components in
-            the interval [0, 1] in the box basis, where the interval may be
-            (half-)closed/open depending on the specified edge conditions.
-
-        TODO:
-        - Refactor repeated code (e.g. we repeat stuff for atoms, lattice 
-        sites and bulk interstitial sites).
+        4.  Find valid sites, which have vector components in the interval 
+            [0, 1] in the box basis, where the interval may be (half-)closed
+            /open depending on the specified edge conditions.
 
         """
 
         if edge_conditions is None:
             edge_conditions = ['10', '10', '10']
 
-        lat_vecs = crystal_structure.bravais_lattice.vecs
+        # Convenience:
+        cs = crystal_structure
+        lat_vecs = cs.bravais_lattice.vecs
 
         # Get the bounding box of box_vecs whose vectors are parallel to the
         # crystal lattice. Use padding to catch edge atoms which aren't on
@@ -99,134 +246,56 @@ class CrystalBox(object):
             box_vecs, bound_vecs=lat_vecs, padding=1)
         box_vecs_inv = np.linalg.inv(box_vecs)
 
-        b_box = bounding_box['bound_box'][0]
-        b_box_origin = bounding_box['bound_box_origin'][:, 0]
-        b_box_bv = bounding_box['bound_box_bv'][:, 0]
-        b_box_origin_bv = bounding_box['bound_box_origin_bv'][:, 0]
-
-        self.bounding_box = bounding_box
-
         prt(bounding_box, 'bounding_box')
 
-        self.crystal_structure = crystal_structure
+        bb = bounding_box['bound_box'][0]
+        bb_org = bounding_box['bound_box_origin'][:, 0]
+        bb_bv = bounding_box['bound_box_bv'][:, 0]
+        bb_org_bv = bounding_box['bound_box_origin_bv'][:, 0]
 
         # Get all lattice sites within the bounding box, as column vectors:
-        unit_cell_origins = np.vstack(np.meshgrid(
-            range(b_box_origin_bv[0],
-                  b_box_origin_bv[0] + b_box_bv[0] + 1),
-            range(b_box_origin_bv[1],
-                  b_box_origin_bv[1] + b_box_bv[1] + 1),
-            range(b_box_origin_bv[2],
-                  b_box_origin_bv[2] + b_box_bv[2] + 1))).reshape((3, -1))
+        grid = [range(bb_org_bv[i], bb_org_bv[i] + bb_bv[i] + 1)
+                for i in [0, 1, 2]]
+        unit_cell_origins = np.vstack(np.meshgrid(*grid)).reshape((3, -1))
 
-        tol = 1e-14
+        com_params = [
+            unit_cell_origins,
+            lat_vecs,
+            box_vecs_inv,
+            edge_conditions,
+        ]
 
-        # Consider all lattice sites within each unit cell origin:
-        ls_rs = crystal_structure.lattice_sites_frac.T.reshape((-1, 3, 1))
-        ls_lat = np.concatenate(unit_cell_origins + ls_rs, axis=1)
-        ls_std = np.dot(lat_vecs, ls_lat)
-        ls_box = np.dot(box_vecs_inv, ls_std)
-        ls_box = vectors.snap_arr_to_val(ls_box, 0, tol)
-        ls_box = vectors.snap_arr_to_val(ls_box, 1, tol)
+        (lat_std, lat_box,
+         lat_labs) = self._find_valid_sites(cs.lattice_sites_frac,
+                                            cs.lattice_labels, *com_params)
 
-        # Get all atom sites within the bounding box, as column vectors:
-        as_rs = crystal_structure.atom_sites_frac.T.reshape((-1, 3, 1))
-        as_lat = np.concatenate(unit_cell_origins + as_rs, axis=1)
-        as_std = np.dot(lat_vecs, as_lat)
-        as_box = np.dot(box_vecs_inv, as_std)
-        as_box = vectors.snap_arr_to_val(as_box, 0, tol)
-        as_box = vectors.snap_arr_to_val(as_box, 1, tol)
+        (at_std, at_box,
+         at_labs) = self._find_valid_sites(cs.atom_sites_frac,
+                                           cs.atom_labels, *com_params)
 
-        compute_bis = False
-        bulk_interstitials = None
-        bulk_interstitials_idx = None
-        if crystal_structure.bulk_interstitials is not None:
-            compute_bis = True
-            bi_rs = crystal_structure.bulk_interstitials_frac.T.reshape(
-                (-1, 3, 1))
-            bi_lat = np.concatenate(unit_cell_origins + bi_rs, axis=1)
-            bi_std = np.dot(lat_vecs, bi_lat)
-            bi_box = np.dot(box_vecs_inv, bi_std)
-            bi_box = vectors.snap_arr_to_val(bi_box, 0, tol)
-            bi_box = vectors.snap_arr_to_val(bi_box, 1, tol)
+        int_std, int_box, int_labs = None, None, None
+        if cs.interstice_sites is not None:
+            (int_std, int_box,
+             int_labs) = self._find_valid_sites(cs.interstice_sites_frac,
+                                                cs.interstice_labels,
+                                                *com_params)
 
-            bulk_interstitials_idx = np.repeat(
-                crystal_structure.bulk_interstitials_idx,
-                unit_cell_origins.shape[1])
+        self.lattice_sites = lat_std
+        self.lattice_labels = lat_labs
 
-            cnd_bi = np.ones(bi_box.shape[1], dtype=bool)
+        self.atom_sites = at_std
+        self.atom_labels = at_labs
 
-        species_idx = np.repeat(
-            crystal_structure.species_idx, unit_cell_origins.shape[1])
+        self.interstice_sites = int_std
+        self.interstice_labels = int_labs
 
-        # Form a boolean edge condition array based on `edge_condtions`. Start
-        # by allowing all sites:
-        cnd_lat = np.ones(ls_box.shape[1], dtype=bool)
-        cnd_atm = np.ones(as_box.shape[1], dtype=bool)
-
-        for dir_idx, pt in enumerate(edge_conditions):
-
-            if pt[0] == '1':
-                cnd_lat = np.logical_and(cnd_lat, ls_box[dir_idx] >= 0)
-                cnd_atm = np.logical_and(cnd_atm, as_box[dir_idx] >= 0)
-                if compute_bis:
-                    cnd_bi = np.logical_and(cnd_bi, bi_box[dir_idx] >= 0)
-
-            elif pt[0] == '0':
-                cnd_lat = np.logical_and(cnd_lat, ls_box[dir_idx] > 0)
-                cnd_atm = np.logical_and(cnd_atm, as_box[dir_idx] > 0)
-                if compute_bis:
-                    cnd_bi = np.logical_and(cnd_bi, bi_box[dir_idx] > 0)
-
-            if pt[1] == '1':
-                cnd_lat = np.logical_and(cnd_lat, ls_box[dir_idx] <= 1)
-                cnd_atm = np.logical_and(cnd_atm, as_box[dir_idx] <= 1)
-                if compute_bis:
-                    cnd_bi = np.logical_and(cnd_bi, bi_box[dir_idx] <= 1)
-
-            elif pt[1] == '0':
-                cnd_lat = np.logical_and(cnd_lat, ls_box[dir_idx] < 1)
-                cnd_atm = np.logical_and(cnd_atm, as_box[dir_idx] < 1)
-                if compute_bis:
-                    cnd_bi = np.logical_and(cnd_bi, bi_box[dir_idx] < 1)
-
-        inbox_lat_idx = np.where(cnd_lat)[0]
-        ls_box_in = ls_box[:, inbox_lat_idx]
-        ls_std_in = ls_std[:, inbox_lat_idx]
-        ls_std_in = vectors.snap_arr_to_val(ls_std_in, 0, tol)
-
-        inbox_atm_idx = np.where(cnd_atm)[0]
-        as_box_in = as_box[:, inbox_atm_idx]
-        as_std_in = as_std[:, inbox_atm_idx]
-        as_std_in = vectors.snap_arr_to_val(as_std_in, 0, tol)
-
-        species_idx = species_idx[inbox_atm_idx]
-        atom_labels = {}
-        for k, v in crystal_structure.atom_labels.items():
-            atom_labels.update({
-                k: np.repeat(v, unit_cell_origins.shape[1])[inbox_atm_idx]
-            })
-
+        self.bounding_box = bounding_box
+        self.crystal_structure = cs
         self.box_vecs = box_vecs
-        self.lattice_sites = ls_std_in
-        self.lattice_sites_frac = ls_box_in
-        self.atom_sites = as_std_in
-        self.atom_sites_frac = as_box_in
-        self.species = crystal_structure.species
-        self.species_idx = species_idx
-        self.atom_labels = atom_labels
+        self.origin = np.zeros((3, 1))
 
-        if compute_bis:
-            inbox_bi_idx = np.where(cnd_bi)[0]
-            bi_box_in = bi_box[:, inbox_bi_idx]
-            bi_std_in = bi_std[:, inbox_bi_idx]
-            bi_std_in = vectors.snap_arr_to_val(bi_std_in, 0, tol)
-            bulk_interstitials = bi_std_in
-            bulk_interstitials_idx = bulk_interstitials_idx[inbox_bi_idx]
-
-        self.bulk_interstitials = bulk_interstitials
-        self.bulk_interstitials_idx = bulk_interstitials_idx
-        self.bulk_interstitials_names = crystal_structure.bulk_interstitials_names
+        if origin is not None:
+            self.translate(origin)
 
     def visualise(self, **kwargs):
         struct_visualise(self, **kwargs)
@@ -260,10 +329,6 @@ class CrystalStructure(object):
 
     TODO: finish/correct docstring
     TODO: update from_file to work with species/species_idx
-    TODO: consider renaming bulk_interstitials: maybe a dict with keys: sites
-          names, name_idx ? call it just interstitials? Doesn't necessarily makes
-          sense to discriminate the bulkness of the interstitials in this class
-          because there will be by nature bulk interstitials.
 
     """
     @classmethod
@@ -309,154 +374,155 @@ class CrystalStructure(object):
 
         return cls(bl, motif)
 
+    def _validate_motif(self, motif):
+        """Validate the motif dict."""
+
+        allowed_sites_label_keys = {
+            'atoms': ['species', 'bulk_coord_num'],
+            'interstices': ['bulk_name']
+        }
+
+        req_sites_keys = ['labels', 'sites']
+        mtf_fail_msg = 'Motif failed validation: '
+
+        for k, v in motif.items():
+            if k not in allowed_sites_label_keys.keys():
+                raise ValueError(
+                    mtf_fail_msg +
+                    '"{}" is not an allowed sites name.'.format(k)
+                )
+
+            found_sites_keys = list(sorted(v.keys()))
+            if found_sites_keys != req_sites_keys:
+                raise ValueError(
+                    mtf_fail_msg +
+                    'required sites keys are {}, but found keys: {}'.format(
+                        req_sites_keys, found_sites_keys)
+                )
+
+            for lab_key, lab_val in v['labels'].items():
+
+                lab_val_fail_msg = (mtf_fail_msg + 'each sites label key must '
+                                    'be a tuple of length two, but found label'
+                                    ' value: {}'.format(lab_val))
+
+                if not isinstance(lab_val, tuple):
+                    raise ValueError(lab_val_fail_msg)
+
+                if len(lab_val) != 2:
+                    raise ValueError(lab_val_fail_msg)
+
+                if lab_key not in allowed_sites_label_keys[k]:
+                    raise ValueError(
+                        '"{}" is not an allowed label name for {}.'.format(
+                            lab_key, k
+                        )
+                    )
+
+                utils.check_indices(lab_val[0], lab_val[1])
+
     def __init__(self, bravais_lattice, motif):
         """
         Constructor method for CrystalStructure object.
+
         """
 
-        # Validation:
+        self._validate_motif(motif)
 
-        allowed_motif_keys = [
-            'atom_sites',
-            'species',
-            'species_idx',
-            'atom_labels',
-            'bulk_interstitials',
-            'bulk_interstitials_idx',
-            'bulk_interstitials_names',
-        ]
-        required_motif_keys = [
-            allowed_motif_keys[0],
-            allowed_motif_keys[1],
-            allowed_motif_keys[2],
-        ]
-        for k in required_motif_keys:
-            if k not in motif:
-                raise ValueError('Motif key: `{}` is required.'.format(k))
-
-        for k, v in motif.items():
-            if k not in allowed_motif_keys:
-                raise ValueError('Motif key: "{}" is not allowed.'.format(k))
-
-        num_motif_atom_sites = motif['atom_sites'].shape[1]
-        num_species_idx = len(motif['species_idx'])
-        if num_species_idx != num_motif_atom_sites:
-            raise ValueError('`species_idx` has length: {}, '
-                             'but number of atom sites in the motif '
-                             'is: {}.'.format(num_species_idx, num_motif_atom_sites))
-
-        if (np.max(motif['species_idx']) > len(motif['species']) - 1):
-            raise ValueError(
-                'Motif key `species_idx` should index motif key `species`.')
-
-        bulk_interstitials = None
-        bulk_interstitials_idx = None
-        bulk_interstitials_names = None
-
-        if motif.get('bulk_interstitials') is not None:
-
-            bkii = 'bulk_interstitials_idx'
-            bkin = 'bulk_interstitials_names'
-
-            bulk_int_info = [i in motif for i in [bkii, bkin]]
-
-            missing_msg = ('Either specify both `{}` and `{}` in the motif or '
-                           'neither.'.format(bkii, bkii))
-
-            if any(bulk_int_info):
-
-                if not all(bulk_int_info):
-                    raise ValueError(missing_msg)
-
-                else:
-                    if (np.max(motif[bkii]) > len(motif[bkin]) - 1):
-                        raise ValueError('Motif key `{}` should index motif '
-                                         'key `{}`.'.format(bkii, bkin))
-
-                    num_bkii = motif['bulk_interstitials'].shape[1]
-                    num_bkii_idx = len(motif[bkii])
-                    if num_bkii != num_bkii_idx:
-                        raise ValueError('`{}` has length: {}, but number of '
-                                         'bulk interstitial sites in the '
-                                         'motif is: {}.'.format(bkii, num_bkii_idx, num_bkii))
-
-                    bulk_interstitials_idx = np.array(motif[bkii])
-                    bulk_interstitials_names = np.array(motif[bkin])
-
-            bulk_interstitials = np.array(motif['bulk_interstitials'])
-
-        self.bulk_interstitials_frac = bulk_interstitials
-        self.bulk_interstitials = np.dot(
-            bravais_lattice.vecs, bulk_interstitials)
-        self.bulk_interstitials_idx = bulk_interstitials_idx
-        self.bulk_interstitials_names = bulk_interstitials_names
-
-        self.bravais_lattice = bravais_lattice
-        self.motif = motif
-
-        # Lattice sites
+        # Set some attributes directly from BravaisLattice:
         lat_sites_frac = bravais_lattice.lattice_sites_frac
         num_lat_sites = lat_sites_frac.shape[1]
+        self.bravais_lattice = bravais_lattice
+        self.motif = motif
         self.lattice_sites = bravais_lattice.lattice_sites
         self.lattice_sites_frac = lat_sites_frac
 
-        # Atom sites: add atomic motif to each lattice site to get
-        motif_rs = motif['atom_sites'].T.reshape((-1, 3, 1))
-        utils.prt(motif_rs, 'motif_rs')
+        # Set labels for lattice sites:
+        self.lattice_labels = {}
+
+        # Set atom sites: add atomic motif to each lattice site to get
+        motif_rs = motif['atoms']['sites'].T.reshape((-1, 3, 1))
         atom_sites_frac = np.concatenate(lat_sites_frac + motif_rs, axis=1)
-        utils.prt(atom_sites_frac, 'atom_sites_frac')
-        atom_sites_std = np.dot(self.bravais_lattice.vecs, atom_sites_frac)
+        atom_sites_std = np.dot(bravais_lattice.vecs, atom_sites_frac)
         num_atom_sites = atom_sites_frac.shape[1]
         self.atom_sites = atom_sites_std
 
-        # Map atom sites to species
-        species = np.array(motif['species'])
-        # utils.prt(species, 'species')
-        motif_species_idx = np.array(motif['species_idx'])
-        # utils.prt(motif_species_idx, 'motif_species_idx')
-        species_idx = np.repeat(motif_species_idx, num_lat_sites)
-        # utils.prt(species_idx, 'species_idx')
+        # Set labels for atom sites:
+        self.atom_labels = {}
+        for k, v in motif['atoms']['labels'].items():
 
+            lab_vals = np.array(v[0])
+            lab_idx = np.array(v[1])
+            lab_idx_rp = np.repeat(lab_idx, num_lat_sites)
+
+            self.atom_labels.update({
+                k: (lab_vals, lab_idx_rp)
+            })
+
+        # Generate a special atom label which tells us, for motifs with more
+        # than one atom of the same species, which within-species motif atom
+        # number a given atom maps to:
+        motif_species = np.array(motif['atoms']['labels']['species'][0])
+        motif_species_idx = np.array(motif['atoms']['labels']['species'][1])
         species_count = np.ones(len(motif_species_idx)) * np.nan
-
-        for i in range(len(species)):
+        for i in range(len(motif_species)):
             w = np.where(motif_species_idx == i)[0]
             species_count[w] = np.arange(len(w))
 
         species_count = species_count.astype(int)
         species_count = np.tile(species_count.astype(int), num_lat_sites)
 
-        self.species = species
-        self.species_idx = species_idx
+        self.atom_labels.update({
+            'species_count': (species_count, np.arange(len(species_count)))
+        })
 
-        # Atom labels: additional optional per-atom info
-        atom_labels = {
-            'species_count': species_count.astype(int)
-        }
+        # Set interstice sites:
+        interstice_sites = None
+        interstice_sites_frac = None
+        interstice_labels = None
 
-        if motif.get('atom_labels') is not None:
+        if motif.get('interstices') is not None:
+            int_sites = motif['interstices']['sites']
+            int_sites_labs = {}
+            for k, v in motif['interstices']['labels'].items():
+                int_sites_labs.update({
+                    k: (np.array(v[0]), np.array(v[1]))
+                })
+            interstice_sites_frac = int_sites
+            interstice_sites = np.dot(bravais_lattice.vecs, int_sites)
+            interstice_labels = int_sites_labs
 
-            allowed_labels = ['bulk_coord_num', ]
+        self.interstice_sites = interstice_sites
+        self.interstice_sites_frac = interstice_sites_frac
+        self.interstice_labels = interstice_labels
 
-            for k, v in motif['atom_labels'].items():
-
-                # Validation:
-                if k not in allowed_labels:
-                    raise ValueError(
-                        'Atom label: "{}" is not allowed.'.format(k))
-
-                if len(v) != num_motif_atom_sites:
-                    raise ValueError('Motif atom label: "{}" has length: {}, '
-                                     'but number of atom sites in the motif '
-                                     'is: {}.'.format(k, len(v), num_motif_atom_sites))
-
-                atom_labels.update({k: np.tile(v, num_lat_sites)})
-
-        self.atom_labels = atom_labels
+    @property
+    def lattice_sites_frac(self):
+        return np.dot(np.linalg.inv(self.bravais_lattice.vecs), self.lattice_sites)
 
     @property
     def atom_sites_frac(self):
         return np.dot(np.linalg.inv(self.bravais_lattice.vecs), self.atom_sites)
+
+    @property
+    def interstice_sites_frac(self):
+        if self.interstice_sites is not None:
+            return np.dot(np.linalg.inv(self.bravais_lattice.vecs),
+                          self.interstice_sites)
+        else:
+            return None
+
+    @property
+    def species(self):
+        return self.atom_labels['species'][0]
+
+    @property
+    def species_idx(self):
+        return self.atom_labels['species'][1]
+
+    @property
+    def all_species(self):
+        return self.species[self.species_idx]
 
     def visualise(self, **kwargs):
         struct_visualise(self, **kwargs)
@@ -473,20 +539,22 @@ class CrystalStructure(object):
         atoms_str = BeautifulTable()
         atoms_str.numeric_precision = 4
         atoms_str.intersection_char = ''
-        column_headers = ['Number', 'Species',  'x', 'y', 'z']
+        column_headers = ['Number', 'x', 'y', 'z']
 
         for i in self.atom_labels.keys():
             column_headers.append(i)
 
         atoms_str.column_headers = column_headers
-
         atom_sites_frac = self.atom_sites_frac
-        for idx, si in enumerate(self.species_idx):
+
+        for atom_idx in range(atom_sites_frac.shape[1]):
+
             row = [
-                idx, self.species[si],
-                *(atom_sites_frac[:, idx]),
-                *[v[idx] for k, v in self.atom_labels.items()]
+                atom_idx,
+                *(atom_sites_frac[:, atom_idx]),
+                *[v[0][v[1]][atom_idx] for _, v in self.atom_labels.items()]
             ]
+            prt(row, 'row')
             atoms_str.append_row(row)
 
         ret = ('{!s}-{!s} Bravais lattice + {!s}-atom motif\n\n'
@@ -500,7 +568,7 @@ class CrystalStructure(object):
                'unit cell) = \n{!s}\n').format(
             self.bravais_lattice.lattice_system,
             self.bravais_lattice.centring_type,
-            self.motif['atom_sites'].shape[1],
+            self.motif['atoms']['sites'].shape[1],
             self.bravais_lattice.a, self.bravais_lattice.b,
             self.bravais_lattice.c, self.bravais_lattice.α,
             self.bravais_lattice.β, self.bravais_lattice.γ,

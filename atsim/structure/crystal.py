@@ -27,7 +27,10 @@ class Crystal(object):
         shift = utils.to_col_vec(shift)
         self.origin += shift
         self.atom_sites += shift
-        self.lattice_sites += shift
+
+        if self.lattice_sites is not None:
+            self.lattice_sites += shift
+
         if self.interstice_sites is not None:
             self.interstice_sites += shift
 
@@ -47,19 +50,25 @@ class Crystal(object):
         self.translate(-origin)
 
         self.atom_sites = np.dot(rot_mat, self.atom_sites)
-        self.lattice_sites = np.dot(rot_mat, self.lattice_sites)
+
+        if self.lattice_sites is not None:
+            self.lattice_sites = np.dot(rot_mat, self.lattice_sites)
+
         if self.interstice_sites is not None:
             self.interstice_sites = np.dot(rot_mat, self.interstice_sites)
 
         self.translate(origin)
 
     @property
-    def lattice_sites_frac(self):
-        return np.dot(np.linalg.inv(self.box_vecs.vecs), self.lattice_sites)
-
-    @property
     def atom_sites_frac(self):
         return np.dot(np.linalg.inv(self.box_vecs.vecs), self.atom_sites)
+
+    @property
+    def lattice_sites_frac(self):
+        if self.lattice_sites is not None:
+            return np.dot(np.linalg.inv(self.box_vecs.vecs), self.lattice_sites)
+        else:
+            return None
 
     @property
     def interstice_sites_frac(self):

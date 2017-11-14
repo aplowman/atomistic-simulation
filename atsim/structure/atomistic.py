@@ -97,9 +97,10 @@ class AtomisticStructure(object):
 
     """
 
-    def __init__(self, supercell, atom_sites, atom_labels, lattice_sites=None,
-                 lattice_labels=None, interstice_sites=None, interstice_labels=None,
-                 crystals=None, crystal_structures=None, overlap_tol=1):
+    def __init__(self, supercell, atom_sites, atom_labels, origin=None,
+                 lattice_sites=None, lattice_labels=None, interstice_sites=None,
+                 interstice_labels=None, crystals=None, crystal_structures=None,
+                 overlap_tol=1):
         """Constructor method for AtomisticStructure object."""
 
         # Input validation
@@ -160,6 +161,12 @@ class AtomisticStructure(object):
 
         # Set attributes
         # --------------
+
+        if origin is None:
+            origin = np.zeros((3, 1))
+
+        self.origin = utils.to_col_vec(origin)
+
         self.atom_sites = atom_sites
         self.atom_labels = atom_labels
         self.supercell = supercell
@@ -173,29 +180,70 @@ class AtomisticStructure(object):
         self.crystal_structures = crystal_structures
         self._overlap_tol = overlap_tol
 
-        # if all_species is None:
-        #     self._all_species = None
-        # else:
-        #     self._all_species = np.array(all_species)
-
-        # if all_species_idx is None:
-        #     self._all_species_idx = None
-        # else:
-        #     self._all_species_idx = utils.parse_as_int_arr(all_species_idx)
-
         self.check_overlapping_atoms(overlap_tol)
 
-    @property
-    def species(self):
-        return self.atom_labels['species'][0]
+    def translate(self, shift):
+        """
+        Translate the AtomisticStructure.
 
-    @property
-    def species_idx(self):
-        return self.atom_labels['species'][1]
+        Parameters
+        ----------
+        shift : list or ndarray of size 3
 
-    @property
-    def all_species(self):
-        return self.species[self.species_idx]
+        """
+
+        shift = utils.to_col_vec(shift)
+        self.origin += shift
+        self.atom_sites += shift
+
+        if self.lattice_sites is not None:
+            self.lattice_sites += shift
+
+        if self.interstice_sites is not None:
+            self.interstice_sites += shift
+
+        if self.crystals is not None:
+            for c_idx in range(len(self.crystals)):
+                self.crystals[c_idx]['origin'] += shift
+
+    def rotate(self, rot_mat):
+        """
+        Rotate the AtomisticStructure about its origin according to a rotation
+        matrix.
+
+        Parameters
+        ----------
+        rot_mat : ndarray of shape (3, 3)
+            Rotation matrix that pre-multiplies column vectors in order to 
+            rotate them about a particular axis and angle.
+
+        """
+
+        origin = np.copy(self.origin)
+        self.translate(-origin)
+
+        self.supercell = np.dot(rot_mat, self.supercell)
+        self.atom_sites = np.dot(rot_mat, self.atom_sites)
+
+        if self.lattice_sites is not None:
+            self.lattice_sites = np.dot(rot_mat, self.lattice_sites)
+
+        if self.interstice_sites is not None:
+            self.interstice_sites = np.dot(rot_mat, self.interstice_sites)
+
+        if self.crystals is not None:
+
+            for c_idx in range(len(self.crystals)):
+
+                c = self.crystals[c_idx]
+
+                c['crystal'] = np.dot(rot_mat, c['crystal'])
+                c['origin'] = np.dot(rot_mat, c['origin'])
+
+                if 'cs_orientation' in c.keys():
+                    c['cs_orientation'] = np.dot(rot_mat, c['cs_orientation'])
+
+        self.translate(origin)
 
     def visualise(self, proj_2d=False, show_iplot=True, save=False,
                   save_args=None, sym_op=None, wrap_sym_op=False,
@@ -262,8 +310,7 @@ class AtomisticStructure(object):
             atom_sites_sym += np.dot(self.supercell, sym_op[1])
 
             if wrap_sym_op:
-                as_sym_frac = np.dot(np.linalg.inv(self.supercell),
-                                     atom_sites_sym)
+                as_sym_frac = np.dot(self.supercell_inv, atom_sites_sym)
                 as_sym_frac -= np.floor(as_sym_frac)
                 atom_sites_sym = np.dot(self.supercell, as_sym_frac)
 
@@ -838,7 +885,7 @@ class AtomisticStructure(object):
     def reorient_to_lammps(self):
         """
         Reorient the supercell and its contents to a LAMMPS-compatible
-        orientation.
+        orientation. Also translate the origin to (0,0,0).
 
         Returns
         -------
@@ -847,44 +894,29 @@ class AtomisticStructure(object):
 
         """
 
-        # Reorient supercell
-        sup_inv = np.linalg.inv(self.supercell)
+        # Find rotation matrix which rotates to a LAMMPS compatible orientation
         sup_lmps = get_LAMMPS_compatible_box(self.supercell)
-        R = np.dot(sup_lmps, sup_inv)
-        self.supercell = sup_lmps
+        R = np.dot(sup_lmps, self.supercell_inv)
 
-        # Reorient atom sites
-        self.atom_sites = np.dot(R, self.atom_sites)
+        # Move the origin to (0,0,0): (not sure if this is necessary for LAMMPS)
+        self.translate(-self.origin)
 
-        # Reorient lattice sites
-        if self.lattice_sites is not None:
-            self.lattice_sites = np.dot(R, self.lattice_sites)
-
-        # Reorient CrystalStructure lattice objects
-        for c_idx in range(len(self.crystals)):
-
-            c = self.crystals[c_idx]
-            c['crystal'] = np.dot(R, c['crystal'])
-            c['origin'] = np.dot(R, c['origin'])
-            if 'cs_orientation' in c.keys():
-                c['cs_orientation'] = np.dot(R, c['cs_orientation'])
+        # Rotate the supercell and its contents by R
+        self.rotate(R)
 
         return R
 
-    def wrap_atoms_to_supercell(self, dirs=None, wrap_lattice_sites=False):
+    def wrap_sites_to_supercell(self, sites='all', dirs=None):
         """
-        Wrap atoms to within the supercell.
+        Wrap sites to within the supercell.
 
         Parameters
         ----------
+        sites : str
+            One of "atom", "lattice", "interstice" or "all".
         dirs : list of int, optional
             Supercell direction indices to apply wrapping. Default is None, in
-            which case atoms are wrapped in all directions.
-        wrap_lattice_sites : bool, optional
-            If True, lattice sites are also wrapped. Default is False.
-
-        TODO:
-        -   Implement `wrap_lattice_sites`.
+            which case atoms are wrapped in all directions.            
 
         """
 
@@ -901,22 +933,47 @@ class AtomisticStructure(object):
                     raise ValueError('`dirs` must be a list whose elements are'
                                      '0, 1 or 2.')
 
-        # Get atom sites in supercell basis:
-        sup_inv = np.linalg.inv(self.supercell)
-        as_sup = np.dot(sup_inv, self.atom_sites)
+        allowed_sites_str = [
+            'atom',
+            'lattice',
+            'interstice',
+            'all',
+        ]
 
-        # Wrap atoms:
-        as_sup_wrp = np.copy(as_sup)
-        as_sup_wrp[dirs] -= np.floor(as_sup_wrp[dirs])
+        if not isinstance(sites, str) or sites not in allowed_sites_str:
+            raise ValueError('`sites` must be a string and one of: "atom", '
+                             '"lattice", "interstice" or "all".')
 
-        # Snap to 0:
-        as_sup_wrp = vectors.snap_arr_to_val(as_sup_wrp, 0, 1e-12)
+        if sites == 'all':
+            sites_arr = [
+                self.atom_sites,
+                self.lattice_sites,
+                self.interstice_sites
+            ]
+        elif sites == 'atom':
+            sites_arr = [self.atom_sites]
+        elif sites == 'lattice':
+            sites_arr = [self.lattice_sites]
+        elif sites == 'interstice':
+            sites_arr = [self.interstice_sites]
 
-        # Convert back to Cartesian basis
-        as_std_wrp = np.dot(self.supercell, as_sup_wrp)
+        for s in sites_arr:
 
-        # Update attributes:
-        self.atom_sites = as_std_wrp
+            # Get sites in supercell basis:
+            s_sup = np.dot(self.supercell_inv, s)
+
+            # Wrap atoms:
+            s_sup_wrp = np.copy(s_sup)
+            s_sup_wrp[dirs] -= np.floor(s_sup_wrp[dirs])
+
+            # Snap to 0:
+            s_sup_wrp = vectors.snap_arr_to_val(s_sup_wrp, 0, 1e-12)
+
+            # Convert back to Cartesian basis
+            s_std_wrp = np.dot(self.supercell, s_sup_wrp)
+
+            # Update attributes:
+            s = s_std_wrp
 
     def add_point_defects(self, point_defects):
         """
@@ -938,8 +995,39 @@ class AtomisticStructure(object):
         pass
 
     @property
+    def supercell_inv(self):
+        return np.linalg.inv(self.supercell)
+
+    @property
     def atom_sites_frac(self):
-        return np.dot(np.linalg.inv(self.supercell), self.atom_sites)
+        return np.dot(self.supercell_inv, self.atom_sites)
+
+    @property
+    def lattice_sites_frac(self):
+        if self.lattice_sites is not None:
+            return np.dot(self.supercell_inv, self.lattice_sites)
+        else:
+            return None
+
+    @property
+    def interstice_sites_frac(self):
+        if self.interstice_sites is not None:
+            return np.dot(self.supercell_inv, self.interstice_sites)
+        else:
+            return None
+
+    @property
+    def species(self):
+        return self.atom_labels['species'][0]
+
+    @property
+    def species_idx(self):
+        return self.atom_labels['species'][1]
+
+    @property
+    def all_species(self):
+        """Get the species of each atom as a string array."""
+        return self.species[self.species_idx]
 
     @property
     def spglib_cell(self):
@@ -947,16 +1035,21 @@ class AtomisticStructure(object):
 
         cell = (self.supercell.T,
                 self.atom_sites_frac.T,
-                [element(i).atomic_number
-                 for i in self.all_species[self.all_species_idx]])
+                [element(i).atomic_number for i in self.all_species])
         return cell
 
     @property
     def num_atoms_per_crystal(self):
         """Computes number of atoms in each crystal, returns a list."""
+
+        if self.crystals is None:
+            return None
+
         na = []
         for c_idx in range(len(self.crystals)):
-            na.append(np.where(self.crystal_idx == c_idx)[0].shape[0])
+            crystal_idx_tup = self.atom_labels['crystal_idx']
+            crystal_idx = crystal_idx_tup[0][crystal_idx_tup[1]]
+            na.append(np.where(crystal_idx == c_idx)[0].shape[0])
 
         return na
 
@@ -1035,70 +1128,6 @@ class AtomisticStructure(object):
 
         return seps
 
-    # def get_all_species(self):
-
-    #     all_sp = []
-    #     all_sp_idx = []
-    #     all_sp_count = 0
-
-    #     for c_idx in range(len(self.crystals)):
-
-    #         cs = self.crystal_structures[self.crystals[c_idx]['cs_idx']]
-
-    #         # Local species for this crystal:
-    #         cs_sp = cs.motif['species']
-
-    #         # Local species index for this crystal:
-    #         c_sp_idx_old = self.species_idx[np.where(
-    #             self.crystal_idx == c_idx)[0]]
-    #         c_sp_idx_new = np.array([None] * len(c_sp_idx_old))
-
-    #         # Need to map the indices from local CrystalStructure to global
-    #         # AtomisticStructure
-
-    #         cs_sp = reduce(lambda l, x: l if x in l else l + [x], cs_sp, [])
-
-    #         for sp_idx, sp in enumerate(cs_sp):
-
-    #             if sp not in all_sp:
-
-    #                 new_sp_idx = all_sp_count
-    #                 all_sp.append(sp)
-    #                 all_sp_count += 1
-
-    #             else:
-    #                 new_sp_idx = all_sp.index(sp)
-
-    #             w = np.where(c_sp_idx_old == sp_idx)[0]
-    #             c_sp_idx_new[w] = new_sp_idx
-
-    #         all_sp_idx.extend(c_sp_idx_new)
-
-    #     all_sp = np.array(all_sp)
-    #     all_sp_idx = np.array(all_sp_idx)
-
-    #     return all_sp, all_sp_idx
-
-    # @property
-    # def all_species(self):
-    #     """"""
-
-    #     if self.species_idx is None:
-    #         return self._all_species
-
-    #     else:
-    #         return self.get_all_species()[0]
-
-    # @property
-    # def all_species_idx(self):
-    #     """"""
-
-    #     if self.species_idx is None:
-    #         return self._all_species_idx
-
-    #     else:
-    #         return self.get_all_species()[1]
-
     @property
     def crystal_centres(self):
         """Get the midpoints of each crystal in the structure."""
@@ -1108,17 +1137,21 @@ class AtomisticStructure(object):
 
     def tile_supercell(self, tiles):
         """
-        Tile supercell and atoms by some integer factors in each supercell 
+        Tile supercell and its sites by some integer factors in each supercell 
         direction.
 
         Parameters
         ----------
-        tiles : tuple or list of length 3
+        tiles : tuple or list of length 3 or ndarray of size 3
             Number of repeats in each supercell direction.
 
         """
         invalid_msg = ('`tiles` must be a tuple or list of three integers '
                        'greater than 0.')
+
+        if isinstance(tiles, np.ndarray):
+            tiles = np.squeeze(tiles).tolist()
+
         if len(tiles) != 3:
             raise ValueError(invalid_msg)
 
@@ -1126,38 +1159,60 @@ class AtomisticStructure(object):
             if not isinstance(t, int) or t < 1:
                 raise ValueError(invalid_msg)
 
-        tiled_atoms, tiled_all_species_idx = self.get_tiled_atoms(tiles)
-        tiled_sup = self.supercell * tiles
+        tl_atm, tl_atm_lb = self.get_tiled_sites(
+            self.atom_sites, self.atom_labels, tiles)
 
-        self.atom_sites = tiled_atoms
-        self._all_species_idx = tiled_all_species_idx
-        self.supercell = tiled_sup
+        self.atom_sites = tl_atm
+        self.atom_labels = tl_atm_lb
 
-    def get_tiled_atoms(self, tiles):
+        if self.lattice_sites is not None:
+            tl_lat, tl_lat_lb = self.get_tiled_sites(
+                self.lattice_sites, self.lattice_labels, tiles)
+
+            self.lattice_sites = tl_lat
+            self.lattice_labels = tl_lat_lb
+
+        if self.interstice_sites is not None:
+            tl_int, tl_int_lb = self.get_tiled_sites(
+                self.interstice_sites, self.interstice_labels, tiles)
+
+            self.interstice_sites = tl_int
+            self.interstice_labels = tl_int_lb
+
+        self.supercell *= tiles
+
+    def get_tiled_sites(self, sites, site_labels, tiles):
         """
-        Get atom sites tiled by some integer factors in each supercell
-        direction.
+        Get sites (atoms, lattice, interstice) and site labels tiled by some
+        integer factors in each supercell direction.
 
-        Atoms are tiled in the positive supercell directions.
+        Sites are tiled in the positive supercell directions.
 
         Parameters
         ----------
-        tiles : tuple or list of length 3
+        tiles : tuple or list of length 3 or ndarray of size 3
             Number of repeats in each supercell direction.
 
         Returns
         -------
-        ndarray
+        sites_tiled : ndarray
+        labels_tiled : dict
 
         """
 
         invalid_msg = ('`tiles` must be a tuple or list of three integers '
                        'greater than 0.')
+
+        if isinstance(tiles, np.ndarray):
+            tiles = np.squeeze(tiles).tolist()
+
         if len(tiles) != 3:
             raise ValueError(invalid_msg)
 
-        as_tiled = np.copy(self.atom_sites)
-        all_species_idx_tiled = np.copy(self.all_species_idx)
+        sites_tiled = np.copy(sites)
+        labels_tiled = {k: tuple(np.copy(i) for i in v)
+                        for k, v in site_labels.items()}
+
         for t_idx, t in enumerate(tiles):
 
             if t == 1:
@@ -1167,12 +1222,26 @@ class AtomisticStructure(object):
                 raise ValueError(invalid_msg)
 
             v = self.supercell[:, t_idx:t_idx + 1]
-            all_t = (v * np.arange(1, t)).T[:, :, np.newaxis]
-            as_tiled_t = np.hstack(all_t + as_tiled)
-            all_species_idx_tiled = np.tile(all_species_idx_tiled, t)
-            as_tiled = np.hstack([as_tiled, as_tiled_t])
+            v_range = v * np.arange(1, t)
 
-        return as_tiled, all_species_idx_tiled
+            all_t = v_range.T[:, :, np.newaxis]
+
+            sites_stack = all_t + sites_tiled
+            add_sites = np.hstack(sites_stack)
+            sites_tiled = np.hstack([sites_tiled, add_sites])
+
+            labels_tiled_new = {}
+            for k, v in labels_tiled.items():
+
+                add_label_idx = np.tile(v[1], t - 1)
+                new_label_idx = np.concatenate((v[1], add_label_idx))
+                labels_tiled_new.update({
+                    k: (v[0], new_label_idx)
+                })
+
+            labels_tiled = labels_tiled_new
+
+        return sites_tiled, labels_tiled
 
     def get_interatomic_dist(self, periodic=True):
         """
@@ -1198,7 +1267,8 @@ class AtomisticStructure(object):
 
         """
         if periodic:
-            atms = self.get_tiled_atoms([2, 2, 2])[0]
+            atms = self.get_tiled_sites(
+                self.atom_sites, self.atom_labels, [2, 2, 2])[0]
         else:
             atms = self.atom_sites
 
@@ -1249,7 +1319,7 @@ class AtomisticStructure(object):
         self.atom_sites += shift_std
 
         if wrap:
-            self.wrap_atoms_to_supercell()
+            self.wrap_sites_to_supercell(sites='atom')
 
     def add_vac(self, thickness, dir_idx, position=1):
         """
@@ -1327,11 +1397,28 @@ class BulkCrystal(AtomisticStructure):
                 'Identical columns found in box_lat: \n{}\n'.format(box_lat))
 
         supercell = np.dot(crystal_structure.bravais_lattice.vecs, box_lat)
+
         cb = CrystalBox(crystal_structure, supercell)
-        atom_sites = cb.atom_sites_std
-        lattice_sites = cb.lat_sites_std
-        crystal_idx = np.zeros(atom_sites.shape[1])
-        lat_crystal_idx = np.zeros(lattice_sites.shape[1])
+        atom_sites = cb.atom_sites
+        lattice_sites = cb.lat_sites
+        interstice_sites = cb.interstice_sites
+
+        crystal_idx_lab = {
+            'crystal_idx': (
+                np.array([0]),
+                np.zeros(atom_sites.shape[1])
+            ),
+        }
+
+        atom_labels = copy.deepcopy(cb.atom_labels)
+        atom_labels.update({**crystal_idx_lab})
+
+        lattice_labels = copy.deepcopy(cb.lattice_labels)
+        lattice_labels.update({**crystal_idx_lab})
+
+        interstice_labels = copy.deepcopy(cb.interstice_labels)
+        interstice_labels.update({**crystal_idx_lab})
+
         crystals = [{
             'crystal': supercell,
             'origin': np.zeros((3, 1)),
@@ -1340,15 +1427,15 @@ class BulkCrystal(AtomisticStructure):
             'cs_origin': [0, 0, 0]
         }]
 
-        super().__init__(atom_sites,
-                         supercell,
+        super().__init__(supercell,
+                         atom_sites,
+                         atom_labels,
                          lattice_sites=lattice_sites,
+                         lattice_labels=lattice_labels,
+                         interstice_sites=interstice_sites,
+                         interstice_labels=interstice_labels,
                          crystals=crystals,
-                         crystal_structures=[crystal_structure],
-                         crystal_idx=crystal_idx,
-                         lat_crystal_idx=lat_crystal_idx,
-                         species_idx=cb.species_idx,
-                         motif_idx=cb.motif_idx)
+                         crystal_structures=[crystal_structure])
 
         self.meta.update({'supercell_type': ['bulk']})
 

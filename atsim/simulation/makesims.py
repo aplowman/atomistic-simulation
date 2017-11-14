@@ -674,12 +674,15 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
 
     elif sn == 'box_lat':
 
-        for v in vals:
+        num_digts = len(str(len(vals)))
+        pad_fmt = '{{:0{}d}}'.format(num_digts)
+
+        for v_idx, v in enumerate(vals):
 
             out.append({
                 'base_structure': {sn: v},
                 'series_id': {'name': sn, 'val': v,
-                              'path': '{}_{}_{}--{}_{}_{}--{}_{}_{}'.format(
+                              'path': (pad_fmt + '__').format(v_idx) + '{}_{}_{}--{}_{}_{}--{}_{}_{}'.format(
                                   *v.T.flatten())}
             })
 
@@ -719,6 +722,16 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
 
             out.append({
                 'base_structure': {'boundary_vac_flat_args': {'vac_thickness': v}},
+                'series_id': {'name': sn, 'val': v,
+                              'path': '{:.2f}'.format(v)}
+            })
+
+    elif sn == 'boundary_vac_linear':
+
+        for v in vals:
+
+            out.append({
+                'base_structure': {'boundary_vac_linear_args': {'vac_thickness': v}},
                 'series_id': {'name': sn, 'val': v,
                               'path': '{:.2f}'.format(v)}
             })
@@ -1329,6 +1342,59 @@ def plot_gamma_surface_grids(opt, common_series_info, stage):
     return True
 
 
+def get_structure_checks_list(checks_dict, structure_type):
+    """
+    Compile a list of atomic environment checks to be performed on an
+    AtomisticStructure according to the `checks` dict defined in the options.
+
+    Parameters
+    ----------
+    checks_dict : dict
+        Keys are names of checks to perform, values are strings: "all", "base",
+        "series" or "none", which indicate if that particular check should be
+        performed on just the base structure, on series structures, on both
+        base and series structures or not at all.
+    structure_type : str
+        "base" or "series", dictates whether the checks list for this
+        AtomisticStructure is to be compiled for a base structure or a series
+        structure.
+
+    Returns
+    -------
+    list of str
+
+    """
+
+    if structure_type not in ['base', 'series']:
+        raise ValueError('`structure_type` must be "base" or "series".')
+
+    allowed_checks = [
+        'atoms_overlap',
+        'bicrystal_inversion_symmetry',
+    ]
+
+    ret = []
+    for k, v in checks_dict.items():
+        if k not in allowed_checks:
+            raise ValueError('"{}" is not an understood atomic environment '
+                             'check.'.format(k))
+
+        if v not in ['base', 'series', 'all', 'none']:
+            ValueError('Value for check name "{}" must be "base", '
+                       '"series", all" or "none".'.format(v))
+
+        if v == 'all':
+            ret.append(k)
+
+        elif v == 'series' and structure_type == 'series':
+            ret.append(k)
+
+        elif v == 'base' and structure_type == 'base':
+            ret.append(k)
+
+    return ret
+
+
 def main(opt):
     """
     Read the options file and generate a simulation (series).
@@ -1353,6 +1419,7 @@ def main(opt):
         'relative_shift': True,
         'boundary_vac': True,
         'boundary_vac_flat': True,
+        'boundary_vac_linear': True,
         'gamma_surface': False,
         'lookup': False,
     }
@@ -1378,10 +1445,15 @@ def main(opt):
 
     os.makedirs(stage.path, exist_ok=False)
 
+    checks_list_base = get_structure_checks_list(opt['check'], 'base')
+    checks_list_series = get_structure_checks_list(opt['check'], 'series')
+
     crys_structs = None
     if opt.get('crystal_structures') is not None:
         crys_structs = make_crystal_structures(opt['crystal_structures'])
+
     base_as = make_base_structure(opt['base_structure'], crys_structs)
+    base_as.check_atomic_environment(checks_list_base)
 
     # Copy makesims options file
     opt_path = stage.get_path(OPT_FILE_NAMES['makesims'])
@@ -1444,9 +1516,10 @@ def main(opt):
 
         srs_opt = copy.deepcopy(opt)
         utils.update_dict(srs_opt, upd)
+
+        srs_as = make_base_structure(srs_opt['base_structure'], crys_structs)
         try:
-            srs_as = make_base_structure(
-                srs_opt['base_structure'], crys_structs)
+            srs_as.check_atomic_environment(checks_list_series)
         except AtomisticStructureException as e:
             skipped_sims.append(upd_idx)
             continue

@@ -1,6 +1,12 @@
 ---
 source: ['makesims_opt.yml']
 ---
+
+# Options for generating simulations: `makesims.yml`
+
+{% include index.html %}
+
+<!-- 
 # Example options
 
 {% for c in page.source %}
@@ -191,4 +197,4 @@ Each variable is represented as a dict inside the `variables` list. Each variabl
 * `compute`
 * `series_id`
 
-The variable `id` is chosen as a unique identifier for the variable. This then allows us to reference the variable later on (for instance in the data for a plot).
+The variable `id` is chosen as a unique identifier for the variable. This then allows us to reference the variable later on (for instance in the data for a plot). -->

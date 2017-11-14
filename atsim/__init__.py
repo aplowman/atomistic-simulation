@@ -22,6 +22,7 @@ ALLOWED_SERIES_KEYS = {
     'geom_stress_tol': VLD_SRS_NM_VLS_SSS,
     'boundary_vac': VLD_SRS_NM_VLS_SSS,
     'boundary_vac_flat': VLD_SRS_NM_VLS_SSS,
+    'boundary_vac_linear': VLD_SRS_NM_VLS_SSS,
     'point_defect_charge': VLD_SRS_NM_VLS_SSS,
     'point_defect_idx': VLD_SRS_NM_VLS_SSS,
     'gamma_surface': VLD_SRS_NM_VLS + ['grid_spec', 'preview'],
@@ -33,11 +34,11 @@ SERIES_NAMES = list(ALLOWED_SERIES_KEYS.keys())
 
 # Options file names
 OPT_FILE_NAMES = {
-    'makesims': 'makesims.yml',
+    'makesims': 'makesims_old.yml',
     'process': 'process.yml',
     'harvest': 'harvest.yml',
     'makeplots': 'makeplots.yml',
     'serieshelper': 'serieshelper.yml',
-    'lookup': 'lookup.yml',
+    'lookup': 'lookup_old.yml',
     'defaults': 'defaults.yml',
 }

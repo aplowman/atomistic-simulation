@@ -1,0 +1,125 @@
+<style>
+    .opt-list {
+        font-size: 1rem;
+    }
+
+    .doc-group {
+        margin-left: 1.5em;
+        border-left: 0.2em solid rgb(220, 220, 220);
+        padding-left: 0.7em;
+        padding-top: 0.4em;
+        padding-bottom: 0.3em;
+    }
+
+    .opt-dtype {
+        font-size: 1.2em;
+    }
+
+    .outer-dg {
+        margin-left: 0.2em;
+        border-left: none;
+        padding-left: 0;
+    }
+
+    .opt-name {
+        color: #159957;
+        font-size: 1.5em;
+        text-decoration: none;
+    }
+</style>
+<div class="opt-list">
+    <div class="doc-group outer-dg">
+        <a class="opt-name" id="stage" href="#stage">stage</a>
+        <p>Sets options which detemine where on the local machine the simulations should be generated</p>
+        <div class="doc-group">
+            <a class="opt-name" id="stage-path" href="#stage-path">path</a>
+            <code class='opt-dtype'>(string)</code>
+            <p>The absolute path on the local machine in which the simulaton series directory will be generated.</p>
+        </div>
+    </div>
+    <div class="doc-group outer-dg">
+        <a class="opt-name" id="method" href="#method">method</a>
+        <code class='opt-dtype'>(string: "castep" | "lammps")</code>
+        <p>Sets the modelling software to use.</p>
+    </div>
+    <div class="doc-group outer-dg">
+        <a class="opt-name" id="base_structure" href="#base_structure">base_structure</a>
+        <p>Parameterises the AtomisticStructure upon which all structures in the series will be based.</p>
+        <div class="doc-group">
+            <a class="opt-name" id="base_structure-boundary_vac_args" href="#base_structure-boundary_vac_args">boundary_vac_args</a>
+            <p>Sets arguments which are passed to <code>apply_boundary_vac</code> method.</p>
+            <div class="doc-group">
+                <a class="opt-name" id="base_structure-boundary_vac_args-vac_thickness" href="#base_structure-boundary_vac_args-vac_thickness">vac_thickness</a>
+                <code class="opt-dtype">(float)</code>
+                <p>Sets the length of vacuum to be applied to the GB supercell in the GB normal direction. Vacuum is distributed according to a Sigmoid function.</p>
+            </div>            
+        </div>
+        <div class="doc-group">
+            <a class="opt-name" id="base_structure-boundary_vac_flat_args" href="#base_structure-boundary_vac_flat_args">boundary_vac_flat_args</a>
+            <p>Sets arguments which are passed to <code>apply_boundary_vac_flat</code> method.</p>
+            <div class="doc-group">
+                <a class="opt-name" id="base_structure-boundary_vac_flat_args-vac_thickness" href="#base_structure-boundary_vac_flat_args-vac_thickness">vac_thickness</a>
+                <code class="opt-dtype">(float)</code>
+                <p>Sets the length of vacuum to be applied to the GB supercell in the GB normal direction. Vacuum is distributed according to a step function.</p>
+            </div>            
+        </div>
+        <div class="doc-group">
+            <a class="opt-name" id="base_structure-boundary_vac_linear_args" href="#base_structure-boundary_vac_linear_args">boundary_vac_linear_args</a>
+            <p>Sets arguments which are passed to <code>apply_boundary_vac_linear</code> method.</p>
+            <div class="doc-group">
+                <a class="opt-name" id="base_structure-boundary_vac_linear_args-vac_thickness" href="#base_structure-boundary_vac_linear_args-vac_thickness">vac_thickness</a>
+                <code class="opt-dtype">(float)</code>
+                <p>Sets the length of vacuum to be applied to the GB supercell in the GB normal direction. Vacuum is distributed according to a linear function.</p>
+            </div>            
+        </div>                      
+        <div class="doc-group">
+            <a class="opt-name" id="base_structure-overlap_tol" href="#base_structure-overlap_tol">overlap_tol</a>
+            <code class='opt-dtype'>(float)</code>
+            <p>Sets the distance tolerance used in
+                <a href="#check-atoms_overlap">
+                    <code>check.atoms_overlap</code>
+                </a>.</p>
+        </div>
+        <div class="doc-group">
+            <a class="opt-name" id="base_structure-import" href="#base_structure-import">import</a>
+            <p>Sets options for importing an AtomisticStructure from a previous simulation series.</p>
+            <div class="doc-group">
+                <a class="opt-name" id="base_structure-import-id" href="#base_structure-import-id">id</a>
+                <code class="opt-dtype">(string)</code>
+                <p>Sets the ID of the simulation series in which the structure to import can be found.</p>
+            </div>
+            <div class="doc-group">
+                <a class="opt-name" id="base_structure-import-sim_idx" href="#base_structure-import-sim_idx">sim_idx</a>
+                <code class="opt-dtype">(int)</code>
+                <p>Sets the index of the simulation within the series in which the structure to import can be found.</p>
+            </div>
+            <div class="doc-group">
+                <a class="opt-name" id="base_structure-import-opt_step" href="#base_structure-import-opt_step">opt_step</a>
+                <code class="opt-dtype">(int)</code>
+                <p>Sets the optimisation step from which to import the structure. Negative indices count back from the final
+                    step, which would be
+                    <code>-1</code>.</p>
+            </div>
+        </div>
+    </div>
+    <div class="doc-group outer-dg">
+        <a class="opt-name" id="check" href="#check">check</a>
+        <p>For each `check`, if "all", the check is performed after the generation of both the base structure and the series
+            structures. If "base", the check is performed after the generation of the base structure only. If "series", the
+            check is performed after the generation of each series structure. If "none", the check is not performed at all.</p>
+        <div class="doc-group">
+            <a class="opt-name" id="check-atoms_overlap" href="#check-atoms_overlap">atoms_overlap</a>
+            <code class='opt-dtype'>(string: "all" | "base" | "series" | "none")</code>
+            <p>Determines when to check if any atoms are closer than the distance defined in
+                <a href="#base_structure-overlap_tol">
+                    <code>base_structure.overlap_tol</code>
+                </a>.</p>
+        </div>
+        <div class="doc-group">
+            <a class="opt-name" id="check-bicrystal_inversion_symmetry" href="#check-bicrystal_inversion_symmetry">bicrystal_inversion_symmetry</a>
+            <code class='opt-dtype'>(string: "all" | "base" | "series" | "none")</code>
+            <p>Determines when to check if the generated bicrystal exhibits inversion symmetry through the centre of one of
+                its crystals.</p>
+        </div>
+    </div>
+</div>

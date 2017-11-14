@@ -179,6 +179,20 @@ def get_depends(compute_name, inc_id=True, inc_val=True, **kwargs):
 
         out = add_out + out
 
+    elif compute_name == 'gb_minimum_expansion':
+
+        d.update({
+            'energy_src': kwargs['energy_src'],
+            'opt_step': kwargs['opt_step'],
+            'series_id': kwargs['series_id'],
+        })
+
+        out = (get_depends('energy', inc_id=inc_id, inc_val=inc_val,
+                           energy_src=kwargs['energy_src'],
+                           opt_step=kwargs['opt_step'],) +
+               get_depends('gb_boundary_vac', inc_id=inc_id, inc_val=inc_val)
+               + out)
+
     elif compute_name == 'master_gamma':
 
         d.update({
@@ -412,6 +426,18 @@ def gb_boundary_vac(out, sim, sim_idx):
         return None
 
 
+def gb_boundary_vac_type(out, sim, sim_idx):
+
+    if is_bicrystal(sim):
+        try:
+            return sim.structure.boundary_vac_type
+        except AttributeError:
+            return 'sigmoid'
+
+    else:
+        return None
+
+
 def gb_thickness(out, sim, sim_idx):
 
     if is_bicrystal(sim):
@@ -616,6 +642,94 @@ def gamma_surface_info(out, req_vars, common_series_info):
     req_vars[-1]['vals'] = all_gamma_infos[info_name]
 
 
+def gb_minimum_expansion(out, req_vars):
+
+    energy, boundary_vac = [req_vars[i]['vals'] for i in range(2)]
+    series_id = req_vars[-1]['series_id']
+    srs_vals = get_srs_vals(out, series_id)
+    print('srs_vals: \n{}\n'.format(srs_vals))
+    # exit()
+
+    num_sims = len(energy)
+
+    en_fit = [None for _ in range(num_sims)]
+    exp_fit = [None for _ in range(num_sims)]
+    en_min = [None for _ in range(num_sims)]
+    exp_min = [None for _ in range(num_sims)]
+    en_min_in_range = [None for _ in range(num_sims)]
+    exp_min_in_range = [None for _ in range(num_sims)]
+    fit_coeffs = [None for _ in range(num_sims)]
+    fit_in_range = [None for _ in range(num_sims)]
+
+    parsed_series_elems = []
+
+    # Collating by grid position over all boundary expansions
+    fit_idx = None
+    for idx, (en, bv) in enumerate(zip(energy, boundary_vac)):
+
+        if srs_vals[idx] in parsed_series_elems:
+            fit_idx = parsed_series_elems.index(srs_vals[idx])
+
+            if bv in exp_fit[fit_idx]:
+                raise ValueError('Multiple energies found for '
+                                 'boundary_vac: {}'.format(bv))
+            else:
+                exp_fit[fit_idx].append(bv)
+                en_fit[fit_idx].append(en)
+
+        else:
+            parsed_series_elems.append(srs_vals[idx])
+            fit_idx = len(parsed_series_elems) - 1
+            en_fit[idx] = [en]
+            exp_fit[idx] = [bv]
+
+    # Fitting
+    for idx in range(num_sims):
+
+        x = exp_fit[idx]
+        y = en_fit[idx]
+
+        if y is None:
+            continue
+
+        # Remove energies and expansions corresponding to grid positions where
+        # there are not enough boundary vacuums for fitting:
+        if len(y) < 3:
+            exp_fit[idx] = None
+            en_fit[idx] = None
+
+        else:
+            # Fit to a quadratic:
+            z = np.polyfit(x, y, 2)
+            p1d = np.poly1d(z)
+            dpdx = np.polyder(p1d)
+            min_x = np.asscalar(-dpdx[0] / dpdx[1])
+            min_y = np.asscalar(p1d(min_x))
+
+            en_min[idx] = min_y
+            exp_min[idx] = min_x
+            fit_coeffs[idx] = p1d.coeffs.tolist()
+            is_good = (min(x) < min_x) and (min_x < max(x))
+            fit_in_range[idx] = is_good
+
+            if is_good:
+                en_min_in_range[idx] = min_y
+                exp_min_in_range[idx] = min_x
+
+    out = {
+        'en_fit': en_fit,
+        'exp_fit': exp_fit,
+        'en_min': en_min,
+        'en_min_in_range': en_min_in_range,
+        'exp_min': exp_min,
+        'exp_min_in_range': exp_min_in_range,
+        'fit_coeffs': fit_coeffs,
+        'fit_in_range': fit_in_range,
+    }
+
+    req_vars[-1]['vals'] = out
+
+
 def master_gamma(out, req_vars):
 
     use_gb_energy = req_vars[-1].get('use_gb_energy', False)
@@ -762,6 +876,7 @@ SINGLE_COMPUTE_LOOKUP = {
     'supercell_type': supercell_type,
     'gb_thickness': gb_thickness,
     'gb_boundary_vac': gb_boundary_vac,
+    'gb_boundary_vac_type': gb_boundary_vac_type,
     'gb_relative_shift': gb_relative_shift,
     'atoms_gb_dist_initial': atoms_gb_dist_initial,
     'atoms_gb_dist_final': atoms_gb_dist_final,
@@ -775,5 +890,6 @@ MULTI_COMPUTE_LOOKUP = {
     'gb_energy': gb_energy,
     'gamma_surface_info': gamma_surface_info,
     'master_gamma': master_gamma,
+    'gb_minimum_expansion': gb_minimum_expansion,
     'difference': difference,
 }

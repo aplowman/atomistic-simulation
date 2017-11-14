@@ -1106,8 +1106,8 @@ def get_subplots(fig, lib='mpl'):
 
     """
 
-    SUBPLOT_WIDTH = 300
-    SUBPLOT_HEIGHT = 300
+    SUBPLOT_WIDTH = 400
+    SUBPLOT_HEIGHT = 400
     MAX_HORZ_SUBPLOTS = 4
     DPI = 96
 

@@ -206,6 +206,7 @@ def validate_ms_opt(opt_fn, lookup_opt_fn):
     with open(opt_lookup_path, 'r', encoding='utf-8') as f:
         opt_lookup = yaml.load(f)
 
+    # Options which use "." syntax for nested levels:
     deep_keys = [
         'set_up',
         'base_structure',
@@ -218,6 +219,7 @@ def validate_ms_opt(opt_fn, lookup_opt_fn):
         'stage',
         'archive',
         'database',
+        'check',
     ]
     for dk in deep_keys:
         if opt.get(dk) is not None:
@@ -243,6 +245,7 @@ def validate_ms_opt(opt_fn, lookup_opt_fn):
         'archive',
         'database',
         'offline_files',
+        'check',
     ]
 
     check_invalid_key(opt_unflat, allowed_keys)
@@ -388,6 +391,8 @@ def validate_ms_base_structure(opt, opt_lookup):
     allowed_keys_gb = [
         'relative_shift_args',
         'boundary_vac_args',
+        'boundary_vac_flat_args',
+        'boundary_vac_linear_args',
         'wrap',
         'maintain_inv_sym',
     ]
@@ -636,7 +641,7 @@ def validate_ms_constraints(opt, opt_lookup):
                 {k: validate_ms_atom_constraints(v, opt_lookup)})
         else:
             valid_const.update({k: v})
-            
+
     return valid_const
 
 

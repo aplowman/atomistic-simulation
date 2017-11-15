@@ -1367,6 +1367,7 @@ class PointDefect(object):
         The atom or interstitial site index within the AtomisticStructure.
     charge : float
         The defect's electronic charge relative to that of the site it occupies.
+        site_current_charge - site_prev_charge = charge
     interstice_type : str
         Set to "tetrahedral" or "octahedral" if `host_species` is "i".
 

@@ -506,20 +506,8 @@ class CrystalStructure(object):
         self.interstice_labels = interstice_labels
 
     @property
-    def lattice_sites_frac(self):
-        return np.dot(np.linalg.inv(self.bravais_lattice.vecs), self.lattice_sites)
-
-    @property
     def atom_sites_frac(self):
         return np.dot(np.linalg.inv(self.bravais_lattice.vecs), self.atom_sites)
-
-    @property
-    def interstice_sites_frac(self):
-        if self.interstice_sites is not None:
-            return np.dot(np.linalg.inv(self.bravais_lattice.vecs),
-                          self.interstice_sites)
-        else:
-            return None
 
     @property
     def species(self):

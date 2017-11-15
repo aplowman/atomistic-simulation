@@ -390,9 +390,7 @@ def validate_ms_base_structure(opt, opt_lookup):
     ]
     allowed_keys_gb = [
         'relative_shift_args',
-        'boundary_vac_args',
-        'boundary_vac_flat_args',
-        'boundary_vac_linear_args',
+        'boundary_vac',
         'wrap',
         'maintain_inv_sym',
     ]
@@ -457,6 +455,9 @@ def validate_ms_base_structure(opt, opt_lookup):
         elif k == 'import':
             valid_bs.update({k: validate_bs_import(v, opt_lookup)})
 
+        elif k == 'boundary_vac':
+            valid_bs.update({k: validate_ms_boundary_vac(v, opt_lookup)})
+
         else:
             valid_bs.update({k: v})
 
@@ -494,6 +495,35 @@ def validate_bs_import(opt, opt_lookup):
     return valid_import
 
 
+def validate_ms_boundary_vac(opt, opt_lookup):
+
+    allowed_keys = {
+        'sigmoid': ['thickness', 'func', 'sharpness'],
+        'flat': ['thickness', 'func'],
+        'linear': ['thickness', 'func'],
+    }
+
+    valid_opt = []
+    for bv_idx, bv in enumerate(opt):
+
+        if isinstance(bv, str):
+            if '<<' in bv and '>>' in bv:
+                bv = {'<<lookup>>': bv}
+
+        bv = check_lookup('boundary_vac', bv, opt_lookup) or bv
+
+        bv_opt = utils.unflatten_dict_keys(bv)
+        allowed_keys_bv = allowed_keys[bv['func']]
+        check_invalid_key(bv_opt, allowed_keys_bv)
+
+        valid_bv = {}
+        for k, v in bv_opt.items():
+            valid_bv.update({k: v})
+        valid_opt.append(valid_bv)
+
+    return valid_opt
+
+
 def validate_ms_crystal_structures(opt, opt_lookup):
 
     def validate_lattice(lat_opt):
@@ -524,17 +554,35 @@ def validate_ms_crystal_structures(opt, opt_lookup):
         return valid_lat
 
     def validate_motif(motif_opt):
+        # allowed_keys = [
+        #     'atom_sites',
+        #     'species',
+        # ]
+        # check_invalid_key(motif_opt, allowed_keys)
+        # valid_motif = copy.deepcopy(motif_opt)
+
+        # # Convert atom_sites to a numpy array:
+        # as_floats = [[parse_string_as(j, float) for j in i]
+        #              for i in valid_motif['atom_sites']]
+        # valid_motif['atom_sites'] = np.array(as_floats)
+
+        # return valid_motif
+
         allowed_keys = [
-            'atom_sites',
-            'species',
+            'atoms',
+            'interstices'
         ]
+
         check_invalid_key(motif_opt, allowed_keys)
         valid_motif = copy.deepcopy(motif_opt)
 
-        # Convert atom_sites to a numpy array:
-        as_floats = [[parse_string_as(j, float) for j in i]
-                     for i in valid_motif['atom_sites']]
-        valid_motif['atom_sites'] = np.array(as_floats)
+        # Convert sites to arrays:
+        for k, v in valid_motif.items():
+
+            sts = [[parse_string_as(j, float) for j in i] for i in v['sites']]
+            valid_motif[k]['sites'] = np.array(sts)
+
+        print('valid_motif: {}'.format(valid_motif))
 
         return valid_motif
 
@@ -546,6 +594,7 @@ def validate_ms_crystal_structures(opt, opt_lookup):
 
     if not opt:
         raise ValueError('crystal_structures must be assigned.')
+
     valid_opt = []
     for cs_idx, cs in enumerate(opt):
 

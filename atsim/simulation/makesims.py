@@ -3,7 +3,6 @@ import numpy as np
 import shutil
 import fractions
 import copy
-import shutil
 import subprocess
 import posixpath
 import ntpath
@@ -12,7 +11,6 @@ import warnings
 from sys import stdout
 from pathlib import Path
 from atsim import utils, dbhelpers, readwrite, geometry, OPT_FILE_NAMES
-from atsim import readwrite
 from atsim import SERIES_NAMES, SET_UP_PATH, REF_PATH, SCRIPTS_PATH
 from atsim.readwrite import replace_in_file, delete_line, add_line
 from atsim.simulation.sim import AtomisticSimulation
@@ -205,7 +203,8 @@ def write_jobscript(path, calc_paths, method, num_cores, sge, job_array,
 
         help_js_path = os.path.join(path, 'lammps_single_job.sh')
         shutil.copy(help_tmp_path, help_js_path)
-        replace_in_file(help_js_path, '<replace_with_dir_list>', dir_list_path)
+        replace_in_file(help_js_path, '<replace_with_dir_list>',
+                        dir_list_path_scratch)
 
     # Make a directory for job-related output. E.g. .o and .e files from CSF.
     os.makedirs(os.path.join(path, 'output'))
@@ -402,9 +401,9 @@ class Stage(object):
             print('Submitting simulations on scratch...')
             comp_proc = subprocess.run(
                 ['bash',
-                    '-c',
-                    'ssh {} "cd {} && qsub jobscript.sh"'.format(
-                        scratch.host, scratch.path)])
+                 '-c',
+                 'ssh {} "cd {} && qsub jobscript.sh"'.format(
+                     scratch.host, scratch.path)])
 
         else:
 
@@ -455,7 +454,7 @@ class Scratch(object):
 
     """
 
-    def __init__(self, path, remote, session_id, num_cores,  os_name=None,
+    def __init__(self, path, remote, session_id, num_cores, os_name=None,
                  host=None, offline_files=None, parallel_env=None, sge=False,
                  job_array=False, job_name=None, selective_submission=False,
                  module_load=None):
@@ -1491,8 +1490,13 @@ def main(opt):
                 'filename': stage.get_path('base_structure.html'),
                 'auto_open': False
             }
-            base_as.visualise(show_iplot=False, save=True,
-                              save_args=save_args, proj_2d=True)
+            vs_opts = {
+                'save_args': save_args,
+                'show_iplot': False,
+                'save': True,
+                'group_atoms_by': ['species', 'crystal_idx', 'species_count']
+            }
+            base_as.visualise(**vs_opts)
 
     # Prepare series update data:
     all_upd = [{}]
@@ -1552,8 +1556,13 @@ def main(opt):
                     'filename': os.path.join(plt_path, 'structure.html'),
                     'auto_open': False
                 }
-                srs_as.visualise(show_iplot=False, save=True,
-                                 save_args=save_args, proj_2d=True)
+                vs_opts = {
+                    'save_args': save_args,
+                    'show_iplot': False,
+                    'save': True,
+                    'group_atoms_by': ['species', 'crystal_idx', 'species_count']
+                }
+                base_as.visualise(**vs_opts)
 
         # Process constraints options
         process_constraints(srs_opt, srs_as)

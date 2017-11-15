@@ -14,8 +14,8 @@ from atsim.utils import prt
 from plotly.offline import plot, iplot
 
 
-def visualise(structure, show_iplot=False, plot_2d='xyz', group_atoms_by=None,
-              group_lattice_sites_by=None, group_interstices_by=None):
+def visualise(structure, show_iplot=False, save=False, save_args=None, plot_2d='xyz', ret_fig=False,
+              group_atoms_by=None, group_lattice_sites_by=None, group_interstices_by=None):
     """
     Parameters
     ----------
@@ -51,6 +51,15 @@ def visualise(structure, show_iplot=False, plot_2d='xyz', group_atoms_by=None,
               atoms: [...], lattice_sites: [...], interstices: [...]} etc.
 
     """
+
+    if save:
+        if save_args is None:
+            save_args = {
+                'filename': 'plots.html',
+                'auto_open': False
+            }
+        elif save_args.get('filename') is None:
+            save_args.update({'filename': 'plots.html'})
 
     if group_atoms_by is None:
         group_atoms_by = []
@@ -142,80 +151,82 @@ def visualise(structure, show_iplot=False, plot_2d='xyz', group_atoms_by=None,
         })
 
     # Add lattice sites by groupings
-    lat_groups_names = []
-    lat_groups = []
-    for k, v in structure.lattice_labels.items():
-        if k in group_lattice_sites_by:
-            lat_groups_names.append(k)
-            lat_groups.append(v[0][v[1]])
+    if structure.lattice_sites is not None:
+        lat_groups_names = []
+        lat_groups = []
+        for k, v in structure.lattice_labels.items():
+            if k in group_lattice_sites_by:
+                lat_groups_names.append(k)
+                lat_groups.append(v[0][v[1]])
 
-    lat_col = 'grey'
-    lat_sym = 'x'
+        lat_col = 'grey'
+        lat_sym = 'x'
 
-    if len(lat_groups) > 0:
-        lat_combs, lat_combs_idx = utils.combination_idx(*lat_groups)
+        if len(lat_groups) > 0:
+            lat_combs, lat_combs_idx = utils.combination_idx(*lat_groups)
 
-        for lc_idx in range(len(lat_combs)):
-            c = lat_combs[lc_idx]
-            c_idx = lat_combs_idx[lc_idx]
-            skip_idx = []
-            lats_name = 'Lattice sites'
+            for lc_idx in range(len(lat_combs)):
+                c = lat_combs[lc_idx]
+                c_idx = lat_combs_idx[lc_idx]
+                skip_idx = []
+                lats_name = 'Lattice sites'
 
-            for idx, (i, j) in enumerate(zip(lat_groups_names, c)):
-                lats_name += '; {}: {}'.format(i, j)
+                for idx, (i, j) in enumerate(zip(lat_groups_names, c)):
+                    lats_name += '; {}: {}'.format(i, j)
 
+                points.append({
+                    'data': structure.lattice_sites[:, c_idx],
+                    'symbol': lat_sym,
+                    'colour': lat_col,
+                    'name': lats_name,
+                })
+
+        else:
             points.append({
-                'data': structure.lattice_sites[:, c_idx],
+                'data': structure.lattice_sites,
                 'symbol': lat_sym,
                 'colour': lat_col,
-                'name': lats_name,
+                'name': 'Lattice sites',
             })
-
-    else:
-        points.append({
-            'data': structure.lattice_sites,
-            'symbol': lat_sym,
-            'colour': lat_col,
-            'name': 'Lattice sites',
-        })
 
     # Add interstices by groupings
-    int_groups_names = []
-    int_groups = []
-    for k, v in structure.interstice_labels.items():
-        if k in group_interstices_by:
-            int_groups_names.append(k)
-            int_groups.append(v[0][v[1]])
+    if structure.interstice_sites is not None:
+        int_groups_names = []
+        int_groups = []
+        for k, v in structure.interstice_labels.items():
+            if k in group_interstices_by:
+                int_groups_names.append(k)
+                int_groups.append(v[0][v[1]])
 
-    int_col = 'orange'
-    int_sym = 'x'
+        int_col = 'orange'
+        int_sym = 'x'
 
-    if len(int_groups) > 0:
-        int_combs, int_combs_idx = utils.combination_idx(*int_groups)
+        if len(int_groups) > 0:
+            int_combs, int_combs_idx = utils.combination_idx(*int_groups)
 
-        for ic_idx in range(len(int_combs)):
-            c = int_combs[ic_idx]
-            c_idx = int_combs_idx[ic_idx]
-            skip_idx = []
-            ints_name = 'Interstices'
+            for ic_idx in range(len(int_combs)):
+                c = int_combs[ic_idx]
+                c_idx = int_combs_idx[ic_idx]
+                skip_idx = []
+                ints_name = 'Interstices'
 
-            for idx, (i, j) in enumerate(zip(int_groups_names, c)):
-                ints_name += '; {}: {}'.format(i, j)
+                for idx, (i, j) in enumerate(zip(int_groups_names, c)):
+                    ints_name += '; {}: {}'.format(i, j)
 
+                points.append({
+                    'data': structure.interstice_sites[:, c_idx],
+                    'symbol': int_sym,
+                    'colour': int_col,
+                    'name': ints_name,
+                })
+
+        else:
             points.append({
-                'data': structure.interstice_sites[:, c_idx],
+                'data': structure.interstice_sites,
                 'symbol': int_sym,
                 'colour': int_col,
-                'name': ints_name,
+                'name': 'Interstices',
             })
-
-    else:
-        points.append({
-            'data': structure.interstice_sites,
-            'symbol': int_sym,
-            'colour': int_col,
-            'name': 'Interstices',
-        })
 
     boxes = []
 
@@ -245,6 +256,22 @@ def visualise(structure, show_iplot=False, plot_2d='xyz', group_atoms_by=None,
         })
 
     f3d, f2d = plotting.plot_geometry_plotly(points, boxes)
+
     if show_iplot:
         iplot(f3d)
         iplot(f2d)
+
+    if save:
+        if plot_2d != '':
+            div_2d = plot(f2d, **save_args, output_type='div',
+                          include_plotlyjs=False)
+
+        div_3d = plot(f3d, **save_args, output_type='div',
+                      include_plotlyjs=True)
+
+        html_all = div_3d + div_2d
+        with open(save_args.get('filename'), 'w') as plt_file:
+            plt_file.write(html_all)
+
+    if ret_fig:
+        return (f3d, f2d)

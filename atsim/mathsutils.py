@@ -79,3 +79,7 @@ def fit_quad(x, y):
     min_y = p1d(min_x)
 
     return p1d, min_x, min_y
+
+
+def linear(x, m=1, c=0):
+    return m * x + c

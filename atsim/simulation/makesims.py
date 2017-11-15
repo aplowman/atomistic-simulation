@@ -726,6 +726,16 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
                               'path': '{:.2f}'.format(v)}
             })
 
+    elif sn == 'boundary_vac_linear':
+
+        for v in vals:
+
+            out.append({
+                'base_structure': {'boundary_vac_linear_args': {'vac_thickness': v}},
+                'series_id': {'name': sn, 'val': v,
+                              'path': '{:.2f}'.format(v)}
+            })
+
     elif sn == 'cs_vol_range':
 
         for v in vals:
@@ -1409,6 +1419,7 @@ def main(opt):
         'relative_shift': True,
         'boundary_vac': True,
         'boundary_vac_flat': True,
+        'boundary_vac_linear': True,
         'gamma_surface': False,
         'lookup': False,
     }

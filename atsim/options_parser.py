@@ -391,6 +391,8 @@ def validate_ms_base_structure(opt, opt_lookup):
     allowed_keys_gb = [
         'relative_shift_args',
         'boundary_vac_args',
+        'boundary_vac_flat_args',
+        'boundary_vac_linear_args',
         'wrap',
         'maintain_inv_sym',
     ]

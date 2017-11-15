@@ -426,6 +426,18 @@ def gb_boundary_vac(out, sim, sim_idx):
         return None
 
 
+def gb_boundary_vac_type(out, sim, sim_idx):
+
+    if is_bicrystal(sim):
+        try:
+            return sim.structure.boundary_vac_type
+        except AttributeError:
+            return 'sigmoid'
+
+    else:
+        return None
+
+
 def gb_thickness(out, sim, sim_idx):
 
     if is_bicrystal(sim):
@@ -864,6 +876,7 @@ SINGLE_COMPUTE_LOOKUP = {
     'supercell_type': supercell_type,
     'gb_thickness': gb_thickness,
     'gb_boundary_vac': gb_boundary_vac,
+    'gb_boundary_vac_type': gb_boundary_vac_type,
     'gb_relative_shift': gb_relative_shift,
     'atoms_gb_dist_initial': atoms_gb_dist_initial,
     'atoms_gb_dist_final': atoms_gb_dist_final,

@@ -744,7 +744,7 @@ def read_castep_file(cst_path):
                 elif CELL_END in ln:
 
                     # Parse cell volume and finish parsing cell block
-                    cell_volume.append(float(ln_s[-2]))
+                    cell_volume.append(float(ln_s[-2].split('=')[-1]))
                     mode = 'scan'
                     cell_idx = 0
 

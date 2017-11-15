@@ -46,6 +46,33 @@
         <a class="opt-name" id="base_structure" href="#base_structure">base_structure</a>
         <p>Parameterises the AtomisticStructure upon which all structures in the series will be based.</p>
         <div class="doc-group">
+            <a class="opt-name" id="base_structure-boundary_vac_args" href="#base_structure-boundary_vac_args">boundary_vac_args</a>
+            <p>Sets arguments which are passed to <code>apply_boundary_vac</code> method.</p>
+            <div class="doc-group">
+                <a class="opt-name" id="base_structure-boundary_vac_args-vac_thickness" href="#base_structure-boundary_vac_args-vac_thickness">vac_thickness</a>
+                <code class="opt-dtype">(float)</code>
+                <p>Sets the length of vacuum to be applied to the GB supercell in the GB normal direction. Vacuum is distributed according to a Sigmoid function.</p>
+            </div>            
+        </div>
+        <div class="doc-group">
+            <a class="opt-name" id="base_structure-boundary_vac_flat_args" href="#base_structure-boundary_vac_flat_args">boundary_vac_flat_args</a>
+            <p>Sets arguments which are passed to <code>apply_boundary_vac_flat</code> method.</p>
+            <div class="doc-group">
+                <a class="opt-name" id="base_structure-boundary_vac_flat_args-vac_thickness" href="#base_structure-boundary_vac_flat_args-vac_thickness">vac_thickness</a>
+                <code class="opt-dtype">(float)</code>
+                <p>Sets the length of vacuum to be applied to the GB supercell in the GB normal direction. Vacuum is distributed according to a step function.</p>
+            </div>            
+        </div>
+        <div class="doc-group">
+            <a class="opt-name" id="base_structure-boundary_vac_linear_args" href="#base_structure-boundary_vac_linear_args">boundary_vac_linear_args</a>
+            <p>Sets arguments which are passed to <code>apply_boundary_vac_linear</code> method.</p>
+            <div class="doc-group">
+                <a class="opt-name" id="base_structure-boundary_vac_linear_args-vac_thickness" href="#base_structure-boundary_vac_linear_args-vac_thickness">vac_thickness</a>
+                <code class="opt-dtype">(float)</code>
+                <p>Sets the length of vacuum to be applied to the GB supercell in the GB normal direction. Vacuum is distributed according to a linear function.</p>
+            </div>            
+        </div>                      
+        <div class="doc-group">
             <a class="opt-name" id="base_structure-overlap_tol" href="#base_structure-overlap_tol">overlap_tol</a>
             <code class='opt-dtype'>(float)</code>
             <p>Sets the distance tolerance used in

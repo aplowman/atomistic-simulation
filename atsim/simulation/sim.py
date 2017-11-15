@@ -127,8 +127,8 @@ class AtomisticSimulation(object):
         common_params = {
             'supercell': self.structure.supercell,
             'atom_sites': self.structure.atom_sites,
-            'species': self.structure.all_species,
-            'species_idx': self.structure.all_species_idx,
+            'species': self.structure.species,
+            'species_idx': self.structure.species_idx,
             'path': self.options['stage_series_path'],
             'atom_constraints': self.options['constraints']['atom'],
             'cell_constraints': self.options['constraints']['cell'],

@@ -6,6 +6,7 @@ from plotly.offline import plot, iplot, init_notebook_mode
 from atsim.structure.crystal import CrystalBox, CrystalStructure
 from atsim.structure import REF_PATH
 from atsim import geometry, vectors, readwrite, utils, mathsutils
+from atsim.utils import prt
 from atsim.simsio.lammps import get_LAMMPS_compatible_box
 from mendeleev import element
 
@@ -530,7 +531,7 @@ class AtomisticStructure(object):
 
                 # Get CrystalStructure associated with this crystal:
                 has_cs = False
-                if c.get('cs_idx') is not None:
+                if c.get('cs_idx') is not None and self.crystal_structures is not None:
                     has_cs = True
 
                 if has_cs:
@@ -538,7 +539,7 @@ class AtomisticStructure(object):
 
                 # Lattice unit cell, need to rotate by given orientation
                 if ((c.get('cs_orientation') is not None) and
-                        (c.get('cs_origin') is not None)):
+                        (c.get('cs_origin') is not None)) and False:
 
                     unit_cell = np.dot(c['cs_orientation'],
                                        cs.bravais_lattice.vecs)
@@ -1113,12 +1114,14 @@ class AtomisticStructure(object):
             if not isinstance(t, int) or t < 1:
                 raise ValueError(invalid_msg)
 
-        tiled_atoms, tiled_all_species_idx = self.get_tiled_atoms(tiles)
+        tiled_atoms, tiled_all_species_idx, tld_crys_idx = self.get_tiled_atoms(
+            tiles)
         tiled_sup = self.supercell * tiles
 
         self.atom_sites = tiled_atoms
         self._all_species_idx = tiled_all_species_idx
         self.supercell = tiled_sup
+        self.crystal_idx = tld_crys_idx
 
     def get_tiled_atoms(self, tiles):
         """
@@ -1145,6 +1148,7 @@ class AtomisticStructure(object):
 
         as_tiled = np.copy(self.atom_sites)
         all_species_idx_tiled = np.copy(self.all_species_idx)
+        crys_idx_tiled = np.copy(self.crystal_idx)
         for t_idx, t in enumerate(tiles):
 
             if t == 1:
@@ -1157,9 +1161,10 @@ class AtomisticStructure(object):
             all_t = (v * np.arange(1, t)).T[:, :, np.newaxis]
             as_tiled_t = np.hstack(all_t + as_tiled)
             all_species_idx_tiled = np.tile(all_species_idx_tiled, t)
+            crys_idx_tiled = np.tile(crys_idx_tiled, t)
             as_tiled = np.hstack([as_tiled, as_tiled_t])
 
-        return as_tiled, all_species_idx_tiled
+        return as_tiled, all_species_idx_tiled, crys_idx_tiled
 
     def get_interatomic_dist(self, periodic=True):
         """

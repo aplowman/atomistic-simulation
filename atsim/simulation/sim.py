@@ -100,7 +100,7 @@ class AtomisticSimulation(object):
             'all_species_idx': species_idx_orig,
             'crystals': self.structure.crystals,
             'crystal_idx': self.structure.crystal_idx,
-            'crystal_structures': self.structure.crystal_structures,
+            # 'crystal_structures': self.structure.crystal_structures,
         }
 
         if 'bicrystal' in self.structure.meta:
@@ -118,6 +118,7 @@ class AtomisticSimulation(object):
             opt_structure = AtomisticStructure(**as_params)
 
         if tile is not None:
+            print('tile...')
             opt_structure.tile_supercell(tile)
 
         return opt_structure

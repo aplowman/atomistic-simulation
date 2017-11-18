@@ -255,6 +255,28 @@ def visualise(structure, show_iplot=False, save=False, save_args=None, plot_2d='
             'colour': 'red',
         })
 
+    if hasattr(structure, 'supercell'):
+
+        # AtomisticStructure
+        boxes.append({
+            'edges': structure.supercell,
+            'origin': structure.origin,
+            'name': 'Supercell',
+            'colour': 'green',
+        })
+
+        crystal_cols = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+                        '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+
+        for c_idx, c in enumerate(structure.crystals):
+
+            boxes.append({
+                'edges': c['crystal'],
+                'origin': c['origin'],
+                'name': 'Crystal #{}'.format(c_idx + 1),
+                'colour': crystal_cols[c_idx],
+            })
+
     f3d, f2d = plotting.plot_geometry_plotly(points, boxes)
 
     if show_iplot:

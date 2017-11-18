@@ -92,6 +92,17 @@ def visualise(structure, show_iplot=False, save=False, save_args=None, plot_2d='
     atom_cols = readwrite.read_pickle(
         os.path.join(REF_PATH, 'jmol_colours.pickle'))
 
+    # Add atom number labels:
+    text = []
+    text.append({
+        'data': structure.atom_sites,
+        'text': list(range(structure.atom_sites.shape[1])),
+        'position': 'top',
+        'colour': 'gray',
+        'name': 'Atom labels',
+        'visible': 'legendonly',
+    })
+
     points = []
 
     # Add atoms by groupings
@@ -179,6 +190,7 @@ def visualise(structure, show_iplot=False, save=False, save_args=None, plot_2d='
                     'symbol': lat_sym,
                     'colour': lat_col,
                     'name': lats_name,
+                    'visible': 'legendonly',
                 })
 
         else:
@@ -187,6 +199,7 @@ def visualise(structure, show_iplot=False, save=False, save_args=None, plot_2d='
                 'symbol': lat_sym,
                 'colour': lat_col,
                 'name': 'Lattice sites',
+                'visible': 'legendonly',
             })
 
     # Add interstices by groupings
@@ -277,7 +290,7 @@ def visualise(structure, show_iplot=False, save=False, save_args=None, plot_2d='
                 'colour': crystal_cols[c_idx],
             })
 
-    f3d, f2d = plotting.plot_geometry_plotly(points, boxes)
+    f3d, f2d = plotting.plot_geometry_plotly(points, boxes, text)
 
     if show_iplot:
         iplot(f3d)

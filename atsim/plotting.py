@@ -1513,7 +1513,8 @@ def set_dict_def(d_default, d=None):
     return d
 
 
-def plot_geometry_plotly(points=None, boxes=None, style=None, plot_3d=True, plot_2d='xyz'):
+def plot_geometry_plotly(points=None, boxes=None, text=None, style=None,
+                         plot_3d=True, plot_2d='xyz'):
     """
 
     Next time:
@@ -1610,9 +1611,12 @@ def plot_geometry_plotly(points=None, boxes=None, style=None, plot_3d=True, plot
     layout_3d.update({'scene': scene})
 
     for pts in points:
+        com_d = {
+            'mode': 'markers',
+            'visible': pts.get('visible', True),
+        }
         d = {
             'type': 'scatter3d',
-            'mode': 'markers',
             'marker': {
                 'color': pts['colour'],
                 'symbol': pts['symbol'],
@@ -1622,19 +1626,16 @@ def plot_geometry_plotly(points=None, boxes=None, style=None, plot_3d=True, plot
             'x': pts['data'][0],
             'y': pts['data'][1],
             'z': pts['data'][2],
+            **com_d,
         }
         if pts.get('name') is not None:
             d.update({'name': pts.get('name')})
         data_3d.append(d)
 
         for i in plot_dirs:
-            # print('i: {}'.format(i))
-            # print('ax_lab_2d[i]: {}'.format(ax_lab_2d[i]))
-            # print('dirs_2d[i]: {}'.format(dirs_2d[i]))
 
             d = {
                 'type': 'scatter',
-                'mode': 'markers',
                 'marker': {
                     'color': pts['colour'],
                     'symbol': pts['symbol'],
@@ -1644,12 +1645,52 @@ def plot_geometry_plotly(points=None, boxes=None, style=None, plot_3d=True, plot
                 'xaxis': ax_lab_2d[i][0],
                 'yaxis': ax_lab_2d[i][1],
                 'showlegend': show_leg_2d[i],
+                **com_d,
             }
             if pts.get('name') is not None:
                 d.update(
                     {
                         'name': pts.get('name'),
                         'legendgroup': pts.get('name'),
+                    }
+                )
+            data_2d.append(d)
+
+    for txt in text:
+
+        com_d = {
+            'mode': 'text',
+            'text': txt['text'],
+            'textposition': txt.get('position', 'top'),
+            'visible': txt.get('visible', True),
+        }
+        d = {
+            'type': 'scatter3d',
+            'x': txt['data'][0],
+            'y': txt['data'][1],
+            'z': txt['data'][2],
+            **com_d,
+        }
+        if txt.get('name') is not None:
+            d.update({'name': txt.get('name')})
+        data_3d.append(d)
+
+        for i in plot_dirs:
+
+            d = {
+                'type': 'scatter',
+                'x': txt['data'][dirs_2d[i][0]],
+                'y': txt['data'][dirs_2d[i][1]],
+                'xaxis': ax_lab_2d[i][0],
+                'yaxis': ax_lab_2d[i][1],
+                'showlegend': show_leg_2d[i],
+                **com_d,
+            }
+            if txt.get('name') is not None:
+                d.update(
+                    {
+                        'name': txt.get('name'),
+                        'legendgroup': txt.get('name'),
                     }
                 )
             data_2d.append(d)
@@ -1661,17 +1702,20 @@ def plot_geometry_plotly(points=None, boxes=None, style=None, plot_3d=True, plot
             'origin': np.array([0, 0, 0]),
         }
         bx = set_dict_def(bx_def, bx)
-
+        com_d = {
+            'mode': 'lines',
+            'line': {
+                'color': bx['colour'],
+            },
+            'visible': bx.get('visible', True),
+        }
         bx_trace = geometry.get_box_xyz(bx['edges'], origin=bx['origin'])[0]
         d = {
             'type': 'scatter3d',
-            'mode': 'lines',
             'x': bx_trace[0],
             'y': bx_trace[1],
             'z': bx_trace[2],
-            'line': {
-                'color': bx['colour']
-            }
+            **com_d,
         }
         if bx.get('name') is not None:
             d.update({'name': bx.get('name')})
@@ -1681,15 +1725,12 @@ def plot_geometry_plotly(points=None, boxes=None, style=None, plot_3d=True, plot
 
             d = {
                 'type': 'scatter',
-                'mode': 'lines',
-                'line': {
-                    'color': bx['colour'],
-                },
                 'x': bx_trace[dirs_2d[i][0]],
                 'y': bx_trace[dirs_2d[i][1]],
                 'xaxis': ax_lab_2d[i][0],
                 'yaxis': ax_lab_2d[i][1],
                 'showlegend': show_leg_2d[i],
+                **com_d,
             }
             if bx.get('name') is not None:
                 d.update(

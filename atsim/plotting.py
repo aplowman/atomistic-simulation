@@ -1524,8 +1524,8 @@ def plot_geometry_plotly(points=None, boxes=None, text=None, style=None,
     """
 
     STYLE_DEF = {
-        'width': 700,
-        'height': 700,
+        'width': 1000,
+        'height': 1000,
         'aspect': 'equal',
         'labels': ['x', 'y', 'z'],
     }

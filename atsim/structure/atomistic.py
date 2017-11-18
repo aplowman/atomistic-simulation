@@ -168,6 +168,7 @@ class AtomisticStructure(object):
         self.supercell = supercell
         self.meta = {}
 
+        self.symmetry_ops = None
         self.lattice_sites = lattice_sites
         self.lattice_labels = lattice_labels
         self.interstice_sites = interstice_sites

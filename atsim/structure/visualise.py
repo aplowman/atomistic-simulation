@@ -15,7 +15,8 @@ from plotly.offline import plot, iplot
 
 
 def visualise(structure, show_iplot=False, save=False, save_args=None, plot_2d='xyz', ret_fig=False,
-              group_atoms_by=None, group_lattice_sites_by=None, group_interstices_by=None):
+              group_atoms_by=None, group_lattice_sites_by=None, group_interstices_by=None,
+              wrap_sym_op=True):
     """
     Parameters
     ----------
@@ -289,6 +290,53 @@ def visualise(structure, show_iplot=False, save=False, save_args=None, plot_2d='
                 'name': 'Crystal #{}'.format(c_idx + 1),
                 'colour': crystal_cols[c_idx],
             })
+
+        print('structure.symmetry_ops: {}'.format(structure.symmetry_ops))
+
+        # Add a symmetry operation
+        if hasattr(structure, 'symmetry_ops'):
+            if structure.symmetry_ops:
+                so = structure.symmetry_ops[0]
+                as_sym = np.dot(so[0], structure.atom_sites)
+                as_sym += np.dot(structure.supercell, so[1][:, np.newaxis])
+
+                if wrap_sym_op:
+                    as_sym_frac = np.dot(structure.supercell_inv, as_sym)
+                    as_sym_frac -= np.floor(as_sym_frac)
+                    as_sym = np.dot(structure.supercell, as_sym_frac)
+
+                points.append({
+                    'data': as_sym,
+                    'symbol': 'diamond-open',
+                    'colour': 'purple',
+                    'name': 'Atoms (symmetry)',
+                })
+                text.append({
+                    'data': structure.atom_sites,
+                    'text': np.arange(structure.num_atoms),
+                    'position': 'bottom center',
+                    'font': {
+                        'color': 'purple',
+                    },
+                    'name': 'Atoms (symmetry labels)',
+                })
+
+                # # Add lines mapping symmetrically connected atoms:
+                # for a_idx, a in enumerate(atom_sites_sym.T):
+
+                #     data.append({
+                #         'type': 'scatter3d',
+                #         'x': [a[0], self.atom_sites.T[a_idx][0]],
+                #         'y': [a[1], self.atom_sites.T[a_idx][1]],
+                #         'z': [a[2], self.atom_sites.T[a_idx][2]],
+                #         'mode': 'lines',
+                #         'name': 'Sym op',
+                #         'legendgroup': 'Sym op',
+                #         'showlegend': False,
+                #         'line': {
+                #             'color': 'purple',
+                #         },
+                #     })
 
     f3d, f2d = plotting.plot_geometry_plotly(points, boxes, text)
 

@@ -1662,6 +1662,7 @@ def plot_geometry_plotly(points=None, boxes=None, text=None, style=None,
             'mode': 'text',
             'text': txt['text'],
             'textposition': txt.get('position', 'top'),
+            'textfont': txt.get('font', {}),
             'visible': txt.get('visible', True),
         }
         d = {

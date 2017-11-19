@@ -1,19 +1,3 @@
-<< << << < HEAD
-== == == =
-import numpy as np
-import os
-import atsim.plotting as plotting
-from plotly import graph_objs
-from plotly.offline import plot, iplot, init_notebook_mode
-from atsim.structure.crystal import CrystalBox, CrystalStructure
-from atsim.structure import REF_PATH
-from atsim import geometry, vectors, readwrite, utils, mathsutils
-from atsim.utils import prt
-from atsim.simsio.lammps import get_LAMMPS_compatible_box
-from mendeleev import element
-
-from functools import reduce
->>>>>> > master
 import warnings
 import spglib
 from mendeleev import element
@@ -851,7 +835,6 @@ class PointDefect(object):
         The atom or interstitial site index within the AtomisticStructure.
     charge : float
         The defect's electronic charge relative to that of the site it occupies.
-        site_current_charge - site_prev_charge = charge
     interstice_type : str
         Set to "tetrahedral" or "octahedral" if `host_species` is "i".
 

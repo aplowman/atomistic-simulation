@@ -291,8 +291,6 @@ def visualise(structure, show_iplot=False, save=False, save_args=None, plot_2d='
                 'colour': crystal_cols[c_idx],
             })
 
-        print('structure.symmetry_ops: {}'.format(structure.symmetry_ops))
-
         # Add a symmetry operation
         if hasattr(structure, 'symmetry_ops'):
             if structure.symmetry_ops:

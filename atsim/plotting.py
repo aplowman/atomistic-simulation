@@ -1431,14 +1431,8 @@ def add_contour_trace_mpl(fig, ax, x, y, z, name, options=None):
         col_idx = np.array(options['col_idx'])
         grid_shape = np.array(options['grid_shape'])
 
-        # print('grid_shape: {}'.format(grid_shape))
-
         if grid_shape.shape[1] != 2:
             raise ValueError('`grid_shape` has an unexpected shape.')
-
-        # print('xa: {}'.format(xa))
-        # print('ya: {}'.format(ya))
-        # print('za: {}'.format(za))
 
         # Check shapes:
         required = [options['grid_shape'], options['row_idx'],
@@ -1579,10 +1573,6 @@ def plot_geometry_plotly(points=None, boxes=None, text=None, style=None,
         if plot_dirs == [2]:
             dirs_2d = (None, None, (0, 1),)
             ax_lab_2d = (None, None, ('x', 'y'))
-
-    # print('plot_dirs: {}'.format(plot_dirs))
-    # print('dirs_2d: {}'.format(dirs_2d))
-    # print('ax_lab_2d: {}'.format(ax_lab_2d))
 
     style = set_dict_def(STYLE_DEF, style)
 

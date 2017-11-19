@@ -375,8 +375,6 @@ def validate_ms_base_structure(opt, opt_lookup):
     if '<<lookup>>' in opt:
         opt = get_base_structure_defn(opt, opt_lookup)
 
-    print('opt: {}'.format(opt))
-
     allowed_keys_all = [
         'type',
         'overlap_tol',
@@ -554,19 +552,6 @@ def validate_ms_crystal_structures(opt, opt_lookup):
         return valid_lat
 
     def validate_motif(motif_opt):
-        # allowed_keys = [
-        #     'atom_sites',
-        #     'species',
-        # ]
-        # check_invalid_key(motif_opt, allowed_keys)
-        # valid_motif = copy.deepcopy(motif_opt)
-
-        # # Convert atom_sites to a numpy array:
-        # as_floats = [[parse_string_as(j, float) for j in i]
-        #              for i in valid_motif['atom_sites']]
-        # valid_motif['atom_sites'] = np.array(as_floats)
-
-        # return valid_motif
 
         allowed_keys = [
             'atoms',
@@ -581,8 +566,6 @@ def validate_ms_crystal_structures(opt, opt_lookup):
 
             sts = [[parse_string_as(j, float) for j in i] for i in v['sites']]
             valid_motif[k]['sites'] = np.array(sts)
-
-        print('valid_motif: {}'.format(valid_motif))
 
         return valid_motif
 

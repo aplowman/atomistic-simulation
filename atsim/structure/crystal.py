@@ -255,8 +255,6 @@ class CrystalBox(Crystal):
             box_vecs, bound_vecs=lat_vecs, padding=1)
         box_vecs_inv = np.linalg.inv(box_vecs)
 
-        prt(bounding_box, 'bounding_box')
-
         bb = bounding_box['bound_box'][0]
         bb_org = bounding_box['bound_box_origin'][:, 0]
         bb_bv = bounding_box['bound_box_bv'][:, 0]

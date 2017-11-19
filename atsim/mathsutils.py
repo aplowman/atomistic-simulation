@@ -83,3 +83,52 @@ def fit_quad(x, y):
 
 def linear(x, m=1, c=0):
     return m * x + c
+
+
+def get_cell_parameters(cell_vectors, degrees=False):
+    """
+    Find the cell parameters a, b, c, α, β, γ from cell column vectors.
+
+    Parameters
+    ----------
+    cell_vectors : ndarray of shape (3, 3)
+        Array of three column vectors representing the edge vectors
+        of a cell.
+    degrees : bool, optional
+        If True, return the angle parameters α, β and γ in degrees. If
+        False, return in radians.
+
+    Returns
+    -------
+    dict of (str : float)
+        Cell parameters.
+
+    """
+
+    if cell_vectors.shape != (3, 3):
+        raise ValueError('`cell_vectors` must be an ndarray of shape '
+                         '(3, 3) whose columns represent cell edge '
+                         'vectors.')
+
+    a, b, c = np.linalg.norm(cell_vectors, axis=0)
+
+    α = np.arccos(np.dot(cell_vectors[:, 1],
+                         cell_vectors[:, 2]) / (b * c))
+    β = np.arccos(np.dot(cell_vectors[:, 0],
+                         cell_vectors[:, 2]) / (a * c))
+    γ = np.arccos(np.dot(cell_vectors[:, 0],
+                         cell_vectors[:, 1]) / (a * b))
+
+    if degrees:
+        α, β, γ = np.rad2deg([α, β, γ])
+
+    ret = {
+        'a': a,
+        'b': b,
+        'c': c,
+        'α': α,
+        'β': β,
+        'γ': γ,
+    }
+
+    return ret

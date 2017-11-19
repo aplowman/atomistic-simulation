@@ -2,7 +2,7 @@ import numpy as np
 import os
 from atsim.structure.bravais import BravaisLattice
 from atsim.structure.visualise import visualise as struct_visualise
-from atsim import geometry, vectors, readwrite, REF_PATH, plotting, utils
+from atsim import geometry, vectors, readwrite, REF_PATH, plotting, utils, mathsutils
 from atsim.simsio import castep
 from beautifultable import BeautifulTable
 from atsim.utils import prt
@@ -335,11 +335,10 @@ class CrystalStructure(object):
     atom_sites_frac : ndarray of shape (3, M)
 
     TODO: finish/correct docstring
-    TODO: update from_file to work with species/species_idx
 
     """
     @classmethod
-    def from_file(cls, path, lattice_system, centring_type=None, filetype='.cell'):
+    def from_file(cls, path, lattice_system, centring_type=None, motif=None, filetype='.cell'):
         """
         Get bravais_lattice and motif from a file.
 
@@ -358,6 +357,18 @@ class CrystalStructure(object):
             the rhomboherally-centred centring type (for the rhombohedral lattice
             system) or primitive centring type (for all other lattice systems) will
             be chosen.
+        motif : dict, optional
+            Additional sites and optional labels to add to the CrystalStructure.
+            For instance:
+            `interstices`: {
+                `sites`: <array of column vectors of fractional coordinates of sites>,
+                `labels`: {
+                    <label_name>: (
+                        <array of unique label values>, 
+                        <array of label value indices>,
+                    )
+                }
+            }
         filetype : string
             Type of file provided [default: .cell from castep]
 
@@ -367,19 +378,32 @@ class CrystalStructure(object):
 
         """
         if filetype == '.cell':
-            latt_data = castep.read_cell_file(path)
+            file_data = castep.read_castep_cell_file(path, ret_frac=True)
         else:
             raise NotImplementedError(
                 'File type "{}" is not supported.'.format(filetype))
 
-        params = dict(zip(['a', 'b', 'c', 'α', 'β', 'γ'],
-                          latt_data['latt_params']))
+        cell_params = mathsutils.get_cell_parameters(file_data['supercell'])
+        bl_params = {
+            'lattice_system': lattice_system,
+            'centring_type': centring_type,
+            'degrees': False,
+            **cell_params,
+        }
+        bl = BravaisLattice(**bl_params)
 
-        bl = BravaisLattice(lattice_system, centring_type=centring_type,
-                            **params, degrees=False)
-        motif = latt_data['motif']
+        all_motif = {
+            'atoms': {
+                'sites': file_data['atom_sites'],
+                'labels': {
+                    'species': (file_data['species'], file_data['species_idx'])
+                }
+            }
+        }
+        if motif is not None:
+            all_motif.update(**motif)
 
-        return cls(bl, motif)
+        return cls(bl, all_motif)
 
     def _validate_motif(self, motif):
         """Validate the motif dict."""

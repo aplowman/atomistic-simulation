@@ -1325,6 +1325,109 @@ def read_castep_geom_file(geom_path):
     return out
 
 
+def read_castep_cell_file(cell_path, ret_frac=False):
+    """
+    Parse a CASTEP cell file to get the atom positions and supercell.
+
+    Parameters
+    ----------
+    cell_path : str
+        File name of cell file.
+    ret_frac : bool, optional
+        If True, atoms are returned in fractional coordinates.
+
+    Returns
+    -------
+    dict of (str : ndarray)
+        supercell : ndarray of float of shape (3, 3)
+            Supercell column vectors.
+        atoms : ndarray of float of shape (3, N)
+            Atom coordinates in either a Cartesian or fractional basis.
+        species : ndarray of str of shape (M,)
+            String array of the unique chemical symbols of the atoms.
+        species_idx : ndarray of int of shape (N,)
+            Array which maps each atom site to a chemical symbol in `species`.
+
+    """
+
+    # Get atom positions and supercell
+    atoms = np.empty((3, 56))
+    atom_idx = 0
+    atom_sp = []
+    atom_sp_idx = []
+    supercell = np.empty((3, 3))
+    sup_idx = 0
+
+    with open(fname, 'r') as f:
+
+        parse_atoms_frac = False
+        parse_atoms_abs = False
+        parse_supercell = False
+        is_frac = True
+
+        for ln in f:
+
+            ln = ln.strip()
+
+            if parse_atoms_frac or parse_atoms_abs:
+
+                if ln.upper() in ['%ENDBLOCK POSITIONS_FRAC',
+                                  '%ENDBLOCK POSITIONS_ABS']:
+                    parse_atoms_frac = False
+                    parse_atoms_abs = False
+                    continue
+
+                ln_s = ln.split()
+                ats = [float(i) for i in ln_s[1:]]
+                atoms[:, atom_idx] = ats
+
+                if ln_s[0] not in atom_sp:
+                    atom_sp.append(ln_s[0])
+
+                atom_sp_idx.append(atom_sp.index(ln_s[0]))
+                atom_idx += 1
+
+            elif parse_supercell:
+
+                if ln.upper() == '%ENDBLOCK LATTICE_CART':
+                    parse_supercell = False
+                    continue
+
+                ln_s = ln.split()
+                try:
+                    sp = [float(i) for i in ln_s]
+                except ValueError:
+                    continue
+
+                supercell[:, sup_idx] = sp
+                sup_idx += 1
+
+            elif ln.upper() == '%BLOCK POSITIONS_FRAC':
+                parse_atoms_frac = True
+
+            elif ln.upper() == '%BLOCK POSITIONS_ABS':
+                parse_atoms_abs = True
+                is_frac = False
+
+            elif ln.upper() == '%BLOCK LATTICE_CART':
+                parse_supercell = True
+
+    if is_frac and not ret_frac:
+        atoms = np.dot(supercell, atoms)
+
+    if not is_frac and ret_frac:
+        atoms = np.dot(np.linalg.inv(supercell), atoms)
+
+    ret = {
+        'atoms': atoms,
+        'supercell': supercell,
+        'species': np.array(atom_sp),
+        'species_idx': np.array(atom_sp_idx),
+    }
+
+    return ret
+
+
 def read_cell_file(cellfile):
     """
     Read data from a castep .cell file.

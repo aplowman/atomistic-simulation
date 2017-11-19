@@ -6,6 +6,7 @@ from atsim.structure.atomistic import AtomisticStructure
 from atsim import vectors, mathsutils
 from atsim.structure.crystal import CrystalBox
 from atsim.structure import gbhelper
+from atsim.utils import prt
 
 
 CSL_FROM_PARAMS_GB_TYPES = {
@@ -320,9 +321,6 @@ class Bicrystal(AtomisticStructure):
         `shift` is a 2 element array whose elements are the
         relative shift in fractional coords of the boundary area.
 
-        TODO:
-        -   Also apply to lattice sites
-
         """
 
         sup_type = self.meta['supercell_type']
@@ -366,15 +364,31 @@ class Bicrystal(AtomisticStructure):
         shift_gb[bi] = shift[:, np.newaxis]
         shift_std = np.dot(grn_sh['crystal'], shift_gb)
 
-        # Translate shifted grain atoms:
-        as_shift = np.copy(self.atom_sites)
-        as_shift[:, np.where(self.crystal_idx == sh_idx)[0]] += shift_std
+        # Translate shifted grain sites:
+        atm_shiftd = np.copy(self.atom_sites)
+        atm_crys_lab = self.atom_labels['crystal_idx']
+        atm_crys_idx = atm_crys_lab[0][atm_crys_lab[1]]
+        atm_shiftd[:, np.where(atm_crys_idx == sh_idx)[0]] += shift_std
+        self.atom_sites = atm_shiftd
+
+        if self.lattice_sites is not None:
+            lat_shiftd = np.copy(self.lattice_sites)
+            lat_crys_lab = self.lattice_labels['crystal_idx']
+            lat_crys_idx = lat_crys_lab[0][lat_crys_lab[1]]
+            lat_shiftd[:, np.where(lat_crys_idx == sh_idx)[0]] += shift_std
+            self.lattice_sites = lat_shiftd
+
+        if self.interstice_sites is not None:
+            int_shiftd = np.copy(self.interstice_sites)
+            int_crys_lab = self.interstice_labels['crystal_idx']
+            int_crys_idx = int_crys_lab[0][int_crys_lab[1]]
+            int_shiftd[:, np.where(int_crys_idx == sh_idx)[0]] += shift_std
+            self.interstice_sites = int_shiftd
 
         # Translate shifted grain origin:
         grn_sh_org_shift = grn_sh['origin'] + shift_std
 
         # Update attributes:
-        self.atom_sites = as_shift
         self.crystals[sh_idx].update({
             'origin': grn_sh_org_shift
         })
@@ -629,17 +643,21 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
     atom_sites = np.hstack((crys_a.atom_sites, crys_b.atom_sites))
     lattice_sites = np.hstack((crys_a.lattice_sites, crys_b.lattice_sites))
 
-    crystal_idx = np.array([0] * crys_a.atom_sites.shape[1] +
-                           [1] * crys_b.atom_sites.shape[1])
-    cry_idx_dict = {'crystal_idx': (np.array([0, 1]), crystal_idx)}
+    atm_crystal_idx = np.array([0] * crys_a.atom_sites.shape[1] +
+                               [1] * crys_b.atom_sites.shape[1])
+    atm_cry_idx_dict = {'crystal_idx': (np.array([0, 1]), atm_crystal_idx)}
 
-    atom_labels = {**cry_idx_dict}
+    atom_labels = {**atm_cry_idx_dict}
     for k, v in crys_a.atom_labels.items():
         atom_labels.update({
             k: (v[0], np.hstack((v[1], crys_b.atom_labels[k][1])))
         })
 
-    lat_labels = {**cry_idx_dict}
+    lat_crystal_idx = np.array([0] * crys_a.lattice_sites.shape[1] +
+                               [1] * crys_b.lattice_sites.shape[1])
+    lat_cry_idx_dict = {'crystal_idx': (np.array([0, 1]), lat_crystal_idx)}
+
+    lat_labels = {**lat_cry_idx_dict}
     for k, v in crys_a.lattice_labels.items():
         lat_labels.update({
             k: (v[0], np.hstack((v[1], crys_b.lattice_labels[k][1])))
@@ -647,40 +665,18 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
 
     int_sites, int_labels = None, None
     if crys_a.interstice_sites is not None:
+
+        int_crystal_idx = np.array([0] * crys_a.interstice_sites.shape[1] +
+                                   [1] * crys_b.interstice_sites.shape[1])
+        int_cry_idx_dict = {'crystal_idx': (np.array([0, 1]), int_crystal_idx)}
+
         int_sites = np.hstack(
             (crys_a.interstice_sites, crys_b.interstice_sites))
-        int_labels = {**cry_idx_dict}
+        int_labels = {**int_cry_idx_dict}
         for k, v in crys_a.interstice_labels.items():
             int_labels.update({
                 k: (v[0], np.hstack((v[1], crys_b.interstice_labels[k][1])))
             })
-
-    # # Get atom and lattice sites from crystal boxes:
-    # as_a = crys_a.atom_sites
-    # ls_a = crys_a.lattice_sites
-    # in_a = crys_a.interstice_sites
-
-    # as_b = crys_b.atom_sites
-    # ls_b = crys_b.lattice_sites
-    # in_b = crys_a.interstice_sites
-
-    # # Rotate crystal B onto A:
-    # as_b_rot = np.dot(rot_mat, as_b)
-    # ls_b_rot = np.dot(rot_mat, ls_b)
-    # grn_b_rot_std = np.dot(rot_mat, grn_b_std)
-
-    # # Shift crystals to form a supercell at the origin
-    # zs_std = - grn_b_rot_std[:, NBI:NBI + 1]
-    # as_a_zs = as_a + zs_std
-    # as_b_zs = as_b_rot + zs_std
-    # ls_a_zs = ls_a + zs_std
-    # ls_b_zs = ls_b_rot + zs_std
-
-    # crystal_idx = np.array([0] * as_a_zs.shape[1] + [1] * as_b_zs.shape[1])
-    # lat_crystal_idx = np.array(
-    #     [0] * ls_a_zs.shape[1] + [1] * ls_b_zs.shape[1])
-    # atom_sites = np.hstack([as_a_zs, as_b_zs])
-    # lattice_sites = np.hstack([ls_a_zs, ls_b_zs])
 
     # Define the supercell:
     sup_std = np.copy(crys_a.box_vecs)
@@ -702,9 +698,6 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
             'cs_origin': [0, -1, 0]
         }
     ]
-
-    # species_idx = np.hstack([crys_a.species_idx, crys_b.species_idx])
-    # motif_idx = np.hstack([crys_a.motif_idx, crys_b.motif_idx])
 
     # AtomisticStructure parameters
     as_params = {
@@ -757,8 +750,6 @@ def csl_bulk_bicrystal_from_parameters(crystal_structure, csl_vecs,
         'reorient': reorient,
         'wrap': False,
     }
-
-    print('bc_params: \n{}\n'.format(bc_params))
 
     bc = csl_bicrystal_from_parameters(**bc_params)
     bc.meta.update({'supercell_type': ['bulk', 'bulk_bicrystal']})

@@ -338,7 +338,7 @@ class CrystalStructure(object):
     """
     @classmethod
     def from_file(cls, path, lattice_system, centring_type=None,
-                  filetype='.cell', coordtype='frac'):
+                  filetype='.cell'):
         """
         Get bravais_lattice and motif from a file.
 
@@ -359,16 +359,14 @@ class CrystalStructure(object):
             be chosen.
         filetype : string
             Type of file provided [default: .cell from castep]
-        coordtype : string
-            Type of coordinates: 'abs' (absolute) or 'frac' (fractional, default)
-
+            
         Notes
         -----
         Only works for .cell files.
 
         """
         if filetype == '.cell':
-            latt_data = castep.read_cell_file(path, coordtype)
+            latt_data = castep.read_cell_file(path)
         else:
             raise NotImplementedError(
                 'File type "{}" is not supported.'.format(filetype))

@@ -620,8 +620,8 @@ def get_species_key_idx(species_str):
     -------
     species_key : list of str
         List of unique species present.
-    species_idx : list of str
-        List of length n, containing indices according to `species_key` for
+    species_idx : ndarray of int
+        Array of length n, containing indices according to `species_key` for
         each atom as ordered in `species_str `.
 
     """
@@ -629,7 +629,7 @@ def get_species_key_idx(species_str):
     # Species convert string to number according to dictionary
     species_key = reduce(
         lambda l, x: l if x in l else l + [x], species_str, [])
-    species_idx = np.zeros([len(species_str)])
+    species_idx = np.zeros([len(species_str)], dtype=int)
     for i, atom in enumerate(species_str):
         species_idx[i] = species_key.index(atom)
 

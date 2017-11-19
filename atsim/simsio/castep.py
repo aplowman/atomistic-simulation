@@ -1327,7 +1327,7 @@ def read_castep_geom_file(geom_path):
 
 def read_castep_cell_file(cell_path, ret_frac=False):
     """
-    Parse a CASTEP cell file to get the atom positions and supercell.
+    Parse a CASTEP cell file to get the atom positions, species and supercell.
 
     Parameters
     ----------
@@ -1351,14 +1351,13 @@ def read_castep_cell_file(cell_path, ret_frac=False):
     """
 
     # Get atom positions and supercell
-    atoms = np.empty((3, 56))
-    atom_idx = 0
+    atoms = []
     atom_sp = []
     atom_sp_idx = []
     supercell = np.empty((3, 3))
     sup_idx = 0
 
-    with open(fname, 'r') as f:
+    with open(cell_path, 'r') as f:
 
         parse_atoms_frac = False
         parse_atoms_abs = False
@@ -1379,13 +1378,12 @@ def read_castep_cell_file(cell_path, ret_frac=False):
 
                 ln_s = ln.split()
                 ats = [float(i) for i in ln_s[1:]]
-                atoms[:, atom_idx] = ats
+                atoms.append(ats)
 
                 if ln_s[0] not in atom_sp:
                     atom_sp.append(ln_s[0])
 
                 atom_sp_idx.append(atom_sp.index(ln_s[0]))
-                atom_idx += 1
 
             elif parse_supercell:
 
@@ -1412,14 +1410,15 @@ def read_castep_cell_file(cell_path, ret_frac=False):
             elif ln.upper() == '%BLOCK LATTICE_CART':
                 parse_supercell = True
 
+    atoms = np.array(atoms).T
+
     if is_frac and not ret_frac:
         atoms = np.dot(supercell, atoms)
-
-    if not is_frac and ret_frac:
+    elif not is_frac and ret_frac:
         atoms = np.dot(np.linalg.inv(supercell), atoms)
 
     ret = {
-        'atoms': atoms,
+        'atom_sites': atoms,
         'supercell': supercell,
         'species': np.array(atom_sp),
         'species_idx': np.array(atom_sp_idx),

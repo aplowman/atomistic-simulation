@@ -1210,6 +1210,10 @@ def make_crystal_structures(cs_opt):
                 'path': cs_defn['path'],
                 **cs_defn['lattice'],
             })
+            if cs_defn.get('motif') is not None:
+                cs_params.update({
+                    'motif': cs_defn['motif'],
+                })
             cs.append(CrystalStructure.from_file(**cs_params))
 
         else:
@@ -1494,7 +1498,8 @@ def main(opt):
                 'save_args': save_args,
                 'show_iplot': False,
                 'save': True,
-                'group_atoms_by': ['species', 'crystal_idx', 'species_count']
+                'group_atoms_by': ['species', ]
+                # 'crystal_idx', 'species_count']
             }
             base_as.visualise(**vs_opts)
 

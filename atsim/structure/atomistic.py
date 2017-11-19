@@ -780,12 +780,11 @@ class BulkCrystal(AtomisticStructure):
         cb = CrystalBox(crystal_structure, supercell)
         atom_sites = cb.atom_sites
         lattice_sites = cb.lattice_sites
-        interstice_sites = cb.interstice_sites
 
         crystal_idx_lab = {
             'crystal_idx': (
                 np.array([0]),
-                np.zeros(atom_sites.shape[1])
+                np.zeros(atom_sites.shape[1], dtype=int)
             ),
         }
 
@@ -795,8 +794,10 @@ class BulkCrystal(AtomisticStructure):
         lattice_labels = copy.deepcopy(cb.lattice_labels)
         lattice_labels.update({**crystal_idx_lab})
 
-        interstice_labels = copy.deepcopy(cb.interstice_labels)
-        interstice_labels.update({**crystal_idx_lab})
+        int_sites, int_labels = None, None
+        if cb.interstice_sites is not None:
+            int_labels = copy.deepcopy(cb.interstice_labels)
+            int_labels.update({**crystal_idx_lab})
 
         crystals = [{
             'crystal': supercell,
@@ -811,8 +812,8 @@ class BulkCrystal(AtomisticStructure):
                          atom_labels,
                          lattice_sites=lattice_sites,
                          lattice_labels=lattice_labels,
-                         interstice_sites=interstice_sites,
-                         interstice_labels=interstice_labels,
+                         interstice_sites=int_sites,
+                         interstice_labels=int_labels,
                          crystals=crystals,
                          crystal_structures=[crystal_structure])
 

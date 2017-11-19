@@ -276,7 +276,7 @@ def visualise(structure, show_iplot=False, save=False, save_args=None, plot_2d='
             'edges': structure.supercell,
             'origin': structure.origin,
             'name': 'Supercell',
-            'colour': 'green',
+            'colour': '#98df8a',
         })
 
         crystal_cols = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',

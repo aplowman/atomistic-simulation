@@ -47,7 +47,7 @@ class Bicrystal(AtomisticStructure):
     """
 
     def __init__(self, as_params, maintain_inv_sym=False, reorient=False,
-                 boundary_vac=None, relative_shift_args=None,
+                 boundary_vac=None, relative_shift=None,
                  wrap=True, nbi=None, rot_mat=None):
 
         # Call parent constructor
@@ -89,8 +89,8 @@ class Bicrystal(AtomisticStructure):
             for bv in boundary_vac:
                 self.apply_boundary_vac(**bv)
 
-        if relative_shift_args is not None:
-            self.apply_relative_shift(**relative_shift_args)
+        if relative_shift is not None:
+            self.apply_relative_shift(**relative_shift)
 
         if wrap:
             self.wrap_sites_to_supercell()
@@ -133,7 +133,7 @@ class Bicrystal(AtomisticStructure):
 
         return R
 
-    def apply_boundary_vac(self, thickness, func, **kwargs):
+    def apply_boundary_vac(self, thickness, func, wrap=False, **kwargs):
         """
         Apply vacuum to the Bicrystal in the direction normal to the grain
         boundary, distributed according to a function.
@@ -313,7 +313,10 @@ class Bicrystal(AtomisticStructure):
         self.boundary_vac = new_vac_thick
         self.boundary_vac_type = new_vac_type
 
-    def apply_relative_shift(self, shift):
+        if wrap:
+            self.wrap_sites_to_supercell()
+
+    def apply_relative_shift(self, shift, wrap=False):
         """
         Apply in-boundary-plane shifts to the grain further away from the origin
         (right hand side of boundary) to explore the microscopic degrees of freedom.
@@ -407,6 +410,10 @@ class Bicrystal(AtomisticStructure):
             # Update attribute:
             self.supercell = sup_shift
 
+        if wrap:
+            print('invoking wrapping from BC apply rel shift')
+            self.wrap_sites_to_supercell()
+
     def wrap_sites_to_supercell(self, sites='all'):
         """
         Wrap atoms to within the boundary plane as defined by the supercell.
@@ -463,7 +470,7 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
                                   overlap_tol=1, reorient=True, wrap=True,
                                   maintain_inv_sym=False,
                                   boundary_vac=None,
-                                  relative_shift_args=None):
+                                  relative_shift=None):
     """
     Parameters
     ----------
@@ -719,7 +726,7 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
         'maintain_inv_sym': maintain_inv_sym,
         'reorient': reorient,
         'boundary_vac': boundary_vac,
-        'relative_shift_args': relative_shift_args,
+        'relative_shift': relative_shift,
         'wrap': wrap,
         'nbi': 2,
         'rot_mat': rot_mat,
@@ -762,8 +769,8 @@ def csl_surface_bicrystal_from_parameters(crystal_structure, csl_vecs,
                                           overlap_tol=1,
                                           reorient=True, wrap=True,
                                           maintain_inv_sym=False,
-                                          boundary_vac_args=None,
-                                          relative_shift_args=None,
+                                          boundary_vac=None,
+                                          relative_shift=None,
                                           surface_idx=0):
     """
     Parameters
@@ -783,8 +790,8 @@ def csl_surface_bicrystal_from_parameters(crystal_structure, csl_vecs,
         'reorient': reorient,
         'wrap': wrap,
         'maintain_inv_sym': maintain_inv_sym,
-        'boundary_vac_args': boundary_vac_args,
-        'relative_shift_args': relative_shift_args,
+        'boundary_vac': boundary_vac,
+        'relative_shift': relative_shift,
     }
 
     bc = csl_bicrystal_from_parameters(**bc_params)
@@ -808,8 +815,8 @@ def csl_surface_bicrystal_from_parameters(crystal_structure, csl_vecs,
 def csl_bicrystal_from_structure(csl, csl_params,
                                  overlap_tol=0.1, reorient=True,
                                  maintain_inv_sym=False,
-                                 boundary_vac_args=None,
-                                 relative_shift_args=None,
+                                 boundary_vac=None,
+                                 relative_shift=None,
                                  wrap=False):
     """
     Create a CSL Bicrystal from a structure.
@@ -870,8 +877,8 @@ def csl_bicrystal_from_structure(csl, csl_params,
         'as_params': as_params,
         'maintain_inv_sym': maintain_inv_sym,
         'reorient': reorient,
-        'boundary_vac_args': boundary_vac_args,
-        'relative_shift_args': relative_shift_args,
+        'boundary_vac': boundary_vac,
+        'relative_shift': relative_shift,
         'wrap': wrap,
         'nbi': 0,
     }

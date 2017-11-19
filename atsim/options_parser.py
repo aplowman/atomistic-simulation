@@ -387,7 +387,7 @@ def validate_ms_base_structure(opt, opt_lookup):
         'tile',
     ]
     allowed_keys_gb = [
-        'relative_shift_args',
+        'relative_shift',
         'boundary_vac',
         'wrap',
         'maintain_inv_sym',
@@ -453,6 +453,9 @@ def validate_ms_base_structure(opt, opt_lookup):
         elif k == 'import':
             valid_bs.update({k: validate_bs_import(v, opt_lookup)})
 
+        elif k == 'relative_shift':
+            valid_bs.update({k: validate_bs_rel_shift(v, opt_lookup)})
+
         elif k == 'boundary_vac':
             valid_bs.update({k: validate_ms_boundary_vac(v, opt_lookup)})
 
@@ -460,6 +463,25 @@ def validate_ms_base_structure(opt, opt_lookup):
             valid_bs.update({k: v})
 
     return valid_bs
+
+
+def validate_bs_rel_shift(opt, opt_lookup):
+
+    allowed_keys = [
+        'shift',
+        'wrap',
+    ]
+    check_invalid_key(opt, allowed_keys)
+    for k, v in opt.items():
+        if k == 'shift':
+            fail_msg = ('`relative_shift.shift` must be a list of length two.')
+            if not isinstance(v, list) or len(v) != 2:
+                raise ValueError(fail_msg)
+        elif k == 'wrap':
+            fail_msg = ('`relative_shift.wrap` must be `True` or `False`.')
+            if not isinstance(v, bool):
+                raise ValueError(fail_msg)
+    return opt
 
 
 def validate_bs_import(opt, opt_lookup):
@@ -495,10 +517,11 @@ def validate_bs_import(opt, opt_lookup):
 
 def validate_ms_boundary_vac(opt, opt_lookup):
 
+    all_allwd = ['thickness', 'func', 'wrap']
     allowed_keys = {
-        'sigmoid': ['thickness', 'func', 'sharpness'],
-        'flat': ['thickness', 'func'],
-        'linear': ['thickness', 'func'],
+        'sigmoid': all_allwd + ['sharpness'],
+        'flat': all_allwd,
+        'linear': all_allwd,
     }
 
     valid_opt = []

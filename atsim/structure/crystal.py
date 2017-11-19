@@ -41,7 +41,7 @@ class Crystal(object):
         Parameters
         ----------
         rot_mat : ndarray of shape (3, 3)
-            Rotation matrix that pre-multiplies column vectors in order to 
+            Rotation matrix that pre-multiplies column vectors in order to
             rotate them about a particular axis and angle.
 
         """
@@ -146,7 +146,7 @@ class CrystalBox(Crystal):
         Parameters
         ----------
         rot_mat : ndarray of shape (3, 3)
-            Rotation matrix that pre-multiplies column vectors in order to 
+            Rotation matrix that pre-multiplies column vectors in order to
             rotate them about a particular axis and angle.
 
         """
@@ -235,7 +235,7 @@ class CrystalBox(Crystal):
         2.  Find all sites within and on the edges/corners of that bounding
             box.
         3.  Transform sites to the box basis.
-        4.  Find valid sites, which have vector components in the interval 
+        4.  Find valid sites, which have vector components in the interval
             [0, 1] in the box basis, where the interval may be (half-)closed
             /open depending on the specified edge conditions.
 
@@ -338,7 +338,12 @@ class CrystalStructure(object):
 
     """
     @classmethod
+<< << << < HEAD
     def from_file(cls, path, lattice_system, centring_type=None, motif=None, filetype='.cell'):
+== == == =
+    def from_file(cls, path, lattice_system, centring_type=None,
+                  filetype='.cell', coordtype='frac'):
+>>>>>> > master
         """
         Get bravais_lattice and motif from a file.
 
@@ -364,13 +369,15 @@ class CrystalStructure(object):
                 `sites`: <array of column vectors of fractional coordinates of sites>,
                 `labels`: {
                     <label_name>: (
-                        <array of unique label values>, 
+                        <array of unique label values>,
                         <array of label value indices>,
                     )
                 }
             }
         filetype : string
             Type of file provided [default: .cell from castep]
+        coordtype : string
+            Type of coordinates: 'abs' (absolute) or 'frac' (fractional, default)
 
         Notes
         -----

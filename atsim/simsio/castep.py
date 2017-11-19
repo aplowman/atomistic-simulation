@@ -1428,6 +1428,9 @@ def read_castep_cell_file(cell_path, ret_frac=False):
 
 
 def read_cell_file(cellfile):
+
+
+def read_cell_file(cellfile, coordtype='frac'):
     """
     Read data from a castep .cell file.
 
@@ -1435,7 +1438,8 @@ def read_cell_file(cellfile):
     ----------
     cellfile : string
         The path and name of the .cell file to be read
-
+    coordtype : string, optional ('frac' or 'abs')
+        Fractional or absolute coordinates.
     Returns
     -------
     lattice_data : dict of (str : ndarray or list or dict)
@@ -1469,17 +1473,39 @@ def read_cell_file(cellfile):
         species_str = []
 
         for ln_i, ln in enumerate(lines):
-            if '%BLOCK lattice_cart' in ln:
-                cell_vecs[0, :] = [float(x) for x in lines[ln_i + 2].split()]
-                cell_vecs[1, :] = [float(x) for x in lines[ln_i + 3].split()]
-                cell_vecs[2, :] = [float(x) for x in lines[ln_i + 4].split()]
+            if '%BLOCK lattice_cart' in ln or '%block lattice_cart' in ln:
+                if 'ANG' in lines[ln_i + 1]:
+                    cell_vecs[0, :] = [float(x)
+                                       for x in lines[ln_i + 2].split()]
+                    cell_vecs[1, :] = [float(x)
+                                       for x in lines[ln_i + 3].split()]
+                    cell_vecs[2, :] = [float(x)
+                                       for x in lines[ln_i + 4].split()]
+                else:
+                    cell_vecs[0, :] = [float(x)
+                                       for x in lines[ln_i + 1].split()]
+                    cell_vecs[1, :] = [float(x)
+                                       for x in lines[ln_i + 2].split()]
+                    cell_vecs[2, :] = [float(x)
+                                       for x in lines[ln_i + 3].split()]
 
-            if '%BLOCK positions_frac' in ln:
-                st_i = ln_i
+            if coordtype == 'frac':
+                if '%BLOCK positions_frac' or '%block positions_frac' in ln:
+                    st_i = ln_i
 
-            if '%ENDBLOCK positions_frac' in ln:
-                end_i = ln_i
-                break
+                if '%ENDBLOCK positions_frac' or '%endblock positions_frac' in ln:
+                    end_i = ln_i
+                    break
+            elif coordtype == 'abs':
+                if '%BLOCK positions_abs' in ln or '%block positions_abs' in ln:
+                    st_i = ln_i
+
+                if '%ENDBLOCK positions_abs' in ln or '%endblock positions_abs' in ln:
+                    end_i = ln_i
+                    break
+            else:
+                raise ValueError(
+                    "Please specify correct type of coordinates: 'abs' for absolute or 'frac' for fractional")
 
         for ln in lines[st_i + 1:end_i]:
             species_str.append(ln.split()[0])

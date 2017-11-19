@@ -320,8 +320,9 @@ class AtomisticStructure(object):
         elif sites == 'interstice':
             sites_arr = [self.interstice_sites]
 
-        for s in sites_arr:
+        for s_idx in range(len(sites_arr)):
 
+            s = sites_arr[s_idx]
             if s is None:
                 continue
 
@@ -339,7 +340,7 @@ class AtomisticStructure(object):
             s_std_wrp = np.dot(self.supercell, s_sup_wrp)
 
             # Update attributes:
-            s = s_std_wrp
+            sites_arr[s_idx][:] = s_std_wrp
 
     def add_point_defects(self, point_defects):
         """

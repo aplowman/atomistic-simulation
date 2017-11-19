@@ -574,18 +574,26 @@ def validate_ms_crystal_structures(opt, opt_lookup):
 
         return valid_lat
 
-    def validate_motif(motif_opt):
+    def validate_motif(motif_opt, is_from_file):
 
         allowed_keys = [
             'atoms',
-            'interstices'
+            'interstices',
         ]
 
         check_invalid_key(motif_opt, allowed_keys)
         valid_motif = copy.deepcopy(motif_opt)
 
+        file_sites_err_msg = ('Cannot specify `motif.atoms.sites` if '
+                              '`motif.path` is also specified, since atom '
+                              'sites will be read from the specified file.')
+
         # Convert sites to arrays:
         for k, v in valid_motif.items():
+
+            if is_from_file and k == 'atoms':
+                if v.get('sites') is not None:
+                    raise ValueError(file_sites_err_msg)
 
             sts = [[parse_string_as(j, float) for j in i] for i in v['sites']]
             valid_motif[k]['sites'] = np.array(sts)
@@ -616,8 +624,15 @@ def validate_ms_crystal_structures(opt, opt_lookup):
         for k, v in cs_opt.items():
             if k == 'lattice':
                 valid_cs.update({k: validate_lattice(v)})
+
             elif k == 'motif':
-                valid_cs.update({k: validate_motif(v)})
+
+                is_from_file = False
+                if cs_opt.get('path') is not None:
+                    is_from_file = True
+
+                valid_cs.update({k: validate_motif(v, is_from_file)})
+
             else:
                 valid_cs.update({k: v})
 

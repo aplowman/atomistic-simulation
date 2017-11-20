@@ -623,6 +623,16 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
                 'series_id': {'name': sn, 'val': v, 'path': '{:.0f}'.format(v)}
             })
 
+    elif sn == 'elec_energy_tol':
+
+        for v in vals:
+
+            v = float(v)  # TODO: parse data types in option file
+            out.append({
+                'castep': {'param': {sn: '{:.1e}'.format(v)}},
+                'series_id': {'name': sn, 'val': v, 'path': '{:.1e}'.format(v)}
+            })
+
     elif sn == 'smearing_width':
 
         for v in vals:
@@ -1410,6 +1420,7 @@ def main(opt):
     """
 
     srs_is_struct = {
+        'elec_energy_tol': False,
         'kpoint': False,
         'cut_off_energy': False,
         'smearing_width': False,

@@ -11,6 +11,7 @@ VLD_SRS_NM = ['name']
 VLD_SRS_NM_VLS = VLD_SRS_NM + ['vals']
 VLD_SRS_NM_VLS_SSS = VLD_SRS_NM_VLS + ['start', 'step', 'stop']
 ALLOWED_SERIES_KEYS = {
+    'elec_energy_tol': VLD_SRS_NM_VLS_SSS,
     'gb_size': VLD_SRS_NM_VLS,
     'box_lat': VLD_SRS_NM_VLS,
     'relative_shift': VLD_SRS_NM_VLS,

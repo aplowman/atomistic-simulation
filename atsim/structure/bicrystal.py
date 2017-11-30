@@ -257,7 +257,8 @@ class Bicrystal(AtomisticStructure):
         def linear(x, m=1, c=0):
             return m * x + c
 
-        vt = vac_thickness
+        # TODO: consider how to deal with this issue.
+        vt = 2 * vac_thickness
 
         # For convenience:
         grn_a = self.crystals[0]

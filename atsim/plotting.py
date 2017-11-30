@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import copy
-from atsim import utils
+from atsim import utils, vectors
 
 # Plotly
 from plotly import tools
@@ -135,7 +135,8 @@ def get_grid_trace_plotly(vectors, grid_size, grid_origin=None, line_args=None,
 
 
 def get_3d_arrow_plotly(dir, origin, length, head_length=None,
-                        head_radius=None, stem_args=None, n_points=100):
+                        head_radius=None, stem_args=None, n_points=100,
+                        head_colour=None, opacity=None):
     """
     Get a list of Plotly traces which together represent a 3D arrow.
 
@@ -182,10 +183,15 @@ def get_3d_arrow_plotly(dir, origin, length, head_length=None,
     if stem_args.get('color') is None:
         stem_args['color'] = 'blue'
 
+    if head_colour is None:
+        head_colour = 'blue'
+
     sp = (2 * np.pi) / n_points
     θ = np.linspace(0, (2 * np.pi) - sp, n_points)
     θ_deg = np.rad2deg(θ)
-    opacity = 0.5
+
+    if opacity is None:
+        opacity = 0.5
 
     # First construct arrow head as pointing in the z-direction
     # with its base on (0,0,0)
@@ -245,7 +251,7 @@ def get_3d_arrow_plotly(dir, origin, length, head_length=None,
             'j': j,
             'k': k,
             'hoverinfo': 'none',
-            'color': 'blue',
+            'color': head_colour,
             'opacity': opacity,
         },
         {
@@ -257,7 +263,7 @@ def get_3d_arrow_plotly(dir, origin, length, head_length=None,
             'j': j,
             'k': k,
             'hoverinfo': 'none',
-            'color': 'blue',
+            'color': head_colour,
             'opacity': opacity,
         },
         {

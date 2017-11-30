@@ -1379,10 +1379,10 @@ def read_cell_file(cellfile, coordtype='frac'):
                     cell_vecs[2, :] = [float(x) for x in lines[ln_i + 3].split()]
 
             if coordtype == 'frac':
-                if '%BLOCK positions_frac' or '%block positions_frac' in ln:
+                if '%BLOCK positions_frac' in ln or '%block positions_frac' in ln:
                     st_i = ln_i
 
-                if '%ENDBLOCK positions_frac' or '%endblock positions_frac' in ln:
+                if '%ENDBLOCK positions_frac' in ln or '%endblock positions_frac' in ln:
                     end_i = ln_i
                     break
             elif coordtype == 'abs':

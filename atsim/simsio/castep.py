@@ -186,7 +186,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
     species_idx = utils.parse_as_int_arr(species_idx)
     if species_idx.min() < 0 or species_idx.max() > (atom_sites.shape[1] - 1):
-        raise IndexError('`species_idx` must index `atom_sites`'.format(k))
+        raise IndexError('`species_idx` must index `atom_sites`')
 
     for k, v in atom_constraints.items():
 

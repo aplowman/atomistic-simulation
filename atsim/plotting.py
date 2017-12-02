@@ -2,7 +2,7 @@ import numpy as np
 import os
 import copy
 from atsim import utils
-import geometry
+from atsim import geometry
 
 # Plotly
 from plotly import tools

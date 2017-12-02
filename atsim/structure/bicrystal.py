@@ -127,14 +127,15 @@ class Bicrystal(AtomisticStructure):
     def reorient_to_xy(self):
         """
         Reorient the supercell to a LAMMPS-compatible orientation in such a 
-        way that the boundary plane is xy.
+        way that the boundary plane is in the xy plane.
 
         """
 
         # Reorient so the boundary plane is in xy
         if self.non_boundary_idx != 2:
 
-            # Ensure non-boundary supercell vector is last vector
+            # Ensure non-boundary supercell vector is last vector, whilst
+            # maintaining handedness of the supercell coordinate system.
             self.supercell = np.roll(self.supercell,
                                      (2 - self.non_boundary_idx), axis=1)
 

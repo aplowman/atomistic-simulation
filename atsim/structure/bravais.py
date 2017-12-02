@@ -237,6 +237,8 @@ class BravaisLattice(object):
         β_rad = np.deg2rad(β)
         γ_rad = np.deg2rad(γ)
 
+        align_opt = ['ax', 'cz']
+
         if align == 'ax':
             a_x = self.a
             b_x = self.b * np.cos(γ_rad)
@@ -266,6 +268,10 @@ class BravaisLattice(object):
                 [0,   b_y, b_z],
                 [0,     0, c_z]
             ]).T
+        else:
+            raise ValueError('"{}" is not a valid axes alignment option. '
+                             '`align` must be one of: {}.'.format(
+                                 align, align_opt))
         self.vecs = vectors.snap_arr_to_val(vecs, 0, 1e-14)
 
         # Set lattice sites for the specified centring type:

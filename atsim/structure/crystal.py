@@ -338,7 +338,8 @@ class CrystalStructure(object):
 
     """
     @classmethod
-    def from_file(cls, path, lattice_system, centring_type=None, motif=None, filetype='.cell'):
+    def from_file(cls, path, lattice_system, centring_type=None, motif=None,
+                  filetype='.cell', align='cz'):
         """
         Get bravais_lattice and motif from a file.
 
@@ -371,6 +372,9 @@ class CrystalStructure(object):
             }
         filetype : string
             Type of file provided [default: .cell from castep]
+        align : string
+            Alignment of a crystallographic axis with a Cartesian axis. 
+            Implemented options: 'ax' and 'cz'.
 
         Notes
         -----
@@ -382,12 +386,13 @@ class CrystalStructure(object):
         else:
             raise NotImplementedError(
                 'File type "{}" is not supported.'.format(filetype))
-
+        
         cell_params = mathsutils.get_cell_parameters(file_data['supercell'])
         bl_params = {
             'lattice_system': lattice_system,
             'centring_type': centring_type,
             'degrees': False,
+            'align': align,
             **cell_params,
         }
         bl = BravaisLattice(**bl_params)

@@ -80,10 +80,6 @@ class Bicrystal(AtomisticStructure):
         self.relative_shift = [0, 0]
         self.rot_mat = rot_mat
 
-        # Invoke additional methods:
-        if reorient:
-            self.reorient_to_lammps()
-
         # TODO: don't allow application of multiple GB vacs? or maybe it's OK.
         if boundary_vac_args is not None:
             self.apply_boundary_vac(**boundary_vac_args)
@@ -99,6 +95,9 @@ class Bicrystal(AtomisticStructure):
 
         if wrap:
             self.wrap_atoms_to_supercell()
+        # Invoke additional methods:
+        if reorient:
+            self.reorient_to_lammps()
 
     @property
     def bicrystal_thickness(self):

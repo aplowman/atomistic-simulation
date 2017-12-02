@@ -179,6 +179,11 @@ class AtomisticStructure(object):
 
         self.check_overlapping_atoms(overlap_tol)
 
+        # Check handedness:
+        if self.volume < 0:
+            raise ValueError('Supercell does not form a right - handed '
+                             'coordinate system.')
+
     def translate(self, shift):
         """
         Translate the AtomisticStructure.
@@ -752,6 +757,12 @@ class AtomisticStructure(object):
         for chk, func in allowed_checks.items():
             if chk in checks_list:
                 func()
+
+    @property
+    def volume(self):
+        """Get the volume of the supercell."""
+        sup = self.supercell
+        return np.dot(np.cross(sup[:, 0], sup[: 1]), sup[: 2])
 
 
 class BulkCrystal(AtomisticStructure):

@@ -84,7 +84,7 @@ class Bicrystal(AtomisticStructure):
 
         # Invoke additional methods:
         if reorient:
-            self.reorient_to_lammps()
+            self.reorient_to_xy()
 
         if boundary_vac is not None:
             for bv in boundary_vac:
@@ -124,7 +124,22 @@ class Bicrystal(AtomisticStructure):
         """
         return np.einsum('jk,jl->k', points, self.n_unit)
 
-    def reorient_to_lammps(self):
+    def reorient_to_xy(self):
+        """
+        Reorient the supercell to a LAMMPS-compatible orientation in such a 
+        way that the boundary plane is xy.
+
+        """
+
+        # Reorient so the boundary plane is in xy
+        if self.non_boundary_idx != 2:
+
+            # Ensure non-boundary supercell vector is last vector
+            self.supercell = np.roll(self.supercell,
+                                     (2 - self.non_boundary_idx), axis=1)
+
+            self.non_boundary_idx = 2
+            self.boundary_idx = [0, 1]
 
         R = super().reorient_to_lammps()
 
@@ -813,11 +828,10 @@ def csl_surface_bicrystal_from_parameters(crystal_structure, csl_vecs,
     return bc
 
 
-
-def mon_bicrystal_180_u0w(crystal_structure, gb_params, overlap_tol=0.1, 
-                            reorient=True, maintain_inv_sym=False,
-                            boundary_vac=None, relative_shift=None,
-                            wrap=False):
+def mon_bicrystal_180_u0w(crystal_structure, gb_params, overlap_tol=0.1,
+                          reorient=True, maintain_inv_sym=False,
+                          boundary_vac=None, relative_shift=None,
+                          wrap=False):
     """
     Construct a 180° [u0w] twin monoclinic boundary.
 
@@ -864,28 +878,27 @@ def mon_bicrystal_180_u0w(crystal_structure, gb_params, overlap_tol=0.1,
     -------
     Bicrystal
     """
-    
+
     gb_params_def = {
-        'repeats': [3, 1, 1], 
+        'repeats': [3, 1, 1],
         'bound_vac': 0.0,
         'transls': [0.0, 0.0],
         'term_plns': None
-        }
-    
+    }
+
     gb_params = {**gb_params_def, **gb_params}
     gb_params_req = ['uvw_vecs']
-    
+
     for p in gb_params_req:
         if p not in gb_params:
             raise ValueError('Missing key in `gb_params`: {}'.format(p))
-    
+
     # Get parameters from dict
-    uvw_vecs= gb_params['uvw_vecs']
-    repeats= gb_params['repeats']
-    bound_vac= gb_params['bound_vac']
-    transls= gb_params['transls']
-    term_plns= gb_params['term_plns']
-    
+    uvw_vecs = gb_params['uvw_vecs']
+    repeats = gb_params['repeats']
+    bound_vac = gb_params['bound_vac']
+    transls = gb_params['transls']
+    term_plns = gb_params['term_plns']
 
     # Boundary parameters
     # Numbers of unit cell repeats for each half of bicrystal
@@ -905,14 +918,14 @@ def mon_bicrystal_180_u0w(crystal_structure, gb_params, overlap_tol=0.1,
         term_plane_a = term_plns[0]
         term_plane_b = term_plns[1]
 
-        
+
 #     Read in data for input structure and set up cell, pos_f, species, natoms
 #     lat_data = castep.read_cell_file(cellfile)
 
     # Non-primitive lattice
     uvw_vecs = np.array(uvw_vecs)
-    nonprim_latt = gbhelper.create_nonprimitive_unitcell(uvw_vecs, 
-                                                         crystal_structure, 
+    nonprim_latt = gbhelper.create_nonprimitive_unitcell(uvw_vecs,
+                                                         crystal_structure,
                                                          abs_coord=False)
     cell = nonprim_latt[0]
     pos_f = nonprim_latt[1]
@@ -923,15 +936,15 @@ def mon_bicrystal_180_u0w(crystal_structure, gb_params, overlap_tol=0.1,
     # Translate atoms based on termination planes for grains `a` and `b`.
     pos_f_a = np.zeros((natoms, 3))
     pos_f_b = np.zeros((natoms, 3))
-    
+
     if term_plns:
         pos_f_a = term_h00(pos_f, plane=term_plane_a)
         pos_f_b = term_h00(pos_f, plane=term_plane_b)
     else:
         pos_f_a = np.copy(pos_f)
         pos_f_b = np.copy(pos_f)
-        
-    pos_a_a = gbhelper.frac2abs(cell, pos_f_a) 
+
+    pos_a_a = gbhelper.frac2abs(cell, pos_f_a)
     pos_a_b = gbhelper.frac2abs(cell, pos_f_b)
 
     # Rotation matrix
@@ -1011,18 +1024,18 @@ def mon_bicrystal_180_u0w(crystal_structure, gb_params, overlap_tol=0.1,
 
     atom_labels = {
         'species': (np.array(species_key), np.concatenate((species_gb_x, species_gb_x))),
-        'crystal_idx':(np.array([0, 1]), crystals_idx)
-                  }
+        'crystal_idx': (np.array([0, 1]), crystals_idx)
+    }
 
     # AtomisticStructure parameters
     as_params = {
         'supercell': supercell.T,
         'atom_sites': np.concatenate((pos_gb_a, pos_gb_b)).T,
         'atom_labels': atom_labels,
-#         'lattice_sites': lattice_sites,
-#         'lattice_labels': lat_labels,
-#         'interstice_sites': int_sites,
-#         'interstice_labels': int_labels,
+        #         'lattice_sites': lattice_sites,
+        #         'lattice_labels': lat_labels,
+        #         'interstice_sites': int_sites,
+        #         'interstice_labels': int_labels,
         'crystals': crystals,
         'crystal_structures': [crystal_structure],
         'overlap_tol': overlap_tol,
@@ -1037,8 +1050,7 @@ def mon_bicrystal_180_u0w(crystal_structure, gb_params, overlap_tol=0.1,
         'relative_shift': relative_shift,
         'wrap': wrap,
         'nbi': 0,
-#         'rot_mat': rot_mat, what is this?
+        #         'rot_mat': rot_mat, what is this?
     }
-    
-    
+
     return Bicrystal(**bc_params)

@@ -919,9 +919,8 @@ def mon_bicrystal_180_u0w(crystal_structure, gb_params, overlap_tol=0.1,
         term_plane_a = term_plns[0]
         term_plane_b = term_plns[1]
 
-
-#     Read in data for input structure and set up cell, pos_f, species, natoms
-#     lat_data = castep.read_cell_file(cellfile)
+    # Read in data for input structure and set up cell, pos_f, species, natoms
+    # lat_data = castep.read_cell_file(cellfile)
 
     # Non-primitive lattice
     uvw_vecs = np.array(uvw_vecs)

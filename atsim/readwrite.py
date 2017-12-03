@@ -358,8 +358,10 @@ def format_arr(arr, depth=0, indent='\t', col_delim='\t', row_delim='\n',
         out += (indent * depth)
 
         for sa_idx, sub_arr in enumerate(arr_list):
-            for col in sub_arr:
-                out += format_spec[sa_idx].format(col) + col_delim
+            for col_idx, col in enumerate(sub_arr):
+                out += format_spec[sa_idx].format(col)
+                if (col_idx < len(sub_arr) - 1):
+                    out += col_delim
 
         out += row_delim
 

@@ -84,7 +84,7 @@ class Bicrystal(AtomisticStructure):
 
         # Invoke additional methods:
         if reorient:
-            self.reorient_to_lammps()
+            self.reorient_to_xy()
 
         if boundary_vac is not None:
             for bv in boundary_vac:
@@ -124,7 +124,23 @@ class Bicrystal(AtomisticStructure):
         """
         return np.einsum('jk,jl->k', points, self.n_unit)
 
-    def reorient_to_lammps(self):
+    def reorient_to_xy(self):
+        """
+        Reorient the supercell to a LAMMPS-compatible orientation in such a 
+        way that the boundary plane is in the xy plane.
+
+        """
+
+        # Reorient so the boundary plane is in xy
+        if self.non_boundary_idx != 2:
+
+            # Ensure non-boundary supercell vector is last vector, whilst
+            # maintaining handedness of the supercell coordinate system.
+            self.supercell = np.roll(self.supercell,
+                                     (2 - self.non_boundary_idx), axis=1)
+
+            self.non_boundary_idx = 2
+            self.boundary_idx = [0, 1]
 
         R = super().reorient_to_lammps()
 
@@ -903,9 +919,8 @@ def mon_bicrystal_180_u0w(crystal_structure, gb_params, overlap_tol=0.1,
         term_plane_a = term_plns[0]
         term_plane_b = term_plns[1]
 
-
-#     Read in data for input structure and set up cell, pos_f, species, natoms
-#     lat_data = castep.read_cell_file(cellfile)
+    # Read in data for input structure and set up cell, pos_f, species, natoms
+    # lat_data = castep.read_cell_file(cellfile)
 
     # Non-primitive lattice
     uvw_vecs = np.array(uvw_vecs)

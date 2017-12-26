@@ -470,6 +470,7 @@ def validate_bs_rel_shift(opt, opt_lookup):
     allowed_keys = [
         'shift',
         'wrap',
+        'crystal_idx',
     ]
     check_invalid_key(opt, allowed_keys)
     for k, v in opt.items():

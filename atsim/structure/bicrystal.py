@@ -333,13 +333,22 @@ class Bicrystal(AtomisticStructure):
         if wrap:
             self.wrap_sites_to_supercell()
 
-    def apply_relative_shift(self, shift, wrap=False):
+    def apply_relative_shift(self, shift, crystal_idx, wrap=False):
         """
-        Apply in-boundary-plane shifts to the grain further away from the origin
-        (right hand side of boundary) to explore the microscopic degrees of freedom.
+        Apply in-boundary-plane shifts to the specified grain to enable an 
+        exploration of the grain boundary's microscopic degrees of freedom.
 
-        `shift` is a 2 element array whose elements are the
-        relative shift in fractional coords of the boundary area.
+        Parameters
+        ----------
+        shift : ndarray of size two
+            A two-element array whose elements are the relative shift in of one
+            crystal relative to the other in fractional coordinates s of the
+            boundary area.
+        crystal_idx : int
+            Which crystal to shift. Zero-indexed.
+        wrap : bool, optional
+            If True, sites (atoms, lattice sites, etc) within the supercell are
+            wrapped to the supercell volume after shifting. By default, False. 
 
         """
 
@@ -353,82 +362,57 @@ class Bicrystal(AtomisticStructure):
             raise NotImplementedError(
                 'Cannot apply relative shift to this supercell type.')
 
-        if isinstance(shift, np.ndarray):
-            if shift.shape[0] == 1:
-                shift = shift[0]
-        else:
-            shift = np.array(shift)
-        if np.any(shift < -1) or np.any(shift > 1):
+        shift_frac_gb = np.array(shift).squeeze()
+
+        if np.any(shift_frac_gb < -1) or np.any(shift_frac_gb > 1):
             raise ValueError('Elements of `shift` should be between -1 and 1.')
-
-        # Convenience:
-        nbi = self.non_boundary_idx
-        bi = self.boundary_idx
-        sup_nb = self.supercell[:, nbi:nbi + 1]
-
-        # Find the right grain to shift
-        # Crystals origins
-        crys_orgns = np.array([self.crystals[i]['origin'] for i in range(2)])
-        # Find crystals with origin at supercell origin if any
-        crys_sup_orgn = np.all((crys_orgns == 0.0), axis=1)
-
-        if len(np.where(crys_sup_orgn == False)[0]) == 1:
-            sh_idx = np.where(crys_sup_orgn == False)[0][0]
-        else:
-            for i in range(2):
-                if self.crystals[i]['crystal'][:, nbi][nbi] > 0:
-                    sh_idx = i
-        grn_sh = self.crystals[sh_idx]
-
-        shift_gb = np.zeros((3, 1))
-        shift_gb[bi] = shift[:, np.newaxis]
-        shift_std = np.dot(grn_sh['crystal'], shift_gb)
+     
+        shift_crystal = self.crystals[crystal_idx]
+        shift_frac = np.zeros((3, 1))
+        shift_frac[self.boundary_idx, [0, 0]] = shift_frac_gb
+        shift_std = np.dot(shift_crystal['crystal'], shift_frac)
 
         # Translate shifted grain sites:
         atm_shiftd = np.copy(self.atom_sites)
         atm_crys_lab = self.atom_labels['crystal_idx']
         atm_crys_idx = atm_crys_lab[0][atm_crys_lab[1]]
-        atm_shiftd[:, np.where(atm_crys_idx == sh_idx)[0]] += shift_std
+        atm_shiftd[:, np.where(atm_crys_idx == crystal_idx)[0]] += shift_std
         self.atom_sites = atm_shiftd
 
         if self.lattice_sites is not None:
             lat_shiftd = np.copy(self.lattice_sites)
             lat_crys_lab = self.lattice_labels['crystal_idx']
             lat_crys_idx = lat_crys_lab[0][lat_crys_lab[1]]
-            lat_shiftd[:, np.where(lat_crys_idx == sh_idx)[0]] += shift_std
+            lat_shiftd[:, np.where(lat_crys_idx == crystal_idx)[0]] += shift_std
             self.lattice_sites = lat_shiftd
 
         if self.interstice_sites is not None:
             int_shiftd = np.copy(self.interstice_sites)
             int_crys_lab = self.interstice_labels['crystal_idx']
             int_crys_idx = int_crys_lab[0][int_crys_lab[1]]
-            int_shiftd[:, np.where(int_crys_idx == sh_idx)[0]] += shift_std
+            int_shiftd[:, np.where(int_crys_idx == crystal_idx)[0]] += shift_std
             self.interstice_sites = int_shiftd
 
-        # Translate shifted grain origin:
-        grn_sh_org_shift = grn_sh['origin'] + shift_std
-
         # Update attributes:
-        self.crystals[sh_idx].update({
-            'origin': grn_sh_org_shift
+        self.crystals[crystal_idx].update({
+            'origin': shift_crystal['origin'] + shift_std
         })
 
         if self.relative_shift != [0, 0]:
             warnings.warn('`relative_shift` is already non-zero. Resetting to '
                           'new value.')
         self.relative_shift = [i + j for i,
-                               j in zip(shift.tolist(), self.relative_shift)]
+                               j in zip(shift_frac_gb.tolist(), self.relative_shift)]
 
         if self.maintain_inv_sym:
             # Modify out-of-boundary supercell vector
             sup_shift = np.copy(self.supercell)
-            sup_shift[:, nbi:nbi + 1] += (2 * shift_std)
+            sup_shift[:, self.non_boundary_idx][:, None] += (2 * shift_std)
 
             # Update attribute:
             self.supercell = sup_shift
 
         if wrap:
-            print('invoking wrapping from BC apply rel shift')
             self.wrap_sites_to_supercell()
 
     def wrap_sites_to_supercell(self, sites='all'):

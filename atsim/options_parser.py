@@ -31,9 +31,9 @@ def get_base_structure_defn(opt, opt_lookup):
     ]
 
     sup_type = lkup_params[0]
-    base_structure = {}
+    structure = {}
     if sup_type not in allowed_sup_type:
-        raise ValueError('base_structure lookup key supercell type not '
+        raise ValueError('structure lookup key supercell type not '
                          'understood. Lookup key must start with one '
                          'of: {}'.format(allowed_sup_type))
 
@@ -55,11 +55,11 @@ def get_base_structure_defn(opt, opt_lookup):
             raise ValueError(
                 'csl_surface_bicrystal surface_idx must be a or b.')
         sup_type = 'csl_surface_bicrystal'
-        base_structure.update({
+        structure.update({
             'surface_idx': surface_idx
         })
 
-    base_structure.update({
+    structure.update({
         'type': sup_type,
         'cs_idx': 0,
     })
@@ -90,7 +90,7 @@ def get_base_structure_defn(opt, opt_lookup):
             raise ValueError(
                 'size must be of length 3: {}'.format(size_str))
 
-        base_structure.update({
+        structure.update({
             'sigma': sigma,
             'gb_type': gb_type,
             'gb_size': size,
@@ -107,12 +107,12 @@ def get_base_structure_defn(opt, opt_lookup):
             raise ValueError(
                 'size must be of shape (3, 3): {}'.format(size_str))
 
-        base_structure.update({
+        structure.update({
             'box_lat': size.T,
         })
 
     # Reassign opt:
-    opt = {**base_structure, **explicit_opt}
+    opt = {**structure, **explicit_opt}
     return opt
 
 
@@ -209,7 +209,7 @@ def validate_ms_opt(opt_fn, lookup_opt_fn):
     # Options which use "." syntax for nested levels:
     deep_keys = [
         'set_up',
-        'base_structure',
+        'structure',
         'constraints.cell',
         'constraints.atom',
         'castep',
@@ -229,7 +229,7 @@ def validate_ms_opt(opt_fn, lookup_opt_fn):
 
     allowed_keys = [
         'set_up',
-        'base_structure',
+        'structure',
         'constraints',
         'castep',
         'lammps',
@@ -266,7 +266,7 @@ def validate_ms_opt(opt_fn, lookup_opt_fn):
             method = opt_unflat['method']
             valid_opt.update({k: validate_ms_scratch(v, opt_lookup, method)})
 
-        elif k == 'base_structure':
+        elif k == 'structure':
             valid_opt.update({k: validate_ms_base_structure(v, opt_lookup)})
 
         elif k == 'crystal_structures':
@@ -426,7 +426,7 @@ def validate_ms_base_structure(opt, opt_lookup):
 
         if sup_type not in allowed_types:
             raise ValueError(
-                'base_structure.type: {} is unknown.'.format(sup_type))
+                'structure.type: {} is unknown.'.format(sup_type))
         allowed_keys = allowed_keys[sup_type]
 
     else:

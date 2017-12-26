@@ -677,7 +677,7 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
         for v in vals:
 
             out.append({
-                'base_structure': {sn: v},
+                'structure': {sn: v},
                 'series_id': {'name': sn, 'val': v, 'path': '{}_{}_{}'.format(*v)}
             })
 
@@ -689,7 +689,7 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
         for v_idx, v in enumerate(vals):
 
             out.append({
-                'base_structure': {sn: v},
+                'structure': {sn: v},
                 'series_id': {'name': sn, 'val': v,
                               'path': (pad_fmt + '__').format(v_idx) + '{}_{}_{}--{}_{}_{}--{}_{}_{}'.format(
                                   *v.T.flatten())}
@@ -710,7 +710,7 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
                 v_str = '{}_{}'.format(*v)
 
             out.append({
-                'base_structure': {'relative_shift_args': {'shift': v}},
+                'structure': {'relative_shift_args': {'shift': v}},
                 'series_id': {'name': sn, 'val': v,
                               'path': (pad_fmt + '__').format(v_idx) + v_str}
             })
@@ -720,7 +720,7 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
         for v in vals:
 
             out.append({
-                'base_structure': {'boundary_vac_args': {'vac_thickness': v}},
+                'structure': {'boundary_vac_args': {'vac_thickness': v}},
                 'series_id': {'name': sn, 'val': v,
                               'path': '{:.2f}'.format(v)}
             })
@@ -730,7 +730,7 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
         for v in vals:
 
             out.append({
-                'base_structure': {'boundary_vac_flat_args': {'vac_thickness': v}},
+                'structure': {'boundary_vac_flat_args': {'vac_thickness': v}},
                 'series_id': {'name': sn, 'val': v,
                               'path': '{:.2f}'.format(v)}
             })
@@ -740,7 +740,7 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
         for v in vals:
 
             out.append({
-                'base_structure': {'boundary_vac_linear_args': {'vac_thickness': v}},
+                'structure': {'boundary_vac_linear_args': {'vac_thickness': v}},
                 'series_id': {'name': sn, 'val': v,
                               'path': '{:.2f}'.format(v)}
             })
@@ -750,7 +750,7 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
         for v in vals:
 
             out.append({
-                'base_structure': {
+                'structure': {
                     'crystal_structure_modify': {
                         'vol_change': v,
                     }
@@ -763,7 +763,7 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
         for v in vals:
 
             out.append({
-                'base_structure': {
+                'structure': {
                     'crystal_structure_modify': {
                         'ca_change': v,
                     }
@@ -1274,7 +1274,7 @@ def modify_crystal_structure(cs, vol_change, ca_change):
     return cs_new
 
 
-def make_base_structure(bs_opt, crystal_structures):
+def make_structure(bs_opt, crystal_structures):
 
     if bs_opt.get('import') is None:
         remove_kys = ['type', 'import', 'sigma', 'crystal_structure_modify']
@@ -1466,7 +1466,7 @@ def main(opt):
     if opt.get('crystal_structures') is not None:
         crys_structs = make_crystal_structures(opt['crystal_structures'])
 
-    base_as = make_base_structure(opt['base_structure'], crys_structs)
+    base_as = make_structure(opt['structure'], crys_structs)
     base_as.check_atomic_environment(checks_list_base)
 
     # Copy makesims options file
@@ -1502,7 +1502,7 @@ def main(opt):
     if lst_struct_idx == -1:
         if opt['make_plots']:
             save_args = {
-                'filename': stage.get_path('base_structure.html'),
+                'filename': stage.get_path('structure.html'),
                 'auto_open': False
             }
             vs_opts = {
@@ -1537,7 +1537,7 @@ def main(opt):
         srs_opt = copy.deepcopy(opt)
         utils.update_dict(srs_opt, upd)
 
-        srs_as = make_base_structure(srs_opt['base_structure'], crys_structs)
+        srs_as = make_structure(srs_opt['structure'], crys_structs)
         try:
             srs_as.check_atomic_environment(checks_list_series)
         except AtomisticStructureException as e:

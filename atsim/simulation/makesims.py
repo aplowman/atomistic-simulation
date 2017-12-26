@@ -26,7 +26,7 @@ STRUCT_LOOKUP = {
     'csl_bicrystal': bicrystal.csl_bicrystal_from_parameters,
     'csl_bulk_bicrystal': bicrystal.csl_bulk_bicrystal_from_parameters,
     'csl_surface_bicrystal': bicrystal.csl_surface_bicrystal_from_parameters,
-    'csl_bicrystal_from_structure': bicrystal.csl_bicrystal_from_structure,
+    'mon_bicrystal_180_u0w': bicrystal.mon_bicrystal_180_u0w,
 }
 
 

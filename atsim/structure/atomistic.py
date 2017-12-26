@@ -87,9 +87,7 @@ class AtomisticStructure(object):
     todo
 
     TODO:
-    -   Think about how some of the methods would work if __init__() takes the
-        bare minimum: supercell and atom_sites, or with some additional params
-        like lattice_sites.
+    -   Re-write docstrings.
 
     """
 
@@ -98,65 +96,6 @@ class AtomisticStructure(object):
                  interstice_labels=None, crystals=None, crystal_structures=None,
                  overlap_tol=1):
         """Constructor method for AtomisticStructure object."""
-
-        # Input validation
-        # ----------------
-        # 1.    Check length of `crystal_idx`, `species_idx`, and `motif_idx`
-        #       match number of atoms in `atom_sites`.
-        # 2.    Check length of 'lat_crystal_idx' matches number of lattice
-        #       sites in `lattice_sites'.
-        # 3.    Check set of indices in `crystal_idx` resolve in `crystals`.
-
-        # if crystal_idx is not None:
-        #     if len(crystal_idx) != atom_sites.shape[1]:
-        #         raise ValueError('Length of `crystal_idx` must match number '
-        #                          'of atoms specified as column vectors in '
-        #                          '`atom_sites`.')
-
-        #     c_idx_set = sorted(list(set(crystal_idx)))
-        #     if c_idx_set[0] < 0 or c_idx_set[-1] >= len(crystals):
-        #         raise ValueError('Indices in `crystal_idx` must index elements'
-        #                          ' in `crystals`.')
-
-        # if lat_crystal_idx is not None:
-        #     if len(lat_crystal_idx) != lattice_sites.shape[1]:
-        #         raise ValueError('Length of `lat_crystal_idx` must match '
-        #                          'number of lattice sites specified as column '
-        #                          'vectors in `lattice_sites`.')
-
-        # if [i is None for i in [all_species, all_species_idx]].count(True) == 1:
-        #     raise ValueError('Must specify both `all_species` and '
-        #                      '`all_species_idx`.')
-
-        # if [i is None for i in [species_idx, motif_idx]].count(True) == 1:
-        #     raise ValueError('Must specify both `species_idx` and '
-        #                      '`motif_idx`.')
-
-        # if [i is None for i in [species_idx, all_species_idx]].count(True) != 1:
-        #     raise ValueError('Either specify (`all_species` and '
-        #                      '`all_species_idx`) or (`species_idx` and '
-        #                      '`motif_idx`), but not both.')
-
-        # if species_idx is not None:
-        #     if len(species_idx) != atom_sites.shape[1]:
-        #         raise ValueError('Length of `species_idx` must match number '
-        #                          'of atoms specified as column vectors in '
-        #                          '`atom_sites`.')
-
-        # if motif_idx is not None:
-        #     if len(motif_idx) != atom_sites.shape[1]:
-        #         raise ValueError('Length of `motif_idx` must match number '
-        #                          'of atoms specified as column vectors in '
-        #                          '`atom_sites`.')
-
-        # if all_species_idx is not None:
-        #     if len(all_species_idx) != atom_sites.shape[1]:
-        #         raise ValueError('Length of `all_species_idx` ({}) must match '
-        #                          'number of atoms specified as column vectors '
-        #                          'in `atom_sites` ({}).'.format(len(all_species_idx), atom_sites.shape[1]))
-
-        # Set attributes
-        # --------------
 
         if origin is None:
             origin = np.zeros((3, 1))
@@ -762,7 +701,7 @@ class AtomisticStructure(object):
     def volume(self):
         """Get the volume of the supercell."""
         sup = self.supercell
-        return np.dot(np.cross(sup[:, 0], sup[: 1]), sup[: 2])
+        return np.dot(np.cross(sup[:, 0], sup[:, 1]), sup[:, 2])
 
 
 class BulkCrystal(AtomisticStructure):
@@ -778,7 +717,7 @@ class BulkCrystal(AtomisticStructure):
 
     """
 
-    def __init__(self, crystal_structure, box_lat):
+    def __init__(self, crystal_structure, box_lat, overlap_tol=1):
         """Constructor method for BulkCrystal object."""
 
         # Validation
@@ -826,7 +765,8 @@ class BulkCrystal(AtomisticStructure):
                          interstice_sites=int_sites,
                          interstice_labels=int_labels,
                          crystals=crystals,
-                         crystal_structures=[crystal_structure])
+                         crystal_structures=[crystal_structure],
+                         overlap_tol=overlap_tol)
 
         self.meta.update({'supercell_type': ['bulk']})
 

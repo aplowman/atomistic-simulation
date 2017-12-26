@@ -115,8 +115,8 @@ class BravaisLattice(object):
 
     """
 
-    def __init__(self, lattice_system, centring_type=None,
-                 a=None, b=None, c=None, α=None, β=None, γ=None, degrees=True, align='ax'):
+    def __init__(self, lattice_system, centring_type=None, a=None, b=None,
+                 c=None, α=None, β=None, γ=None, degrees=True, align='ax'):
         """Constructor method for BravaisLattice object."""
 
         if centring_type is None:
@@ -237,6 +237,8 @@ class BravaisLattice(object):
         β_rad = np.deg2rad(β)
         γ_rad = np.deg2rad(γ)
 
+        align_opt = ['ax', 'cz']
+
         if align == 'ax':
             a_x = self.a
             b_x = self.b * np.cos(γ_rad)
@@ -266,6 +268,10 @@ class BravaisLattice(object):
                 [0,   b_y, b_z],
                 [0,     0, c_z]
             ]).T
+        else:
+            raise ValueError('"{}" is not a valid axes alignment option. '
+                             '`align` must be one of: {}.'.format(
+                                 align, align_opt))
         self.vecs = vectors.snap_arr_to_val(vecs, 0, 1e-14)
 
         # Set lattice sites for the specified centring type:
@@ -299,11 +305,11 @@ class BravaisLattice(object):
                 [2 / 3, 1 / 3, 2 / 3],
             ]).T
 
-        # Find lattice sites in Cartesian basis:
-        lat_sites_std = np.dot(vecs, lat_sites_frac)
+        self.lattice_sites_frac = lat_sites_frac
 
-        self.lat_sites_frac = lat_sites_frac
-        self.lat_sites_std = vectors.snap_arr_to_val(lat_sites_std, 0, 1e-15)
+    @property
+    def lattice_sites(self):
+        return np.dot(self.vecs, self.lattice_sites_frac)
 
     def visualise(self, periodic_sites=False):
         """

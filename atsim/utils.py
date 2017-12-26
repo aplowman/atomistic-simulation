@@ -792,3 +792,74 @@ def get_key_max(lst, key):
         elif d[key] > maxv:
             maxv = d[key]
     return maxv
+
+
+def combination_idx(*seq):
+    """
+    Find the indices of unique combinations of elements in equal-length
+    ordered sequences.
+
+    Parameters
+    ----------
+    seq : one or more sequences
+        All sequences must be of the same length. These may be lists, tuples, 
+        strings or ndarrays etc.
+
+    Returns
+    -------
+    tuple of (list of ndarray, ndarray)
+        The list is the unique combinatons (as Numpy object arrays) and the 
+        second is the indices for a given combindation.
+
+    """
+
+    # Validation
+    seq_len = -1
+    msg = 'All sequences must have the same length.'
+    for s in seq:
+        if seq_len == -1:
+            seq_len = len(s)
+        else:
+            if len(s) != seq_len:
+                raise ValueError(msg)
+
+    combined_str = np.vstack(seq)
+    combined_obj = np.vstack([np.array(i, dtype=object) for i in seq])
+
+    u, uind, uinv = np.unique(combined_str, axis=1,
+                              return_index=True, return_inverse=True)
+
+    ret_k = []
+    ret_idx = []
+    for i in range(u.shape[1]):
+
+        ret_k.append(combined_obj[:, uind[i]])
+        ret_idx.append(np.where(uinv == i)[0])
+
+    return ret_k, ret_idx
+
+
+def check_indices(seq, seq_idx):
+    """
+    Given a sequence (e.g. list, tuple, ndarray) which is indexed by another,
+    check the indices are sensible.
+
+    Parameters
+    ----------
+    seq : sequence
+    seq_idx : sequence of int
+
+    """
+
+    # Check: minimum index is greater than zero
+    if min(seq_idx) < 0:
+        raise IndexError('Found index < 0.')
+
+    # Check maximum index is equal to length of sequence - 1
+    if max(seq_idx) > len(seq) - 1:
+        raise IndexError('Found index larger than seqence length.')
+
+
+def to_col_vec(a, dim=3):
+    a = np.array(a).squeeze().reshape((dim, 1))
+    return a

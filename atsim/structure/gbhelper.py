@@ -719,54 +719,6 @@ def wrap(a, value=1):
     return a
 
 
-def create_nonprimitive_unitcell(uvw_vecs, latt_structure):
-    """
-    Create a non-primitive unit cell for a set of [uvw] vectors.
-
-    Parameters
-    ----------
-    uvw_vecs : ndarray
-
-    latt_structure : tuple
-
-    Returns
-    -------
-
-
-    """
-    
-    prim_cell_vecs = align_mon_cart(latt_structure[0], axis='c')
-    nonprim_cell_vecs = np.dot(prim_cell_vecs, uvw_vecs.T).T
-    
-    # Resize lattice to a box size which encapsulates the nonprimitive unit cell 
-    repeats = np.sum(abs(uvw_vecs), axis=1)
-
-    latt_resize = resize_lattice(lat_data=latt_structure, repeats=repeats)
-    pos_box = latt_resize['pos_sup']
-    species_box = latt_resize['species_sup']
-    species_key = latt_resize['species_key']
-    
-    # Shift atoms  
-    pos_box_t = np.copy(pos_box)
-
-    if np.any(uvw_vecs[:,0]<0):
-        pos_box_t = pos_box_t + np.sum(uvw_vecs[np.where(uvw_vecs[:,0]<0),0]) * prim_cell_vecs[0, :]
-    if np.any(uvw_vecs[:,1]<0):
-        pos_box_t = pos_box_t + np.sum(uvw_vecs[np.where(uvw_vecs[:,1]<0),1]) * prim_cell_vecs[1, :]
-    if np.any(uvw_vecs[:,2]<0):
-        pos_box_t = pos_box_t + np.sum(uvw_vecs[np.where(uvw_vecs[:,2]<0),2]) * prim_cell_vecs[2, :]
-    
-    # Get atoms inside box
-    inidx = check_in_out_box(nonprim_cell_vecs,pos_box_t.T)
-    pos_in = pos_box_t[inidx]
-    species_in = species_box[inidx]
-    
-    # Align c-axis with z-axis
-    align_c = align_mon_cart(nonprim_cell_vecs, pos_a=pos_in)
-    nonprim_cell_vecs = align_c[0]
-    pos_in = align_c[1]
-    
-    return  nonprim_cell_vecs, pos_in, species_key, species_in
 
 
 def check_in_out_box(box_vecs, pos, inout = 'in', edges=False):
@@ -807,28 +759,14 @@ def check_in_out_box(box_vecs, pos, inout = 'in', edges=False):
     elif inout == 'out':
         return outidx
 
-def resize_lattice(lat_data, repeats):
+def resize_crystal(crystal_structure, repeats):
     
     """
-    Resize lattice supercell accordind to `repeats`.
+    Resize crystal according to `repeats`.
     
     Parameters
     ----------
-    lat_data : tuple
-        cell_vecs : ndarray
-            Array of shape (3, 3), where the row vectors are the three lattice 
-            vectors.
-        latt_params : list
-            List containing the lattice parameters of the unit cell, 
-            [[a, b, c], [α, β, γ]], where the units of angles are radians.
-        pos_a : ndarray 
-            Array of shape (n, 3), where the row vectors are the absolute
-            coordinates of the atoms and n is the number of atoms.
-        species_key : list
-            List of species.
-        species_idx : list
-            List of length n, containing indices according to `species_key` for
-            each atom as ordered in `pos_f(a)`.
+    crystal_structure : CrystalStructure
     repeats : list
         List containing the number of repeats in x, y and z direction.
         
@@ -853,11 +791,16 @@ def resize_lattice(lat_data, repeats):
     
     """
     
-    cell = align_mon_cart(lat_data['cell_vecs'], axis='c') #Align c with z
-    pos_f = lat_data['motif']['atom_sites'].T
+    # cell = align_mon_cart(lat_data['cell_vecs'], axis='c') #Align c with z
+    # pos_f = lat_data['motif']['atom_sites'].T
+    # species_key = get_species_key_idx(lat_data['motif']['species'])[0]
+    # species = get_species_key_idx(lat_data['motif']['species'])[1]
+
+    cell = crystal_structure.bravais_lattice.vecs.T # row vectors
+    pos_f = crystal_structure.atom_sites_frac.T # row vectors
     pos_a = frac2abs(cell, pos_f)
-    species_key = get_species_key_idx(lat_data['motif']['species'])[0]
-    species = get_species_key_idx(lat_data['motif']['species'])[1]
+    species_key = crystal_structure.species
+    species = crystal_structure.species_idx
     natoms = len(species)
     
     # Numbers of unit cell repeats for each half of bicrystal
@@ -901,7 +844,84 @@ def resize_lattice(lat_data, repeats):
     return out
 
 
-def create_nonprimitive_unitcell(uvw_vecs, latt_structure, abs_coord=False):
+# Old
+# def create_nonprimitive_unitcell(uvw_vecs, latt_structure, abs_coord=False):
+    # """
+    # Create a non-primitive unit cell for a set of [uvw] vectors.
+
+    # Parameters
+    # ----------
+    # uvw_vecs : ndarray of size (3, 3)
+    #     Miller indices of non-primitive vectors as row vectors.
+
+    # latt_structure : dict of (str : ndarray or list or dict)
+    #     `cell_vecs` : ndarray
+    #         Array of shape (3, 3), where the row vectors are the three lattice
+    #         vectors.
+    #     `latt_params` : list
+    #         List containing the lattice parameters of the unit cell,
+    #         [a, b, c, α, β, γ], where the units of angles are radians.
+    #     `motif` : dict
+    #         `atom_sites` : ndarray
+    #             Array of shape (3, n), where the column vectors are the fractional
+    #             coordinates of the atoms and n is the number of atoms.
+    #         `species` : list
+    #             List of length n associated with each atom in `atom_sites`.
+
+    # abs_coord : bool
+    #     Fractioal [default] or absolute coordinates.
+
+    # Returns
+    # -------
+    # Tuple:
+    #     nonprim_cell_vecs
+    #     pos_in_f 
+    #     species_key
+    #     species_in
+    # """
+    
+    # prim_cell_vecs = align_mon_cart(latt_structure['cell_vecs'], axis='c')
+    # nonprim_cell_vecs = np.dot(prim_cell_vecs.T, uvw_vecs.T).T
+    
+    # # Resize lattice to a box size which encapsulates the nonprimitive unit cell 
+    # repeats = np.sum(abs(uvw_vecs), axis=1)
+
+    # latt_resize = resize_lattice(lat_data=latt_structure, repeats=repeats)
+    # pos_box = latt_resize['pos_sup']
+    # species_box = latt_resize['species_sup']
+    # species_key = latt_resize['species_key']
+    
+    # # Shift atoms  
+    # pos_box_t = np.copy(pos_box)
+
+    # if np.any(uvw_vecs[:,0]<0):
+    #     pos_box_t = pos_box_t + np.sum(uvw_vecs[np.where(uvw_vecs[:,0]<0),0]) * prim_cell_vecs[0, :]
+    # if np.any(uvw_vecs[:,1]<0):
+    #     pos_box_t = pos_box_t + np.sum(uvw_vecs[np.where(uvw_vecs[:,1]<0),1]) * prim_cell_vecs[1, :]
+    # if np.any(uvw_vecs[:,2]<0):
+    #     pos_box_t = pos_box_t + np.sum(uvw_vecs[np.where(uvw_vecs[:,2]<0),2]) * prim_cell_vecs[2, :]
+    
+    # # Get atoms inside box
+    # inidx = check_in_out_box(nonprim_cell_vecs, pos_box_t.T)
+    # pos_in = pos_box_t[inidx]
+    # species_in = species_box[inidx]  
+    
+    # # Align c-axis with z-axis
+    # align_c = align_mon_cart(nonprim_cell_vecs, pos_a=pos_in)
+    # nonprim_cell_vecs = align_c[0]
+    # pos_in = align_c[1]
+
+    # # Find fractional coordinates
+    # inv_vecs = np.linalg.inv(nonprim_cell_vecs.T)
+    # pos_in_f = np.dot(inv_vecs,pos_in.T).T
+    
+    # if abs_coord==True:
+    #     return  nonprim_cell_vecs, pos_in, species_key, species_in
+    # else:
+    #     return  nonprim_cell_vecs, pos_in_f, species_key, species_in
+
+
+def create_nonprimitive_unitcell(uvw_vecs, crystal_structure, abs_coord=False):
     """
     Create a non-primitive unit cell for a set of [uvw] vectors.
 
@@ -910,6 +930,8 @@ def create_nonprimitive_unitcell(uvw_vecs, latt_structure, abs_coord=False):
     uvw_vecs : ndarray of size (3, 3)
         Miller indices of non-primitive vectors as row vectors.
 
+    crystal_structure : CrystalStructure
+    *******
     latt_structure : dict of (str : ndarray or list or dict)
         `cell_vecs` : ndarray
             Array of shape (3, 3), where the row vectors are the three lattice
@@ -923,9 +945,9 @@ def create_nonprimitive_unitcell(uvw_vecs, latt_structure, abs_coord=False):
                 coordinates of the atoms and n is the number of atoms.
             `species` : list
                 List of length n associated with each atom in `atom_sites`.
-
+    *********
     abs_coord : bool
-        Fractioal [default] or absolute coordinates.
+        Output fractional [default] or absolute coordinates.
 
     Returns
     -------
@@ -936,13 +958,13 @@ def create_nonprimitive_unitcell(uvw_vecs, latt_structure, abs_coord=False):
         species_in
     """
     
-    prim_cell_vecs = align_mon_cart(latt_structure['cell_vecs'], axis='c')
-    nonprim_cell_vecs = np.dot(prim_cell_vecs.T, uvw_vecs.T).T
-    
+    prim_cell_vecs = crystal_structure.bravais_lattice.vecs
+    nonprim_cell_vecs = np.dot(prim_cell_vecs, uvw_vecs.T).T
+
     # Resize lattice to a box size which encapsulates the nonprimitive unit cell 
     repeats = np.sum(abs(uvw_vecs), axis=1)
 
-    latt_resize = resize_lattice(lat_data=latt_structure, repeats=repeats)
+    latt_resize = resize_crystal(crystal_structure, repeats)
     pos_box = latt_resize['pos_sup']
     species_box = latt_resize['species_sup']
     species_key = latt_resize['species_key']

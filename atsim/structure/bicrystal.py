@@ -1,10 +1,13 @@
 import warnings
 import numpy as np
 import spglib
+from functools import partial
 from atsim.structure.atomistic import AtomisticStructure
 from atsim import vectors, mathsutils
 from atsim.structure.crystal import CrystalBox
 from atsim.structure import gbhelper
+from atsim.utils import prt
+from atsim.vectors import rotation_matrix
 
 
 CSL_FROM_PARAMS_GB_TYPES = {
@@ -45,8 +48,7 @@ class Bicrystal(AtomisticStructure):
     """
 
     def __init__(self, as_params, maintain_inv_sym=False, reorient=False,
-                 boundary_vac_args=None, boundary_vac_flat_args=None,
-                 boundary_vac_linear_args=None, relative_shift_args=None,
+                 boundary_vac=None, relative_shift=None,
                  wrap=True, nbi=None, rot_mat=None):
 
         # Call parent constructor
@@ -80,24 +82,19 @@ class Bicrystal(AtomisticStructure):
         self.relative_shift = [0, 0]
         self.rot_mat = rot_mat
 
-        # TODO: don't allow application of multiple GB vacs? or maybe it's OK.
-        if boundary_vac_args is not None:
-            self.apply_boundary_vac(**boundary_vac_args)
-
-        if boundary_vac_flat_args is not None:
-            self.apply_boundary_vac_flat(**boundary_vac_flat_args)
-
-        if boundary_vac_linear_args is not None:
-            self.apply_boundary_vac_linear(**boundary_vac_linear_args)
-
-        if relative_shift_args is not None:
-            self.apply_relative_shift(**relative_shift_args)
-
-        if wrap:
-            self.wrap_atoms_to_supercell()
         # Invoke additional methods:
         if reorient:
-            self.reorient_to_lammps()
+            self.reorient_to_xy()
+
+        if boundary_vac is not None:
+            for bv in boundary_vac:
+                self.apply_boundary_vac(**bv)
+
+        if relative_shift is not None:
+            self.apply_relative_shift(**relative_shift)
+
+        if wrap:
+            self.wrap_sites_to_supercell()
 
     @property
     def bicrystal_thickness(self):
@@ -119,16 +116,31 @@ class Bicrystal(AtomisticStructure):
         s = self.supercell
         return np.vstack([s[:, bi[0]], s[:, bi[1]]]).T
 
-    @property
-    def atoms_gb_dist(self):
+    def distance_from_gb(self, points):
         """
-        Computes the distance from each atom to the origin grain boundary
-        plane.
+        Computes the distance from each in an array of column vector to the
+        origin grain boundary plane.
 
         """
-        return np.einsum('jk,jl->k', self.atom_sites, self.n_unit)
+        return np.einsum('jk,jl->k', points, self.n_unit)
 
-    def reorient_to_lammps(self):
+    def reorient_to_xy(self):
+        """
+        Reorient the supercell to a LAMMPS-compatible orientation in such a 
+        way that the boundary plane is in the xy plane.
+
+        """
+
+        # Reorient so the boundary plane is in xy
+        if self.non_boundary_idx != 2:
+
+            # Ensure non-boundary supercell vector is last vector, whilst
+            # maintaining handedness of the supercell coordinate system.
+            self.supercell = np.roll(self.supercell,
+                                     (2 - self.non_boundary_idx), axis=1)
+
+            self.non_boundary_idx = 2
+            self.boundary_idx = [0, 1]
 
         R = super().reorient_to_lammps()
 
@@ -138,15 +150,36 @@ class Bicrystal(AtomisticStructure):
 
         return R
 
-    def apply_boundary_vac(self, vac_thickness, sharpness=1):
+    def apply_boundary_vac(self, thickness, func, wrap=False, **kwargs):
         """
-        Apply boundary vacuum to the supercell, atoms and grains according
-        to a sigmoid function.
+        Apply vacuum to the Bicrystal in the direction normal to the grain
+        boundary, distributed according to a function.
 
-        TODO:
-        -   Also apply to lattice sites
+        Parameters
+        ----------
+        thickness : float
+            The length by which the supercell will be extended in the GB
+            normal direction. This is not necessarily a supercell vector
+            direction.
+        func : str
+            One of "sigmoid", "flat" or "linear". Describes how the vacuum 
+            should be distributed across the supercell in the GB normal
+            direction.
+        kwargs : dict
+            Additional arguments to pass to the function.
 
         """
+
+        # Validation
+        allowed_func = [
+            'sigmoid',
+            'flat',
+            'linear',
+        ]
+
+        if func not in allowed_func:
+            raise ValueError('"{}" is not an allowed function name to use for'
+                             ' applying grain boundary vacuum.'.format(func))
 
         sup_type = self.meta['supercell_type']
 
@@ -154,193 +187,159 @@ class Bicrystal(AtomisticStructure):
             raise NotImplementedError(
                 'Cannot apply boundary vacuum to a bulk_bicrystal.')
 
-        elif all([i not in sup_type for i in ['bicrystal', 'surface_bicrystal']]):
+        elif all([i not in sup_type for i in ['bicrystal',
+                                              'surface_bicrystal']]):
             raise NotImplementedError(
                 'Cannot apply boundary vacuum to this supercell type.')
 
-        vt = vac_thickness
-
         # For convenience:
+        vt = thickness
+        bt = self.bicrystal_thickness
+        nu = self.n_unit
+        uu = self.u_unit
         grn_a = self.crystals[0]
         grn_b = self.crystals[1]
-        bt = self.bicrystal_thickness
+        grn_a_cry = grn_a['crystal']
+        grn_b_cry = grn_b['crystal']
         grn_a_org = grn_a['origin']
         grn_b_org = grn_b['origin']
-        grn_a_full = grn_a['crystal'] + grn_a_org
-        grn_b_full = grn_b['crystal'] + grn_b_org
-        nbi = self.non_boundary_idx
 
-        # Get perpendicular distances from the origin boundary plane:
-        grn_a_gb_dist = np.einsum('ij,ik->j', grn_a_full, self.n_unit)
-        grn_b_gb_dist = np.einsum('ij,ik->j', grn_b_full, self.n_unit)
-        grn_a_org_gb_dist = np.einsum('ij,ik->j', grn_a_org, self.n_unit)
-        grn_b_org_gb_dist = np.einsum('ij,ik->j', grn_b_org, self.n_unit)
+        if func in ['sigmoid', 'flat']:
 
-        # Set which Sigmoid function to use:
-        if self.maintain_inv_sym:
-            sig_fnc = mathsutils.double_sigmoid
-        else:
-            sig_fnc = mathsutils.single_sigmoid
+            if func == 'sigmoid':
+                b = kwargs.get('sharpness', 1)
+            elif func == 'flat':
+                b = 1000
 
-        # Get displacements in the boundary normal directions according
-        # to a Sigmoid function:
-        as_dx = sig_fnc(self.atoms_gb_dist, vt, sharpness, bt)
-        grn_a_dx = sig_fnc(grn_a_gb_dist, vt, sharpness, bt)
-        grn_b_dx = sig_fnc(grn_b_gb_dist, vt, sharpness, bt)
-        grn_a_org_dx = sig_fnc(grn_a_org_gb_dist, vt, sharpness, bt)
-        grn_b_org_dx = sig_fnc(grn_b_org_gb_dist, vt, sharpness, bt)
+            func_args = {
+                'a': thickness,
+                'b': b,
+                'width': bt,
+            }
 
-        # Snap atoms close to zero
-        as_dx = vectors.snap_arr_to_val(as_dx, 0, 1e-14)
+            if self.maintain_inv_sym:
+                func_cll = mathsutils.double_sigmoid
+            else:
+                func_cll = mathsutils.single_sigmoid
 
-        # Find new positions with vacuum applied:
-        as_vac = self.atom_sites + (as_dx * self.n_unit)
-        grn_a_org_vac = grn_a_org + (grn_a_org_dx * self.n_unit)
-        grn_b_org_vac = grn_b_org + (grn_b_org_dx * self.n_unit)
-        grn_a_vac = grn_a_full + (grn_a_dx * self.n_unit) - grn_a_org_vac
-        grn_b_vac = grn_b_full + (grn_b_dx * self.n_unit) - grn_b_org_vac
+        elif func == 'linear':
+
+            func_args = {
+                'm': vt / bt,
+            }
+            func_cll = mathsutils.linear
+
+        # Callable which will return dx for a given x
+        f = partial(func_cll, **func_args)
+
+        def expand_box(edge_vecs, box_origin):
+
+            vecs_full = edge_vecs + box_origin
+            vecs_dist = self.distance_from_gb(vecs_full - self.origin)
+            org_dist = self.distance_from_gb(box_origin - self.origin)
+
+            vecs_dx = f(vecs_dist)
+            org_dx = f(org_dist)
+
+            org_vac = box_origin + (org_dx * nu)
+            vecs_vac = vecs_full + (vecs_dx * nu) - org_vac
+
+            return (vecs_vac, org_vac)
+
+        def expand_sites(sites):
+
+            dist = self.distance_from_gb(sites - self.origin)
+            dx = f(dist)
+            sites_vac = sites + (dx * nu)
+
+            return (sites_vac, dist, dx)
+
+        atm_sts, atm_dst, atm_dx = expand_sites(self.atom_sites)
+        self.atom_sites = atm_sts
+
+        # Store info in the meta dict regarding this change in site positions:
+        bv_dict = {
+            'thickness': vt,
+            'func': func,
+            'kwargs': kwargs,
+            'atom_sites': {
+                'x': atm_dst,
+                'dx': atm_dx,
+            }
+        }
+
+        if self.lattice_sites is not None:
+            lat_sts, lat_dst, lat_dx = expand_sites(self.lattice_sites)
+            self.lattice_sites = lat_sts
+            bv_dict.update({
+                'lattice_sites': {
+                    'x': lat_dst,
+                    'dx': lat_dx,
+                }
+            })
+
+        if self.interstice_sites is not None:
+            int_sts, int_dst, int_dx = expand_sites(self.interstice_sites)
+            self.interstice_sites = int_sts
+            bv_dict.update({
+                'interstice_sites': {
+                    'x': int_dst,
+                    'dx': int_dx,
+                }
+            })
+
+        cry_keys = ('crystal', 'origin')
+        crys_a = dict(zip(cry_keys, expand_box(grn_a_cry, grn_a_org)))
+        crys_b = dict(zip(cry_keys, expand_box(grn_b_cry, grn_b_org)))
+
+        self.crystals[0].update(crys_a)
+        self.crystals[1].update(crys_b)
 
         # Apply vacuum to the supercell
         if self.maintain_inv_sym:
-            sup_gb_dist = np.einsum('ij,ik->j', self.supercell, self.n_unit)
-            sup_dx = sig_fnc(sup_gb_dist, vt, sharpness, bt)
-            sup_vac = self.supercell + (sup_dx * self.n_unit)
+            self.supercell, _ = expand_box(self.supercell, self.origin)
 
         else:
-            vac_add = (self.u_unit * vt) / \
-                np.einsum('ij,ij->', self.n_unit, self.u_unit)
+            vac_add = (uu * vt) / np.einsum('ij,ij->', nu, uu)
             sup_vac = np.copy(self.supercell)
+            nbi = self.non_boundary_idx
             sup_vac[:, nbi:nbi + 1] += vac_add
+            self.supercell = sup_vac
 
-        # Add new attributes:
-        self.atoms_gb_dist_old = self.atoms_gb_dist
-        self.atoms_gb_dist_δ = as_dx
-
-        new_vac_thick = self.boundary_vac + vac_thickness
-
-        if self.boundary_vac != 0:
-            warnings.warn('`boundary_vac` is already non-zero ({}). Summing to '
-                          'new value: {}'.format(self.boundary_vac, new_vac_thick))
-
-        self.boundary_vac = new_vac_thick
-        self.boundary_vac_type = 'sigmoid'
-
-        # Update attributes:
-        self.atom_sites = as_vac
-        self.supercell = sup_vac
-        self.crystals[0].update({
-            'crystal': grn_a_vac,
-            'origin': grn_a_org_vac
-        })
-        self.crystals[1].update({
-            'crystal': grn_b_vac,
-            'origin': grn_b_org_vac
-        })
-
-    def apply_boundary_vac_flat(self, vac_thickness):
-        """
-        Apply boundary vacuum to the supercell without affecting the atom
-        blocks.
-
-        """
-        self.apply_boundary_vac(vac_thickness, sharpness=1000)
-        self.boundary_vac_type = 'flat'
-
-    def apply_boundary_vac_linear(self, vac_thickness):
-        """
-        Apply a uniform vacuum in the GB normal direction, effectively a
-        uniform strain.
-
-        """
-
-        def linear(x, m=1, c=0):
-            return m * x + c
-
-        # TODO: consider how to deal with this issue.
-        vt = 2 * vac_thickness
-
-        # For convenience:
-        grn_a = self.crystals[0]
-        grn_b = self.crystals[1]
-        bt = self.bicrystal_thickness
-        grn_a_org = grn_a['origin']
-        grn_b_org = grn_b['origin']
-        grn_a_full = grn_a['crystal'] + grn_a_org
-        grn_b_full = grn_b['crystal'] + grn_b_org
-        nbi = self.non_boundary_idx
-
-        # Get perpendicular distances from the origin boundary plane:
-        grn_a_gb_dist = np.einsum('ij,ik->j', grn_a_full, self.n_unit)
-        grn_b_gb_dist = np.einsum('ij,ik->j', grn_b_full, self.n_unit)
-        grn_a_org_gb_dist = np.einsum('ij,ik->j', grn_a_org, self.n_unit)
-        grn_b_org_gb_dist = np.einsum('ij,ik->j', grn_b_org, self.n_unit)
-
-        # Get displacements in the boundary normal directions according
-        # to a Sigmoid function:
-        m = vt / bt
-        as_dx = linear(self.atoms_gb_dist, m=m)
-        grn_a_dx = linear(grn_a_gb_dist, m=m)
-        grn_b_dx = linear(grn_b_gb_dist, m=m)
-        grn_a_org_dx = linear(grn_a_org_gb_dist, m=m)
-        grn_b_org_dx = linear(grn_b_org_gb_dist, m=m)
-
-        # Snap atoms close to zero
-        as_dx = vectors.snap_arr_to_val(as_dx, 0, 1e-14)
-
-        # Find new positions with vacuum applied:
-        as_vac = self.atom_sites + (as_dx * self.n_unit)
-        grn_a_org_vac = grn_a_org + (grn_a_org_dx * self.n_unit)
-        grn_b_org_vac = grn_b_org + (grn_b_org_dx * self.n_unit)
-        grn_a_vac = grn_a_full + (grn_a_dx * self.n_unit) - grn_a_org_vac
-        grn_b_vac = grn_b_full + (grn_b_dx * self.n_unit) - grn_b_org_vac
-
-        # Apply vacuum to the supercell
-        if self.maintain_inv_sym:
-            sup_gb_dist = np.einsum('ij,ik->j', self.supercell, self.n_unit)
-            sup_dx = linear(sup_gb_dist, m=m)
-            sup_vac = self.supercell + (sup_dx * self.n_unit)
-
+        # Add new meta information:
+        bv_meta = self.meta.get('boundary_vac')
+        if bv_meta is None:
+            self.meta.update({
+                'boundary_vac': [bv_dict]
+            })
         else:
-            vac_add = (self.u_unit * vt) / \
-                np.einsum('ij,ij->', self.n_unit, self.u_unit)
-            sup_vac = np.copy(self.supercell)
-            sup_vac[:, nbi:nbi + 1] += vac_add
+            bv_meta.append(bv_dict)
 
-        # Add new attributes:
-        self.atoms_gb_dist_old = self.atoms_gb_dist
-        self.atoms_gb_dist_δ = as_dx
-
-        new_vac_thick = self.boundary_vac + vac_thickness
+        new_vac_thick = self.boundary_vac + vt
 
         if self.boundary_vac != 0:
-            warnings.warn('`boundary_vac` is already non-zero ({}). Summing to '
-                          'new value: {}'.format(self.boundary_vac, new_vac_thick))
+            warnings.warn('`boundary_vac` is already non-zero ({}). '
+                          'Summing to new value: {}'.format(
+                              self.boundary_vac, new_vac_thick))
 
-        self.boundary_vac = new_vac_thick
-        self.boundary_vac_type = 'linear'
+        new_vac_type = func
+        if self.boundary_vac_type is not None:
+            new_vac_type = self.boundary_vac_type + '+' + new_vac_type
 
         # Update attributes:
-        self.atom_sites = as_vac
-        self.supercell = sup_vac
-        self.crystals[0].update({
-            'crystal': grn_a_vac,
-            'origin': grn_a_org_vac
-        })
-        self.crystals[1].update({
-            'crystal': grn_b_vac,
-            'origin': grn_b_org_vac
-        })
+        self.boundary_vac = new_vac_thick
+        self.boundary_vac_type = new_vac_type
 
-    def apply_relative_shift(self, shift):
+        if wrap:
+            self.wrap_sites_to_supercell()
+
+    def apply_relative_shift(self, shift, wrap=False):
         """
-        Apply in-boundary-plane shifts to the grain further away from the origin 
+        Apply in-boundary-plane shifts to the grain further away from the origin
         (right hand side of boundary) to explore the microscopic degrees of freedom.
 
         `shift` is a 2 element array whose elements are the
         relative shift in fractional coords of the boundary area.
-
-        TODO:
-        -   Also apply to lattice sites
 
         """
 
@@ -385,15 +384,31 @@ class Bicrystal(AtomisticStructure):
         shift_gb[bi] = shift[:, np.newaxis]
         shift_std = np.dot(grn_sh['crystal'], shift_gb)
 
-        # Translate shifted grain atoms:
-        as_shift = np.copy(self.atom_sites)
-        as_shift[:, np.where(self.crystal_idx == sh_idx)[0]] += shift_std
+        # Translate shifted grain sites:
+        atm_shiftd = np.copy(self.atom_sites)
+        atm_crys_lab = self.atom_labels['crystal_idx']
+        atm_crys_idx = atm_crys_lab[0][atm_crys_lab[1]]
+        atm_shiftd[:, np.where(atm_crys_idx == sh_idx)[0]] += shift_std
+        self.atom_sites = atm_shiftd
+
+        if self.lattice_sites is not None:
+            lat_shiftd = np.copy(self.lattice_sites)
+            lat_crys_lab = self.lattice_labels['crystal_idx']
+            lat_crys_idx = lat_crys_lab[0][lat_crys_lab[1]]
+            lat_shiftd[:, np.where(lat_crys_idx == sh_idx)[0]] += shift_std
+            self.lattice_sites = lat_shiftd
+
+        if self.interstice_sites is not None:
+            int_shiftd = np.copy(self.interstice_sites)
+            int_crys_lab = self.interstice_labels['crystal_idx']
+            int_crys_idx = int_crys_lab[0][int_crys_lab[1]]
+            int_shiftd[:, np.where(int_crys_idx == sh_idx)[0]] += shift_std
+            self.interstice_sites = int_shiftd
 
         # Translate shifted grain origin:
         grn_sh_org_shift = grn_sh['origin'] + shift_std
 
         # Update attributes:
-        self.atom_sites = as_shift
         self.crystals[sh_idx].update({
             'origin': grn_sh_org_shift
         })
@@ -412,7 +427,11 @@ class Bicrystal(AtomisticStructure):
             # Update attribute:
             self.supercell = sup_shift
 
-    def wrap_atoms_to_supercell(self):
+        if wrap:
+            print('invoking wrapping from BC apply rel shift')
+            self.wrap_sites_to_supercell()
+
+    def wrap_sites_to_supercell(self, sites='all'):
         """
         Wrap atoms to within the boundary plane as defined by the supercell.
 
@@ -423,11 +442,12 @@ class Bicrystal(AtomisticStructure):
             raise NotImplementedError(
                 'Cannot wrap atoms within a bulk_bicrystal.')
 
-        elif all([i not in sup_type for i in ['bicrystal', 'surface_bicrystal']]):
+        elif all([i not in sup_type for i in ['bicrystal',
+                                              'surface_bicrystal']]):
             raise NotImplementedError(
                 'Cannot wrap atoms within this supercell type.')
 
-        super().wrap_atoms_to_supercell(dirs=self.boundary_idx)
+        super().wrap_sites_to_supercell(sites=sites, dirs=self.boundary_idx)
 
     def check_inv_symmetry(self):
         """
@@ -466,10 +486,8 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
                                   edge_conditions=None,
                                   overlap_tol=1, reorient=True, wrap=True,
                                   maintain_inv_sym=False,
-                                  boundary_vac_args=None,
-                                  boundary_vac_flat_args=None,
-                                  boundary_vac_linear_args=None,
-                                  relative_shift_args=None):
+                                  boundary_vac=None,
+                                  relative_shift=None):
     """
     Parameters
     ----------
@@ -513,7 +531,7 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
     boundary_vac_linear_args : dict, optional
         If not None, after construction of the boundary,
         apply_boundary_vac_linear() is invoked with this dict as keyword
-        arguments. Default is None.    
+        arguments. Default is None.
     relative_shift_args : dict, optional
         If not None, after construction of the boundary, apply_relative_shift()
         is invoked with this dict as keyword arguments. Default is None.
@@ -638,65 +656,84 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
     crys_b = CrystalBox(crystal_structure, grn_b_std,
                         edge_conditions=edge_conditions[1])
 
-    # Get atom and lattice sites from crystal boxes:
-    as_a = crys_a.atom_sites_std
-    as_b = crys_b.atom_sites_std
-    ls_a = crys_a.lat_sites_std
-    ls_b = crys_b.lat_sites_std
-
     # Rotate crystal B onto A:
-    as_b_rot = np.dot(rot_mat, as_b)
-    ls_b_rot = np.dot(rot_mat, ls_b)
-    grn_b_rot_std = np.dot(rot_mat, grn_b_std)
+    crys_b.rotate(rot_mat)
 
     # Shift crystals to form a supercell at the origin
-    zs_std = - grn_b_rot_std[:, NBI:NBI + 1]
-    as_a_zs = as_a + zs_std
-    as_b_zs = as_b_rot + zs_std
-    ls_a_zs = ls_a + zs_std
-    ls_b_zs = ls_b_rot + zs_std
+    zs = - crys_b.box_vecs[:, NBI:NBI + 1]
+    crys_a.translate(zs)
+    crys_b.translate(zs)
 
-    crystal_idx = np.array([0] * as_a_zs.shape[1] + [1] * as_b_zs.shape[1])
-    lat_crystal_idx = np.array(
-        [0] * ls_a_zs.shape[1] + [1] * ls_b_zs.shape[1])
-    atom_sites = np.hstack([as_a_zs, as_b_zs])
-    lattice_sites = np.hstack([ls_a_zs, ls_b_zs])
+    atom_sites = np.hstack((crys_a.atom_sites, crys_b.atom_sites))
+    lattice_sites = np.hstack((crys_a.lattice_sites, crys_b.lattice_sites))
+
+    atm_crystal_idx = np.array([0] * crys_a.atom_sites.shape[1] +
+                               [1] * crys_b.atom_sites.shape[1])
+    atm_cry_idx_dict = {'crystal_idx': (np.array([0, 1]), atm_crystal_idx)}
+
+    atom_labels = {**atm_cry_idx_dict}
+    for k, v in crys_a.atom_labels.items():
+        atom_labels.update({
+            k: (v[0], np.hstack((v[1], crys_b.atom_labels[k][1])))
+        })
+
+    lat_crystal_idx = np.array([0] * crys_a.lattice_sites.shape[1] +
+                               [1] * crys_b.lattice_sites.shape[1])
+    lat_cry_idx_dict = {'crystal_idx': (np.array([0, 1]), lat_crystal_idx)}
+
+    lat_labels = {**lat_cry_idx_dict}
+    for k, v in crys_a.lattice_labels.items():
+        lat_labels.update({
+            k: (v[0], np.hstack((v[1], crys_b.lattice_labels[k][1])))
+        })
+
+    int_sites, int_labels = None, None
+    if crys_a.interstice_sites is not None:
+
+        int_crystal_idx = np.array([0] * crys_a.interstice_sites.shape[1] +
+                                   [1] * crys_b.interstice_sites.shape[1])
+        int_cry_idx_dict = {'crystal_idx': (np.array([0, 1]), int_crystal_idx)}
+
+        int_sites = np.hstack(
+            (crys_a.interstice_sites, crys_b.interstice_sites))
+        int_labels = {**int_cry_idx_dict}
+        for k, v in crys_a.interstice_labels.items():
+            int_labels.update({
+                k: (v[0], np.hstack((v[1], crys_b.interstice_labels[k][1])))
+            })
 
     # Define the supercell:
-    sup_std = np.copy(grn_a_std)
-    sup_std[:, NBI] = grn_a_std[:, NBI] - grn_b_rot_std[:, NBI]
+    sup_std = np.copy(crys_a.box_vecs)
+    sup_std[:, NBI] = crys_a.box_vecs[:, NBI] - crys_b.box_vecs[:, NBI]
 
     crystals = [
         {
-            'crystal': grn_a_std,
-            'origin': zs_std,
+            'crystal': crys_a.box_vecs,
+            'origin': zs,
             'cs_idx': 0,
             'cs_orientation': np.eye(3),
             'cs_origin': [0, 0, 0]
         },
         {
-            'crystal': grn_b_rot_std,
-            'origin': zs_std,
+            'crystal': crys_b.box_vecs,
+            'origin': zs,
             'cs_idx': 0,
             'cs_orientation': rot_mat,
             'cs_origin': [0, -1, 0]
         }
     ]
 
-    species_idx = np.hstack([crys_a.species_idx, crys_b.species_idx])
-    motif_idx = np.hstack([crys_a.motif_idx, crys_b.motif_idx])
-
     # AtomisticStructure parameters
     as_params = {
-        'atom_sites': atom_sites,
         'supercell': sup_std,
+        'atom_sites': atom_sites,
+        'atom_labels': atom_labels,
         'lattice_sites': lattice_sites,
+        'lattice_labels': lat_labels,
+        'interstice_sites': int_sites,
+        'interstice_labels': int_labels,
         'crystals': crystals,
         'crystal_structures': [crystal_structure],
-        'crystal_idx': crystal_idx,
-        'lat_crystal_idx': lat_crystal_idx,
-        'species_idx': species_idx,
-        'motif_idx': motif_idx,
         'overlap_tol': overlap_tol,
     }
 
@@ -705,10 +742,8 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
         'as_params': as_params,
         'maintain_inv_sym': maintain_inv_sym,
         'reorient': reorient,
-        'boundary_vac_args': boundary_vac_args,
-        'boundary_vac_flat_args': boundary_vac_flat_args,
-        'boundary_vac_linear_args': boundary_vac_linear_args,
-        'relative_shift_args': relative_shift_args,
+        'boundary_vac': boundary_vac,
+        'relative_shift': relative_shift,
         'wrap': wrap,
         'nbi': 2,
         'rot_mat': rot_mat,
@@ -740,8 +775,6 @@ def csl_bulk_bicrystal_from_parameters(crystal_structure, csl_vecs,
         'wrap': False,
     }
 
-    print('bc_params: \n{}\n'.format(bc_params))
-
     bc = csl_bicrystal_from_parameters(**bc_params)
     bc.meta.update({'supercell_type': ['bulk', 'bulk_bicrystal']})
     return bc
@@ -753,8 +786,8 @@ def csl_surface_bicrystal_from_parameters(crystal_structure, csl_vecs,
                                           overlap_tol=1,
                                           reorient=True, wrap=True,
                                           maintain_inv_sym=False,
-                                          boundary_vac_args=None,
-                                          relative_shift_args=None,
+                                          boundary_vac=None,
+                                          relative_shift=None,
                                           surface_idx=0):
     """
     Parameters
@@ -774,8 +807,8 @@ def csl_surface_bicrystal_from_parameters(crystal_structure, csl_vecs,
         'reorient': reorient,
         'wrap': wrap,
         'maintain_inv_sym': maintain_inv_sym,
-        'boundary_vac_args': boundary_vac_args,
-        'relative_shift_args': relative_shift_args,
+        'boundary_vac': boundary_vac,
+        'relative_shift': relative_shift,
     }
 
     bc = csl_bicrystal_from_parameters(**bc_params)
@@ -796,23 +829,31 @@ def csl_surface_bicrystal_from_parameters(crystal_structure, csl_vecs,
     return bc
 
 
-def csl_bicrystal_from_structure(csl, csl_params,
-                                 overlap_tol=0.1, reorient=True,
-                                 maintain_inv_sym=False,
-                                 boundary_vac_args=None,
-                                 relative_shift_args=None,
-                                 wrap=False):
+def mon_bicrystal_180_u0w(crystal_structure, gb_params, overlap_tol=0.1,
+                          reorient=True, maintain_inv_sym=False,
+                          boundary_vac=None, relative_shift=None,
+                          wrap=False):
     """
-    Create a CSL Bicrystal from a structure.
+    Construct a 180° [u0w] twin monoclinic boundary.
 
     Parameters
     ----------
-    csl : string
-        '[angle_axis_structure]' to be constructed using a method 
-        defined as 'construct_'in gbhelper.py.
-        (for example '180_001_mZrO2').
-    csl_params : dict of (str : string or ndarray or int)
-        Parameters needed to construct `csl`. Vary depending on method.
+    crystal_structure : CrystalStructure
+    gb_params: dict (str : string or ndarray or int)
+        uvw_vecs : ndarray of size (3, 3)
+            The vectors of one of the crystals expressed in Miller indices of 
+            the primitive lattice. 
+        repeats : list
+            Number of unit cell repeats [Nx, Ny, Nz] for both crystals, where 
+            x-direction is normal to GB plane. Default value is [3, 1, 1].
+        bound_vac : int
+            Vacuum thickness to add at boundary (Angstrom)
+        transls : list (REMOVE)
+            Translation steps in the two directions of boundary plane 
+            (fractions of unit cell vectors)
+        term_plns : list
+            Termination planes for grains `a` and `b` if any exist as listed below. 
+            Allowed values for [001] 180°: '100' or '200' (equivalent to '-200').
     maintain_inv_sym : bool, optional
         If True, the supercell atoms will be checked for inversion symmetry
         through the centres of both crystals. This check will be repeated
@@ -834,26 +875,171 @@ def csl_bicrystal_from_structure(csl, csl_params,
     wrap : bool, optional
         If True, after construction of the boundary, wrap_atoms_to_supercell()
         is invoked. Default is True.
-    Notes
-    -----
-    `reorient`=True doesn't work since no lattice_sites are passed.
-    `crystals` not yet available.
-
+    Returns
+    -------
+    Bicrystal
     """
 
-    create_bound = getattr(gbhelper, 'construct_' + csl)
-    bound_struct = create_bound(**csl_params)
+    gb_params_def = {
+        'repeats': [3, 1, 1],
+        'bound_vac': 0.0,
+        'transls': [0.0, 0.0],
+        'term_plns': None
+    }
+
+    gb_params = {**gb_params_def, **gb_params}
+    gb_params_req = ['uvw_vecs']
+
+    for p in gb_params_req:
+        if p not in gb_params:
+            raise ValueError('Missing key in `gb_params`: {}'.format(p))
+
+    # Get parameters from dict
+    uvw_vecs = gb_params['uvw_vecs']
+    repeats = gb_params['repeats']
+    bound_vac = gb_params['bound_vac']
+    transls = gb_params['transls']
+    term_plns = gb_params['term_plns']
+
+    # Boundary parameters
+    # Numbers of unit cell repeats for each half of bicrystal
+    Nx = repeats[0]
+    Ny = repeats[1]
+    Nz = repeats[2]
+
+    # Boundary expansion in angstrom
+    Bx = bound_vac
+
+    # Translation step in boundary plane (fractions of unit cell vectors)
+    Dy = transls[0]
+    Dz = transls[1]
+
+    if term_plns:
+        # Termination planes for grains `a` and `b`
+        term_plane_a = term_plns[0]
+        term_plane_b = term_plns[1]
+
+    # Read in data for input structure and set up cell, pos_f, species, natoms
+    # lat_data = castep.read_cell_file(cellfile)
+
+    # Non-primitive lattice
+    uvw_vecs = np.array(uvw_vecs)
+    nonprim_latt = gbhelper.create_nonprimitive_unitcell(uvw_vecs,
+                                                         crystal_structure,
+                                                         abs_coord=False)
+    cell = nonprim_latt[0]
+    pos_f = nonprim_latt[1]
+    species_key = nonprim_latt[2]
+    species = nonprim_latt[3]
+    natoms = len(species)
+
+    # Translate atoms based on termination planes for grains `a` and `b`.
+    pos_f_a = np.zeros((natoms, 3))
+    pos_f_b = np.zeros((natoms, 3))
+
+    if term_plns:
+        pos_f_a = term_h00(pos_f, plane=term_plane_a)
+        pos_f_b = term_h00(pos_f, plane=term_plane_b)
+    else:
+        pos_f_a = np.copy(pos_f)
+        pos_f_b = np.copy(pos_f)
+
+    pos_a_a = gbhelper.frac2abs(cell, pos_f_a)
+    pos_a_b = gbhelper.frac2abs(cell, pos_f_b)
+
+    # Rotation matrix
+    R = rotation_matrix(np.array([0, 0, 1]), np.array([180]), degrees=True)
+    R = gbhelper.zero_prec(R).squeeze()
+
+    # Calculate positions of atoms in rotated cell
+    pos_r_b = np.transpose(np.dot(R, np.transpose(pos_a_b)))
+
+    # Calculate cell vectors for rotated cell. All vectors positive.
+    cell_r = np.zeros((3, 3), dtype=float)
+    cell_r = np.transpose(np.dot(R, np.transpose(cell)))
+
+    # Vectors of rotated and translated cell to octant 1.
+    cell_r_t = np.zeros((3, 3), dtype=float)
+    cell_r_t[:, :] = cell[:, :]
+    cell_r_t[0, 2] = - cell[0, 2]
+
+    Nr = np.array([Nx, Ny, Nz])
+    # Total number of repeats
+    Nt = Nx * Ny * Nz
+
+    # Vector of half the boundary expansion
+    Dv = np.array([0.5 * Bx, 0.0, 0.0])
+
+    # Boundary translation vector
+    Dr = np.array([0.0, Dy * cell[1, 1], Dz * cell[2, 2]])
+
+    # Define supercell vectors
+    supercell = np.zeros((3, 3), dtype=float)
+    # Set the right perpendicular length, including vacuum
+    supercell[0, 0] = 2 * Nx * cell[0, 0] + 2 * Bx
+    # Add required skew to maintain boundary equivalence
+    # (twice the translation vector)
+    supercell[0, :] = supercell[0, :] + 2 * Dr
+    supercell[1, :] = Ny * cell[1, :]
+    supercell[2, :] = Nz * cell[2, :]
+
+    # Crystals 'a' and 'b' vectors and origin
+    crystal = np.zeros((3, 3), dtype=float)
+    crystal[:, 0] = 0.5 * supercell[0]
+    crystal[:, 1:3] = supercell[1:3].T
+
+    crystals = [{}, {}]
+
+    for item in crystals:
+        item.update({'crystal': crystal})
+        item.update({'origin': np.zeros((3, 1))})
+        #  Don't really understand how these work
+        #         item.update( {'cs_idx': 0})
+        #         item.update( {'cs_orientation': R})
+        #         item.update( {'cs_origin': [0.0,0.0]})
+
+    crystals[1]['origin'] = 0.5 * supercell[:, 0:1]
+
+    # Populate arrays of atom positions and types for a grain boundary supercell
+    natoms_t = Nt * natoms
+    species_gb_x = np.zeros(natoms_t, dtype=int)
+    pos_gb_a = np.zeros((natoms_t, 3), dtype=float)
+    pos_gb_b = np.zeros((natoms_t, 3), dtype=float)
+    # atom belonging to crystal index
+    crystals_idx = np.concatenate((np.zeros(natoms_t, dtype=int),
+                                   np.ones(natoms_t,  dtype=int)))
+
+    # Populate arrays with atom positions
+    a = 0
+    for i in range(Nx):
+        for j in range(Ny):
+            for k in range(Nz):
+                pos_gb_b[natoms * a:natoms * (1 + a), :] = \
+                    pos_r_b - i * cell_r_t[0, :] + j * cell[1, :] + \
+                    k * cell[2, :] + supercell[0, :] - Dr - Dv + cell[1, :]
+
+                pos_gb_a[natoms * a:natoms * (1 + a), :] = pos_a_a + \
+                    i * cell[0, :] + j * cell[1, :] + k * cell[2, :] + Dv
+                species_gb_x[natoms * a:natoms * (1 + a)] = species
+                a = a + 1
+
+    atom_labels = {
+        'species': (np.array(species_key), np.concatenate((species_gb_x, species_gb_x))),
+        'crystal_idx': (np.array([0, 1]), crystals_idx)
+    }
 
     # AtomisticStructure parameters
     as_params = {
-        'atom_sites': bound_struct['atom_sites'],
-        'supercell': bound_struct['supercell'],
-        'all_species': bound_struct['all_species'],
-        'all_species_idx': bound_struct['all_species_idx'],
+        'supercell': supercell.T,
+        'atom_sites': np.concatenate((pos_gb_a, pos_gb_b)).T,
+        'atom_labels': atom_labels,
+        #         'lattice_sites': lattice_sites,
+        #         'lattice_labels': lat_labels,
+        #         'interstice_sites': int_sites,
+        #         'interstice_labels': int_labels,
+        'crystals': crystals,
+        'crystal_structures': [crystal_structure],
         'overlap_tol': overlap_tol,
-        'crystals': bound_struct['crystals'],
-        #     'crystal_structures' : crystal_structures,
-        'crystal_idx': bound_struct['crystals_idx'],
     }
 
     # Bicrystal parameters
@@ -861,10 +1047,11 @@ def csl_bicrystal_from_structure(csl, csl_params,
         'as_params': as_params,
         'maintain_inv_sym': maintain_inv_sym,
         'reorient': reorient,
-        'boundary_vac_args': boundary_vac_args,
-        'relative_shift_args': relative_shift_args,
+        'boundary_vac': boundary_vac,
+        'relative_shift': relative_shift,
         'wrap': wrap,
         'nbi': 0,
+        #         'rot_mat': rot_mat, what is this?
     }
 
     return Bicrystal(**bc_params)

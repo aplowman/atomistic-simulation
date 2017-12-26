@@ -375,8 +375,6 @@ def validate_ms_base_structure(opt, opt_lookup):
     if '<<lookup>>' in opt:
         opt = get_base_structure_defn(opt, opt_lookup)
 
-    print('opt: {}'.format(opt))
-
     allowed_keys_all = [
         'type',
         'overlap_tol',
@@ -389,10 +387,8 @@ def validate_ms_base_structure(opt, opt_lookup):
         'tile',
     ]
     allowed_keys_gb = [
-        'relative_shift_args',
-        'boundary_vac_args',
-        'boundary_vac_flat_args',
-        'boundary_vac_linear_args',
+        'relative_shift',
+        'boundary_vac',
         'wrap',
         'maintain_inv_sym',
     ]
@@ -457,10 +453,35 @@ def validate_ms_base_structure(opt, opt_lookup):
         elif k == 'import':
             valid_bs.update({k: validate_bs_import(v, opt_lookup)})
 
+        elif k == 'relative_shift':
+            valid_bs.update({k: validate_bs_rel_shift(v, opt_lookup)})
+
+        elif k == 'boundary_vac':
+            valid_bs.update({k: validate_ms_boundary_vac(v, opt_lookup)})
+
         else:
             valid_bs.update({k: v})
 
     return valid_bs
+
+
+def validate_bs_rel_shift(opt, opt_lookup):
+
+    allowed_keys = [
+        'shift',
+        'wrap',
+    ]
+    check_invalid_key(opt, allowed_keys)
+    for k, v in opt.items():
+        if k == 'shift':
+            fail_msg = ('`relative_shift.shift` must be a list of length two.')
+            if not isinstance(v, list) or len(v) != 2:
+                raise ValueError(fail_msg)
+        elif k == 'wrap':
+            fail_msg = ('`relative_shift.wrap` must be `True` or `False`.')
+            if not isinstance(v, bool):
+                raise ValueError(fail_msg)
+    return opt
 
 
 def validate_bs_import(opt, opt_lookup):
@@ -494,6 +515,36 @@ def validate_bs_import(opt, opt_lookup):
     return valid_import
 
 
+def validate_ms_boundary_vac(opt, opt_lookup):
+
+    all_allwd = ['thickness', 'func', 'wrap']
+    allowed_keys = {
+        'sigmoid': all_allwd + ['sharpness'],
+        'flat': all_allwd,
+        'linear': all_allwd,
+    }
+
+    valid_opt = []
+    for bv_idx, bv in enumerate(opt):
+
+        if isinstance(bv, str):
+            if '<<' in bv and '>>' in bv:
+                bv = {'<<lookup>>': bv}
+
+        bv = check_lookup('boundary_vac', bv, opt_lookup) or bv
+
+        bv_opt = utils.unflatten_dict_keys(bv)
+        allowed_keys_bv = allowed_keys[bv['func']]
+        check_invalid_key(bv_opt, allowed_keys_bv)
+
+        valid_bv = {}
+        for k, v in bv_opt.items():
+            valid_bv.update({k: v})
+        valid_opt.append(valid_bv)
+
+    return valid_opt
+
+
 def validate_ms_crystal_structures(opt, opt_lookup):
 
     def validate_lattice(lat_opt):
@@ -523,18 +574,29 @@ def validate_ms_crystal_structures(opt, opt_lookup):
 
         return valid_lat
 
-    def validate_motif(motif_opt):
+    def validate_motif(motif_opt, is_from_file):
+
         allowed_keys = [
-            'atom_sites',
-            'species',
+            'atoms',
+            'interstices',
         ]
+
         check_invalid_key(motif_opt, allowed_keys)
         valid_motif = copy.deepcopy(motif_opt)
 
-        # Convert atom_sites to a numpy array:
-        as_floats = [[parse_string_as(j, float) for j in i]
-                     for i in valid_motif['atom_sites']]
-        valid_motif['atom_sites'] = np.array(as_floats)
+        file_sites_err_msg = ('Cannot specify `motif.atoms.sites` if '
+                              '`motif.path` is also specified, since atom '
+                              'sites will be read from the specified file.')
+
+        # Convert sites to arrays:
+        for k, v in valid_motif.items():
+
+            if is_from_file and k == 'atoms':
+                if v.get('sites') is not None:
+                    raise ValueError(file_sites_err_msg)
+
+            sts = [[parse_string_as(j, float) for j in i] for i in v['sites']]
+            valid_motif[k]['sites'] = np.array(sts)
 
         return valid_motif
 
@@ -546,6 +608,7 @@ def validate_ms_crystal_structures(opt, opt_lookup):
 
     if not opt:
         raise ValueError('crystal_structures must be assigned.')
+
     valid_opt = []
     for cs_idx, cs in enumerate(opt):
 
@@ -561,8 +624,15 @@ def validate_ms_crystal_structures(opt, opt_lookup):
         for k, v in cs_opt.items():
             if k == 'lattice':
                 valid_cs.update({k: validate_lattice(v)})
+
             elif k == 'motif':
-                valid_cs.update({k: validate_motif(v)})
+
+                is_from_file = False
+                if cs_opt.get('path') is not None:
+                    is_from_file = True
+
+                valid_cs.update({k: validate_motif(v, is_from_file)})
+
             else:
                 valid_cs.update({k: v})
 

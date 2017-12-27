@@ -3,9 +3,9 @@ import spglib
 from mendeleev import element
 from atsim.structure.crystal import CrystalBox
 from atsim import geometry, vectors, utils
-from atsim.simsio.lammps import get_LAMMPS_compatible_box
 from atsim.structure.visualise import visualise as struct_visualise
 from atsim.utils import prt
+from vecmaths import rotation
 import numpy as np
 import copy
 
@@ -202,7 +202,7 @@ class AtomisticStructure(object):
         """
 
         # Find rotation matrix which rotates to a LAMMPS compatible orientation
-        sup_lmps = get_LAMMPS_compatible_box(self.supercell)
+        sup_lmps = rotation.align_xy(self.supercell)
         R = np.dot(sup_lmps, self.supercell_inv)
 
         # Move the origin to (0,0,0): (I presume this is necessary for LAMMPS?)

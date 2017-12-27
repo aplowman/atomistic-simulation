@@ -1,7 +1,7 @@
 import os
 import itertools
 import numpy as np
-from atsim import vectors, utils
+from atsim import utils
 from atsim import readwrite
 from atsim.readwrite import format_arr
 import mendeleev

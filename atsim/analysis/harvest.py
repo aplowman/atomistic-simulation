@@ -5,7 +5,7 @@ import json
 import copy
 from pathlib import Path
 from atsim.readwrite import read_pickle, write_pickle, format_list, format_dict
-from atsim import utils, plotting, vectors, SCRIPTS_PATH, REF_PATH, OPT_FILE_NAMES
+from atsim import utils, plotting, SCRIPTS_PATH, REF_PATH, OPT_FILE_NAMES
 from atsim.simsio import castep, lammps
 from atsim.analysis import compute_funcs
 from atsim.analysis.compute_funcs import get_depends, SINGLE_COMPUTE_LOOKUP, MULTI_COMPUTE_LOOKUP

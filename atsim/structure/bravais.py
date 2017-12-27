@@ -1,7 +1,9 @@
 import numpy as np
 from plotly import graph_objs
 from plotly.offline import plot, iplot
-from atsim import geometry, vectors, utils
+from atsim import utils
+from vecmaths import geometry
+from vecmaths.utils import snap_arr
 
 
 def get_hex_vol(a, c):
@@ -272,7 +274,7 @@ class BravaisLattice(object):
             raise ValueError('"{}" is not a valid axes alignment option. '
                              '`align` must be one of: {}.'.format(
                                  align, align_opt))
-        self.vecs = vectors.snap_arr_to_val(vecs, 0, 1e-14)
+        self.vecs = snap_arr(vecs, 0, 1e-14)
 
         # Set lattice sites for the specified centring type:
         if centring_type == 'P':  # Primitive

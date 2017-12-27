@@ -1,6 +1,5 @@
 import os
 import numpy as np
-from atsim import vectors
 from atsim import readwrite
 from atsim.readwrite import format_arr
 
@@ -749,55 +748,3 @@ def read_lammps_output(dir_path, log_name='log.lammps'):
     }
 
     return out
-
-
-def get_LAMMPS_compatible_box(box_cart):
-    """
-        `box_cart` is an array of column vectors
-        Returns array of column vectors.
-
-        LAMMPS requirements:
-            -   simulation cell vectors must form a right-handed basis
-            -   1st vector lies along x-axis
-            -   1st and 2nd vectors lie in xy-plane
-            -   simulation cell is specified with numbers: xhi,xlo,yhi,hlo,zhi,zlo,xy,xz,yz
-
-            a = (xhi-xlo, 0, 0)
-            b = (xy, yhi-hlo, 0)
-            c = (xz, yz, zhi-zlo)
-
-            -   xy,xz,yz are "tilt factors", which by default may not be larger than 0.5 * x in xy
-                0.5 * y in yz and 0.5 * x in xz. Default can be turned off by "box tilt large"
-
-            -   Let the original supercell vectors be column vectors A, B and C in `box_cart`.
-            -   Let γ be the angle between A and B, and β be the angle between C and A.
-            -   New vectors are a,b,c.
-    """
-
-    A = box_cart[:, 0:1]
-    B = box_cart[:, 1:2]
-    C = box_cart[:, 2:3]
-
-    A_mag, B_mag, C_mag = np.linalg.norm(
-        A), np.linalg.norm(B), np.linalg.norm(C)
-
-    cos_γ = vectors.col_wise_cos(A, B)[0]
-    sin_γ = vectors.col_wise_sin(A, B)[0]
-    cos_β = vectors.col_wise_cos(C, A)[0]
-
-    a_x = A_mag
-    a_y = 0
-    a_z = 0
-
-    b_x = B_mag * cos_γ
-    b_y = B_mag * sin_γ
-    b_z = 0
-
-    c_x = C_mag * cos_β
-    c_y = (vectors.col_wise_dot(B, C)[0] - (b_x * c_x)) / b_y
-    c_z = np.sqrt(C_mag**2 - c_x**2 - c_y**2)
-
-    return np.array([
-        [a_x, a_y, a_z],
-        [b_x, b_y, b_z],
-        [c_x, c_y, c_z]]).T

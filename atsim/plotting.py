@@ -1,9 +1,8 @@
 import numpy as np
 import os
 import copy
-from atsim import vectors
 from atsim import utils
-from atsim import geometry
+from vecmaths import geometry
 
 # Plotly
 from plotly import tools
@@ -18,14 +17,14 @@ COLS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
         '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 
 
-def get_grid_trace_plotly(vectors, grid_size, grid_origin=None, line_args=None,
+def get_grid_trace_plotly(unit_vecs, grid_size, grid_origin=None, line_args=None,
                           marker_args=None):
     """
     Return a list of Plotly Scatter traces which represent a grid.
 
     Parameters
     ----------
-    vectors : ndarray of shape (2,2)
+    unit_vecs : ndarray of shape (2,2)
         Define the unit vectors of the grid as 2D column vectors
     grid_size : tuple of length 2
         Multiples of grid units to draw.
@@ -71,13 +70,13 @@ def get_grid_trace_plotly(vectors, grid_size, grid_origin=None, line_args=None,
 
     (gd_lns_xx_v,
      gd_lns_xy_v) = np.einsum('ij,jkm->ikm',
-                              vectors,
+                              unit_vecs,
                               np.concatenate([gd_lns_xx[np.newaxis],
                                               gd_lns_xy[np.newaxis]]))
 
     (gd_lns_yx_v,
      gd_lns_yy_v) = np.einsum('ij,jkm->ikm',
-                              vectors,
+                              unit_vecs,
                               np.concatenate([gd_lns_yx[np.newaxis],
                                               gd_lns_yy[np.newaxis]]))
 
@@ -118,7 +117,7 @@ def get_grid_trace_plotly(vectors, grid_size, grid_origin=None, line_args=None,
             [np.meshgrid(*tuple(np.arange(g) for g in grid_size))]
         ).reshape(len(grid_size), -1)
 
-        gd_int_v = np.dot(vectors, gd_int)
+        gd_int_v = np.dot(unit_vecs, gd_int)
 
         sct.append(
             go.Scatter(
@@ -131,157 +130,6 @@ def get_grid_trace_plotly(vectors, grid_size, grid_origin=None, line_args=None,
             ))
 
     return sct
-
-
-def get_3d_arrow_plotly(dir, origin, length, head_length=None,
-                        head_radius=None, stem_args=None, n_points=100,
-                        head_colour=None, opacity=None):
-    """
-    Get a list of Plotly traces which together represent a 3D arrow.
-
-    Parameters
-    ----------
-    dir : ndarray of shape (3, )
-        Direction vector along which the arrow should point.
-    origin : ndarray of shape (3, )
-        Origin for the base of the stem of the arrow.
-    length : float or int
-        Total length of the arrow from base of the stem to the tip of the arrow
-        head.
-    head_length : float or int, optional
-        Length of the arrow head from the tip to the arrow head base. Default
-        is None, in which case it will be set to 0.1 * `length`
-    head_radius : float or int, optional
-        Radius of the base of the arrow head. Default is None, in which case it
-        will be set to 0.05 * `length`.
-    stem_args : dict, optional
-        Specifies the properties of the Plotly line trace used to represent the
-        stem of the arrow. Use this to set e.g. `width` and `color`.
-    n_points : int, optional
-        Number of points to approximate the circular base of the arrow head.
-        Default is 100.
-
-    Returns
-    -------
-    list of Plotly traces
-
-    """
-
-    if head_length is None:
-        head_length = length * 0.1
-
-    if head_radius is None:
-        head_radius = length * 0.05
-
-    if stem_args is None:
-        stem_args = {}
-
-    if stem_args.get('width') is None:
-        stem_args['width'] = head_radius * 10
-
-    if stem_args.get('color') is None:
-        stem_args['color'] = 'blue'
-
-    if head_colour is None:
-        head_colour = 'blue'
-
-    sp = (2 * np.pi) / n_points
-    θ = np.linspace(0, (2 * np.pi) - sp, n_points)
-    θ_deg = np.rad2deg(θ)
-
-    if opacity is None:
-        opacity = 0.5
-
-    # First construct arrow head as pointing in the z-direction
-    # with its base on (0,0,0)
-    x = head_radius * np.cos(θ)
-    y = head_radius * np.sin(θ)
-
-    # Arrow head base:
-    x1 = np.hstack(([0], x))
-    y1 = np.hstack(([0], y))
-    z1 = np.zeros(x.shape[0] + 1)
-    ah_base = np.vstack([x1, y1, z1])
-
-    # Arrow head cone:
-    x2 = np.copy(x1)
-    y2 = np.copy(y1)
-    z2 = np.copy(z1)
-    z2[0] = head_length
-    ah_cone = np.vstack([x2, y2, z2])
-
-    # Rotate arrow head so that it points in `dir`
-    dir_unit = dir / np.linalg.norm(dir)
-    z_unit = np.array([0, 0, 1])
-
-    if np.allclose(z_unit, dir_unit):
-        rot_ax = np.array([1, 0, 0])
-        rot_an = 0
-
-    elif np.allclose(-z_unit, dir_unit):
-        rot_ax = np.array([1, 0, 0])
-        rot_an = np.pi
-
-    else:
-        rot_ax = np.cross(z_unit, dir_unit)
-        rot_an = vectors.col_wise_angles(
-            dir_unit[:, np.newaxis], z_unit[:, np.newaxis])[0]
-
-    rot_an_deg = np.rad2deg(rot_an)
-    rot_mat = vectors.rotation_matrix(rot_ax, rot_an)[0]
-
-    # Reorient arrow head and translate
-    stick_length = length - head_length
-    ah_translate = (origin + (stick_length * dir_unit))
-    ah_base_dir = np.dot(rot_mat, ah_base) + ah_translate[:, np.newaxis]
-    ah_cone_dir = np.dot(rot_mat, ah_cone) + ah_translate[:, np.newaxis]
-
-    i = np.zeros(x1.shape[0] - 1, dtype=int)
-    j = np.arange(1, x1.shape[0])
-    k = np.roll(np.arange(1, x1.shape[0]), 1)
-
-    data = [
-        {
-            'type': 'mesh3d',
-            'x': ah_base_dir[0],
-            'y': ah_base_dir[1],
-            'z': ah_base_dir[2],
-            'i': i,
-            'j': j,
-            'k': k,
-            'hoverinfo': 'none',
-            'color': head_colour,
-            'opacity': opacity,
-        },
-        {
-            'type': 'mesh3d',
-            'x': ah_cone_dir[0],
-            'y': ah_cone_dir[1],
-            'z': ah_cone_dir[2],
-            'i': i,
-            'j': j,
-            'k': k,
-            'hoverinfo': 'none',
-            'color': head_colour,
-            'opacity': opacity,
-        },
-        {
-            'type': 'scatter3d',
-            'x': [origin[0], ah_translate[0]],
-            'y': [origin[1], ah_translate[1]],
-            'z': [origin[2], ah_translate[2]],
-            'hoverinfo': 'none',
-            'mode': 'lines',
-            'line': stem_args,
-            'projection': {
-                'x': {
-                    'show': False
-                }
-            }
-        },
-    ]
-
-    return data
 
 
 def get_sphere_plotly(radius, colour='blue', n=50, lighting_args=None,
@@ -525,14 +373,6 @@ def basic_plot_mpl(traces, filename):
 
     plt.grid(True)
     plt.savefig(filename)
-
-
-def basic_plot_bokeh(x, y, filename):
-
-    bok_plot.output_file(filename)
-    p = bok_plot.figure()
-    p.line(x, y)
-    bok_plot.save(p)
 
 
 def contour_plot_mpl(traces, filename):

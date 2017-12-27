@@ -3,11 +3,12 @@ import numpy as np
 import spglib
 from functools import partial
 from atsim.structure.atomistic import AtomisticStructure
-from atsim import vectors, mathsutils
+from atsim import mathsutils
 from atsim.structure.crystal import CrystalBox
 from atsim.structure import gbhelper
 from atsim.utils import prt
-from atsim.vectors import rotation_matrix
+from vecmaths import rotation
+from vecmaths import vectors
 
 
 CSL_FROM_PARAMS_GB_TYPES = {
@@ -49,7 +50,7 @@ class Bicrystal(AtomisticStructure):
 
     def __init__(self, as_params, maintain_inv_sym=False, reorient=False,
                  boundary_vac=None, relative_shift=None,
-                 wrap=True, nbi=None, rot_mat=None):
+                 wrap=True, non_gb_idx=None, rot_mat=None):
 
         # Call parent constructor
         super().__init__(**as_params)
@@ -58,25 +59,24 @@ class Bicrystal(AtomisticStructure):
         self.meta.update({'supercell_type': ['bicrystal']})
 
         # Non-boundary (column) index of `box_csl` and grain arrays
-        NBI = nbi
-        BI = [0, 1, 2]
-        BI.remove(nbi)
+        gb_idx = [0, 1, 2]
+        gb_idx.remove(non_gb_idx)
 
         # Boundary normal vector:
-        n = np.cross(self.supercell[:, BI[0]],
-                     self.supercell[:, BI[1]])[:, np.newaxis]
+        n = np.cross(self.supercell[:, gb_idx[0]],
+                     self.supercell[:, gb_idx[1]])[:, np.newaxis]
         n_unit = n / np.linalg.norm(n)
 
         # Non-boundary supercell unit vector
-        u = self.supercell[:, NBI:NBI + 1]
+        u = self.supercell[:, non_gb_idx][:, None]
         u_unit = u / np.linalg.norm(u)
 
         # Set instance CSLBicrystal-specific attributes:
         self.maintain_inv_sym = maintain_inv_sym
         self.n_unit = n_unit
         self.u_unit = u_unit
-        self.non_boundary_idx = NBI
-        self.boundary_idx = BI
+        self.non_boundary_idx = non_gb_idx
+        self.boundary_idx = gb_idx
         self.boundary_vac = 0
         self.boundary_vac_type = None
         self.relative_shift = [0, 0]
@@ -87,8 +87,8 @@ class Bicrystal(AtomisticStructure):
             self.reorient_to_xy()
 
         if boundary_vac is not None:
-            for bv in boundary_vac:
-                self.apply_boundary_vac(**bv)
+            for bvac in boundary_vac:
+                self.apply_boundary_vac(**bvac)
 
         if relative_shift is not None:
             self.apply_relative_shift(**relative_shift)
@@ -98,23 +98,23 @@ class Bicrystal(AtomisticStructure):
 
     @property
     def bicrystal_thickness(self):
-        """Computes bicrystal thickness in grain boundary normal direction."""
-
-        nbi = self.non_boundary_idx
-        sup_nb = self.supercell[:, nbi:nbi + 1]
+        """Get bicrystal thickness in grain boundary normal direction."""
+        sup_nb = self.supercell[:, self.non_boundary_idx][:, None]
         return np.einsum('ij,ij', sup_nb, self.n_unit)
 
     @property
     def boundary_area(self):
-        """Computes the grain boundary area, in square Angstroms."""
-        bv = self.boundary_vecs
-        return np.linalg.norm(np.cross(bv[:, 0], bv[:, 1]))
+        """Get the grain boundary area, in square Angstroms."""
+        return np.linalg.norm(np.cross(self.boundary_vecs[:, 0],
+                                       self.boundary_vecs[:, 1]))
 
     @property
     def boundary_vecs(self):
-        bi = self.boundary_idx
-        s = self.supercell
-        return np.vstack([s[:, bi[0]], s[:, bi[1]]]).T
+        """Get the supercell vectors defining the boundary plane."""
+        return np.vstack([
+            self.supercell[:, self.boundary_idx[0]],
+            self.supercell[:, self.boundary_idx[1]]
+        ]).T
 
     def distance_from_gb(self, points):
         """
@@ -126,7 +126,7 @@ class Bicrystal(AtomisticStructure):
 
     def reorient_to_xy(self):
         """
-        Reorient the supercell to a LAMMPS-compatible orientation in such a 
+        Reorient the supercell to a LAMMPS-compatible orientation in such a
         way that the boundary plane is in the xy plane.
 
         """
@@ -142,13 +142,13 @@ class Bicrystal(AtomisticStructure):
             self.non_boundary_idx = 2
             self.boundary_idx = [0, 1]
 
-        R = super().reorient_to_lammps()
+        rot_mat = super().reorient_to_lammps()
 
         # Reorient objects which are CSLBicrystal specific
-        self.n_unit = np.dot(R, self.n_unit[:, 0])[:, np.newaxis]
-        self.u_unit = np.dot(R, self.u_unit[:, 0])[:, np.newaxis]
+        self.n_unit = np.dot(rot_mat, self.n_unit[:, 0])[:, None]
+        self.u_unit = np.dot(rot_mat, self.u_unit[:, 0])[:, None]
 
-        return R
+        return rot_mat
 
     def apply_boundary_vac(self, thickness, func, wrap=False, **kwargs):
         """
@@ -162,7 +162,7 @@ class Bicrystal(AtomisticStructure):
             normal direction. This is not necessarily a supercell vector
             direction.
         func : str
-            One of "sigmoid", "flat" or "linear". Describes how the vacuum 
+            One of "sigmoid", "flat" or "linear". Describes how the vacuum
             should be distributed across the supercell in the GB normal
             direction.
         kwargs : dict
@@ -335,7 +335,7 @@ class Bicrystal(AtomisticStructure):
 
     def apply_relative_shift(self, shift, crystal_idx, wrap=False):
         """
-        Apply in-boundary-plane shifts to the specified grain to enable an 
+        Apply in-boundary-plane shifts to the specified grain to enable an
         exploration of the grain boundary's microscopic degrees of freedom.
 
         Parameters
@@ -366,7 +366,7 @@ class Bicrystal(AtomisticStructure):
 
         if np.any(shift_frac_gb < -1) or np.any(shift_frac_gb > 1):
             raise ValueError('Elements of `shift` should be between -1 and 1.')
-     
+
         shift_crystal = self.crystals[crystal_idx]
         shift_frac = np.zeros((3, 1))
         shift_frac[self.boundary_idx, [0, 0]] = shift_frac_gb
@@ -376,21 +376,24 @@ class Bicrystal(AtomisticStructure):
         atm_shiftd = np.copy(self.atom_sites)
         atm_crys_lab = self.atom_labels['crystal_idx']
         atm_crys_idx = atm_crys_lab[0][atm_crys_lab[1]]
-        atm_shiftd[:, np.where(atm_crys_idx == crystal_idx)[0]] += shift_std
+        atm_shift_cols = np.where(atm_crys_idx == crystal_idx)[0]
+        atm_shiftd[:, atm_shift_cols] += shift_std
         self.atom_sites = atm_shiftd
 
         if self.lattice_sites is not None:
             lat_shiftd = np.copy(self.lattice_sites)
             lat_crys_lab = self.lattice_labels['crystal_idx']
             lat_crys_idx = lat_crys_lab[0][lat_crys_lab[1]]
-            lat_shiftd[:, np.where(lat_crys_idx == crystal_idx)[0]] += shift_std
+            lat_shift_cols = np.where(lat_crys_idx == crystal_idx)[0]
+            lat_shiftd[:, lat_shift_cols] += shift_std
             self.lattice_sites = lat_shiftd
 
         if self.interstice_sites is not None:
             int_shiftd = np.copy(self.interstice_sites)
             int_crys_lab = self.interstice_labels['crystal_idx']
             int_crys_idx = int_crys_lab[0][int_crys_lab[1]]
-            int_shiftd[:, np.where(int_crys_idx == crystal_idx)[0]] += shift_std
+            int_shift_cols = np.where(int_crys_idx == crystal_idx)[0]
+            int_shiftd[:, int_shift_cols] += shift_std
             self.interstice_sites = int_shiftd
 
         # Update attributes:
@@ -573,21 +576,20 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
     csl_vecs_std = [np.dot(lat_vecs, c) for c in csl_vecs]
 
     # Non-boundary (column) index of `box_csl` and grain arrays:
-    NBI = 2
-    BI = [0, 1]
+    non_gb_idx = 2
 
     # Enforce a rule that out of boundary grain vector has to be
     # (a multiple of) a single CSL unit vector. This reduces the
     # potential "skewness" of the supercell.
-    if np.count_nonzero(box_csl[:, NBI]) > 1:
+    if np.count_nonzero(box_csl[:, non_gb_idx]) > 1:
         raise ValueError('The out of boundary vector, `box_csl[:, {}]`'
                          ' must have exactly one non-zero '
-                         'element.'.format(NBI))
+                         'element.'.format(non_gb_idx))
 
     # Scale grains in lattice basis
     grn_a_lat = np.dot(csl_vecs[0], box_csl)
     grn_b_lat = np.dot(csl_vecs[1], box_csl)
-    grn_b_lat[:, NBI] *= -1
+    grn_b_lat[:, non_gb_idx] *= -1
 
     # Get grain vectors in standard Cartesian basis
     grn_a_std = np.dot(lat_vecs, grn_a_lat)
@@ -599,17 +601,14 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
         rot_mat = np.eye(3)
 
     else:
-        rot_angles = vectors.col_wise_angles(
-            csl_vecs_std[0], csl_vecs_std[1])
+        rot_angles = vectors.vecpair_angle(*csl_vecs_std, axis=0)
 
         if not np.isclose(*rot_angles[0:2]):
-            raise ValueError('Non-equivalent rotation angles found '
-                             'between CSL vectors.')
+            raise ValueError('Non-equivalent rotation angles found between CSL'
+                             ' vectors.')
 
-        rot_mat = vectors.rotation_matrix(
-            rot_ax_std[:, 0], rot_angles[0])[0]
+        rot_mat = rotation.axang2rotmat(rot_ax_std[:, 0], rot_angles[0])
 
-    rot_angle_deg = np.rad2deg(rot_angles[0])
     grn_vols = [np.dot(np.cross(g[:, 0], g[:, 1]), g[:, 2])
                 for g in (grn_a_std, grn_b_std)]
 
@@ -632,7 +631,7 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
             ['10', '10', '10'],
             ['10', '10', '10']
         ]
-        edge_conditions[1][NBI] = '01'
+        edge_conditions[1][non_gb_idx] = '01'
 
     # Make two crystal boxes:
     crys_a = CrystalBox(crystal_structure, grn_a_std,
@@ -644,9 +643,9 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
     crys_b.rotate(rot_mat)
 
     # Shift crystals to form a supercell at the origin
-    zs = - crys_b.box_vecs[:, NBI:NBI + 1]
-    crys_a.translate(zs)
-    crys_b.translate(zs)
+    zero_shift = -crys_b.box_vecs[:, non_gb_idx][:, None]
+    crys_a.translate(zero_shift)
+    crys_b.translate(zero_shift)
 
     atom_sites = np.hstack((crys_a.atom_sites, crys_b.atom_sites))
     lattice_sites = np.hstack((crys_a.lattice_sites, crys_b.lattice_sites))
@@ -688,19 +687,20 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
 
     # Define the supercell:
     sup_std = np.copy(crys_a.box_vecs)
-    sup_std[:, NBI] = crys_a.box_vecs[:, NBI] - crys_b.box_vecs[:, NBI]
+    sup_std[:, non_gb_idx] = (crys_a.box_vecs[:, non_gb_idx] -
+                              crys_b.box_vecs[:, non_gb_idx])
 
     crystals = [
         {
             'crystal': crys_a.box_vecs,
-            'origin': zs,
+            'origin': zero_shift,
             'cs_idx': 0,
             'cs_orientation': np.eye(3),
             'cs_origin': [0, 0, 0]
         },
         {
             'crystal': crys_b.box_vecs,
-            'origin': zs,
+            'origin': zero_shift,
             'cs_idx': 0,
             'cs_orientation': rot_mat,
             'cs_origin': [0, -1, 0]
@@ -729,7 +729,7 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
         'boundary_vac': boundary_vac,
         'relative_shift': relative_shift,
         'wrap': wrap,
-        'nbi': 2,
+        'non_gb_idx': 2,
         'rot_mat': rot_mat,
     }
 
@@ -825,19 +825,20 @@ def mon_bicrystal_180_u0w(crystal_structure, gb_params, overlap_tol=0.1,
     crystal_structure : CrystalStructure
     gb_params: dict (str : string or ndarray or int)
         uvw_vecs : ndarray of size (3, 3)
-            The vectors of one of the crystals expressed in Miller indices of 
-            the primitive lattice. 
+            The vectors of one of the crystals expressed in Miller indices of
+            the primitive lattice.
         repeats : list
-            Number of unit cell repeats [Nx, Ny, Nz] for both crystals, where 
+            Number of unit cell repeats [Nx, Ny, Nz] for both crystals, where
             x-direction is normal to GB plane. Default value is [3, 1, 1].
         bound_vac : int
             Vacuum thickness to add at boundary (Angstrom)
         transls : list (REMOVE)
-            Translation steps in the two directions of boundary plane 
+            Translation steps in the two directions of boundary plane
             (fractions of unit cell vectors)
         term_plns : list
-            Termination planes for grains `a` and `b` if any exist as listed below. 
-            Allowed values for [001] 180°: '100' or '200' (equivalent to '-200').
+            Termination planes for grains `a` and `b` if any exist as listed
+            below. Allowed values for [001] 180°: '100' or '200' (equivalent to
+            '-200').
     maintain_inv_sym : bool, optional
         If True, the supercell atoms will be checked for inversion symmetry
         through the centres of both crystals. This check will be repeated
@@ -922,8 +923,8 @@ def mon_bicrystal_180_u0w(crystal_structure, gb_params, overlap_tol=0.1,
     pos_f_b = np.zeros((natoms, 3))
 
     if term_plns:
-        pos_f_a = term_h00(pos_f, plane=term_plane_a)
-        pos_f_b = term_h00(pos_f, plane=term_plane_b)
+        pos_f_a = gbhelper.term_h00(pos_f, plane=term_plane_a)
+        pos_f_b = gbhelper.term_h00(pos_f, plane=term_plane_b)
     else:
         pos_f_a = np.copy(pos_f)
         pos_f_b = np.copy(pos_f)
@@ -932,15 +933,15 @@ def mon_bicrystal_180_u0w(crystal_structure, gb_params, overlap_tol=0.1,
     pos_a_b = gbhelper.frac2abs(cell, pos_f_b)
 
     # Rotation matrix
-    R = rotation_matrix(np.array([0, 0, 1]), np.array([180]), degrees=True)
-    R = gbhelper.zero_prec(R).squeeze()
+    rot_mat = rotation.axang2rotmat(np.array([0, 0, 1]), 180, degrees=True)
+    rot_mat = gbhelper.zero_prec(rot_mat)
 
     # Calculate positions of atoms in rotated cell
-    pos_r_b = np.transpose(np.dot(R, np.transpose(pos_a_b)))
+    pos_r_b = np.transpose(np.dot(rot_mat, np.transpose(pos_a_b)))
 
     # Calculate cell vectors for rotated cell. All vectors positive.
     cell_r = np.zeros((3, 3), dtype=float)
-    cell_r = np.transpose(np.dot(R, np.transpose(cell)))
+    cell_r = np.transpose(np.dot(rot_mat, np.transpose(cell)))
 
     # Vectors of rotated and translated cell to octant 1.
     cell_r_t = np.zeros((3, 3), dtype=float)
@@ -1034,7 +1035,7 @@ def mon_bicrystal_180_u0w(crystal_structure, gb_params, overlap_tol=0.1,
         'boundary_vac': boundary_vac,
         'relative_shift': relative_shift,
         'wrap': wrap,
-        'nbi': 0,
+        'non_gb_idx': 0,
         #         'rot_mat': rot_mat, what is this?
     }
 

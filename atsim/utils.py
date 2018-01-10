@@ -315,20 +315,20 @@ def combine_list_of_dicts(a):
     return a[0]
 
 
-def update_dict(d, u):
-    """ Update an arbitrarily-nested dict."""
+def update_dict(base, upd):
+    """Update an arbitrarily-nested dict."""
 
-    for k, v in u.items():
-        if isinstance(d, collections.Mapping):
-            if isinstance(v, collections.Mapping):
-                r = update_dict(d.get(k, {}), v)
-                d[k] = r
+    for key, val in upd.items():
+        if isinstance(base, collections.Mapping):
+            if isinstance(val, collections.Mapping):
+                r = update_dict(base.get(key, {}), val)
+                base[key] = r
             else:
-                d[k] = u[k]
+                base[key] = upd[key]
         else:
-            d = {k: u[k]}
+            base = {key: upd[key]}
 
-    return d
+    return base
 
 
 def transpose_list(a):
@@ -863,3 +863,137 @@ def check_indices(seq, seq_idx):
 def to_col_vec(a, dim=3):
     a = np.array(a).squeeze().reshape((dim, 1))
     return a
+
+
+###
+### Added in sequence branch ###
+###
+
+def set_nested_dict(address, val):
+    """Given a list of dict keys, generate a dict with a single given value.
+
+    Parameters
+    ----------
+    address : list
+        List of dict keys
+    val : 
+        Dict value to set.
+
+    Returns
+    -------
+    dict
+
+    Examples
+    --------
+    >>> set_nested_dict(['a', 'b', 'c'], 'hello')
+    {'a': {'b': {'c': 'hello'}}}
+
+    """
+    ret = val
+    for i in address[::-1]:
+        ret = {i: ret}
+    return ret
+
+
+def get_recursive(dct, address, default=None):
+    """Retrieve a dict value for a list of nested keys.
+
+    Parameters
+    ----------
+    dct : dict
+    address : list
+        List of nested keys in `dct`
+    default
+        Value returned if the final key in address does not exist. All but the
+        final key in `address` must exist.
+
+    Returns
+    -------
+    dict value
+
+    """
+    ret = dct
+    for i in address:
+        ret = ret.get(i, default)
+    return ret
+
+
+def nest(*lists, return_index=False):
+    """Nest elements of multiple lists.
+
+    Parameters
+    ----------
+    lists : sequence of lists
+
+    Returns
+    -------
+    nested_list : list
+        List whose elements are lists containing one 
+        element for each input list.
+    return_index : bool, optional
+        If True, an index list is also retuned which records the
+        indices used from each list to generate each output list element.
+
+    Example
+    -------
+    >>> nest([1, 2], [3, 4, 5])
+    [[1, 3], [1, 4], [1, 5], [2, 3], [2, 4], [2, 5]]
+
+    """
+
+    N = len(lists)
+    sub_len = [len(i) for i in lists]
+
+    products = np.array([1] * (N + 1))
+    for i in range(len(lists) - 1, -1, -1):
+        products[:i + 1] *= len(lists[i])
+
+    nested_list = [[None for x in range(N)] for y in range(products[0])]
+
+    idx = []
+    for row_idx, row in enumerate(nested_list):
+
+        sub_idx = []
+        for col_idx, col in enumerate(row):
+
+            num_repeats = products[col_idx + 1]
+            sub_list_idx = int(row_idx / num_repeats) % len(lists[col_idx])
+            nested_list[row_idx][col_idx] = copy.deepcopy(
+                lists[col_idx][sub_list_idx])
+
+            sub_idx.append(sub_list_idx)
+        idx.append(sub_idx)
+
+    if return_index:
+        return (nested_list, idx)
+    else:
+        return nested_list
+
+
+def merge(*lists):
+    """Merge the elements of two or more lists of lists.
+
+    Parameters
+    ----------
+    lists : sequence of lists
+        Each list must have the same number of child lists.
+
+    Returns
+    -------
+    mergd : list of list
+
+    Example
+    -------
+    >>> merge([[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9], [10]])
+    [[1, 2, 5, 6, 9], [3, 4, 7, 8, 10]]
+
+    """
+
+    lsts_transpose = [transpose(i) for i in lists]
+    mergd = [j for i in lsts_transpose for j in i]
+    return transpose(mergd)
+
+
+def transpose(lst):
+    """Return the transpose of a 2D list."""
+    return [list(i) for i in zip(*lst)]

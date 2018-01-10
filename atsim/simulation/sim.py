@@ -1,4 +1,5 @@
 import os
+import copy
 import numpy as np
 from plotly import graph_objs
 from plotly.offline import plot, iplot, init_notebook_mode
@@ -44,8 +45,8 @@ class AtomisticSimulation(object):
         # Get supercell and atom sites from given optimisation step
         method = self.options['method']
 
-        species_orig = self.structure.all_species
-        species_idx_orig = self.structure.all_species_idx
+        species_orig = self.structure.species
+        species_idx_orig = self.structure.species_idx
         supercell_orig = self.structure.supercell
         supercell_orig_inv = np.linalg.inv(supercell_orig)
 
@@ -95,11 +96,9 @@ class AtomisticSimulation(object):
 
         as_params = {
             'atom_sites': atom_sites,
+            'atom_labels': copy.deepcopy(self.structure.atom_labels),
             'supercell': supercell,
-            'all_species': species_orig,
-            'all_species_idx': species_idx_orig,
             'crystals': self.structure.crystals,
-            'crystal_idx': self.structure.crystal_idx,
             'crystal_structures': self.structure.crystal_structures,
         }
 

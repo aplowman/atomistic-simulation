@@ -354,6 +354,10 @@ class SimGroup(object):
                 raise ValueError('All run groups must use the same software '
                                  '(name)!')
 
+            if not software['min_cores'] <= run_group['num_cores'] <= software['max_cores']:
+                msg = '{} core(s) is not supported on the specified software.'
+                raise ValueError(msg.format(run_group['num_cores']))
+
             run_group['software'] = software
 
             rg_sim_idx = run_group['sim_idx']
@@ -710,15 +714,18 @@ class SimGroup(object):
 
             js_ext = 'sh' if self.scratch.os_type == 'posix' else 'bat'
             js_fn = 'jobscript.{}'.format(js_ext)
-            rg_path = ('run_groups', str(rg_idx), js_fn)
-            js_path = self.scratch.path.joinpath(*rg_path)
+            rg_path = '/'.join(['run_groups', str(rg_idx)])
+            js_path = self.scratch.path.joinpath(rg_path, js_fn)
 
             if run_group['is_sge']:
                 cmd = 'qsub {}'.format(js_path)
             else:
                 cmd = str(js_path)
 
-            conn.run_command(cmd)
+            prt(cmd, 'cmd')
+            prt(rg_path, 'rg_path')
+
+            conn.run_command(cmd, cwd=rg_path)
 
     def copy_to_scratch(self):
         """Copy group from Stage to Scratch."""

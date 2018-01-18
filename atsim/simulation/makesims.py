@@ -13,201 +13,18 @@ from pathlib import Path
 from atsim import utils, dbhelpers, readwrite, geometry, OPT_FILE_NAMES
 from atsim import SERIES_NAMES, SET_UP_PATH, REF_PATH, SCRIPTS_PATH
 from atsim.readwrite import replace_in_file, delete_line, add_line
-from atsim.simulation.sim import AtomisticSimulation
+from atsim.simulation.sim import AtomisticSimulation, STRUCT_LOOKUP
 from atsim.structure.bravais import BravaisLattice, get_hex_a, get_hex_vol
 from atsim.structure.crystal import CrystalStructure
 from atsim.structure import atomistic
 from atsim.structure.atomistic import AtomisticStructureException
 from atsim.structure import bicrystal
 
+from atsim.utils import prt
+from atsim.simgroup import SimGroup
+from atsim.resources import ResourceConnection
+
 JS_TEMPLATE_DIR = os.path.join(SCRIPTS_PATH, 'set_up', 'jobscript_templates')
-STRUCT_LOOKUP = {
-    'bulk': atomistic.BulkCrystal,
-    'csl_bicrystal': bicrystal.csl_bicrystal_from_parameters,
-    'csl_bulk_bicrystal': bicrystal.csl_bulk_bicrystal_from_parameters,
-    'csl_surface_bicrystal': bicrystal.csl_surface_bicrystal_from_parameters,
-    'mon_bicrystal_180_u0w': bicrystal.mon_bicrystal_180_u0w,
-}
-
-
-def write_jobscript(path, calc_paths, method, num_cores, sge, job_array,
-                    scratch_os=None, scratch_path=None, parallel_env=None,
-                    selective_submission=False, module_load=None,
-                    job_name=None, seedname=None):
-    """
-    Write a jobscript file whose execution runs calculation input files.
-
-    Parameters
-    ----------
-    path : str
-        Directory in which to save the generated jobscript file.
-    calc_paths : list of str
-        Directories in which calculations are to be run.
-    method : str
-        Either 'castep' or 'lammps'
-    num_cores : int
-        Number of processor cores to use for the calculations.
-    sge : bool
-        If True, jobscript is generated for the SGE batch scheduler. If False,
-        jobscript is generated to immediately run the calculations.
-    job_array : bool
-        Only applicable if `sge` is True. If True, calculations are submitted
-        as an SGE job array. If False, calculations are submitted in one go. If
-        the number of calculations is one (i.e. len(`calc_paths`) == 1), this
-        will be set to False. Setting this to False can be handy for many small
-        calculations which won't take a long time to complete. If submitted as
-        a job array, a significant fraction of the total completion time may be
-        queuing.
-    scratch_os : str, optional
-        Either 'nt' (Windows) or 'posix' (Unix-like, MacOS). The operating
-        system on which the jobscript file will be executed. Default is to
-        query to system on which this script is invoked i.e. `os.name`.
-    scratch_path : str, optional
-        Directory in which the jobscript is to be executed. Specify this path
-        if the jobscript will be executed in a location different to the
-        directory `path`, in which it is generated. By default, this is set to
-        the same string as `path`.
-    parallel_env : str, optional
-        The SGE parallel environment on which to submit the calculations. Only
-        applicable in `num_cores` > 1. Default is None.
-    selective_submission : bool, optional
-        Only applicable if `sge` is True. If True, the SGE task id flag `-t`
-        [1] will be excluded from the jobscript file and instead this flag will
-        be expected as a command line argument when executing the jobscript:
-        e.g. "qsub jobscript.sh -t 1-10:2". Default is False.
-    module_load : str, optional
-        A string representing the path to a module to load within the
-        jobscript. If specified, the statement "module load `module_load`" will
-        be added to the top of the jobscript.
-    job_name : str, optional
-        Only applicable if `sge` is True. Default is None.
-    seedname : str, optional
-        Must be set if `method` is 'castep'.
-
-    Returns
-    -------
-    None
-
-    References
-    ----------
-    [1] http://gridscheduler.sourceforge.net/htmlman/htmlman1/qsub.html
-
-    TODO:
-    -   Add option for specifying parallel environment type for sge jobscripts
-
-    """
-
-    # General validation:
-
-    if method == 'castep' and seedname is None:
-        raise ValueError('`seedname` must be specified for CASTEP jobscripts.')
-
-    if num_cores > 1 and parallel_env is None:
-        raise ValueError('`parallel_env` must be set if `num_cores` > 1.')
-
-    num_calcs = len(calc_paths)
-
-    if num_cores <= 0:
-        raise ValueError('Num cores not valid.')
-    elif num_cores == 1:
-        multi_type = 'serial'
-    else:
-        multi_type = 'parallel'
-
-    if sge:
-        sge_str = 'sge'
-    else:
-        sge_str = 'no_sge'
-
-    if num_calcs == 1:
-        job_array = False
-
-    if job_array:
-        job_arr_str = 'job_array'
-    else:
-        job_arr_str = 'single_job'
-
-    if scratch_path is None:
-        scratch_path = path
-
-    if scratch_os is None:
-        scratch_os = os.name
-
-    if scratch_os == 'nt':
-        scratch_path_sep = '\\'
-    elif scratch_os == 'posix':
-        scratch_path_sep = '/'
-
-    # Get the template file name:
-    tmp_fn = method + '_' + sge_str + '_' + \
-        multi_type + '_' + scratch_os + '_' + job_arr_str + '.txt'
-
-    # Get the template file path:
-    tmp_path = os.path.join(JS_TEMPLATE_DIR, tmp_fn)
-
-    # Write text file with all calc paths
-    dirlist_fn = 'dir_list.txt'
-    dir_list_path_stage = os.path.join(path, dirlist_fn)
-    dir_list_path_scratch = scratch_path_sep.join([scratch_path, dirlist_fn])
-    readwrite.write_list_file(dir_list_path_stage, calc_paths)
-
-    if scratch_os == 'posix':
-        js_ext = 'sh'
-    elif scratch_os == 'nt':
-        js_ext = 'bat'
-
-    js_name = 'jobscript.' + js_ext
-
-    # Copy template file to path
-    js_path = os.path.join(path, js_name)
-    shutil.copy(tmp_path, js_path)
-
-    # Add module load to jobscript:
-    if module_load is not None:
-        add_line(js_path, 1, '')
-        add_line(js_path, 2, 'module load {}'.format(module_load))
-        delete_line(js_path, '#$ -V')
-        replace_in_file(js_path, '#!/bin/bash', '#!/bin/bash --login')
-
-    # Make replacements in template file:
-    replace_in_file(js_path, '<replace_with_dir_list>', dir_list_path_scratch)
-
-    if multi_type == 'parallel':
-        replace_in_file(js_path, '<replace_with_num_cores>', str(num_cores))
-        replace_in_file(js_path, '<replace_with_pe>', parallel_env)
-
-    if sge:
-        if job_name is not None:
-            replace_in_file(js_path, '<replace_with_job_name>', job_name)
-        else:
-            delete_line(js_path, '<replace_with_job_name>')
-
-        if selective_submission:
-            delete_line(js_path, '#$ -t')
-        else:
-            replace_in_file(js_path, '<replace_with_job_index_range>',
-                            '1-' + str(num_calcs))
-
-    if method == 'castep':
-        replace_in_file(js_path, '<replace_with_seed_name>', seedname)
-
-    # For `method` == 'lammps', `sge` == True, `job_array` == False, we need
-    # a helper jobscript, called by the SGE jobscript:
-    if method == 'lammps' and sge and not job_array:
-
-        if multi_type != 'serial' or scratch_os != 'posix':
-            raise NotImplementedError('Jobscript parameters not supported.')
-
-        help_tmp_path = os.path.join(
-            JS_TEMPLATE_DIR, 'lammps_no_sge_serial_posix_single_job.txt')
-
-        help_js_path = os.path.join(path, 'lammps_single_job.sh')
-        shutil.copy(help_tmp_path, help_js_path)
-        replace_in_file(help_js_path, '<replace_with_dir_list>',
-                        dir_list_path_scratch)
-
-    # Make a directory for job-related output. E.g. .o and .e files from CSF.
-    os.makedirs(os.path.join(path, 'output'))
 
 
 class Archive(object):
@@ -1236,86 +1053,6 @@ def make_crystal_structures(cs_opt):
     return cs
 
 
-def modify_crystal_structure(cs, vol_change, ca_change):
-    """
-    Regenerate a CrystalStructure with a modified bravais lattice.
-
-    Parameters
-    ----------
-    cs : CrystalStructure object
-    vol_change : float
-        Percentage change in volume
-    ca_change : float
-        Percentage change in c/a ratio
-
-    Returns
-    -------
-    CrystalStructure
-
-    """
-    bl = cs.bravais_lattice
-
-    # Modify hexagonal CrystalStructure
-    if bl.lattice_system != 'hexagonal':
-        raise NotImplementedError('Cannot modify non-hexagonal crystal '
-                                  'structure.')
-
-    # Generate new a and c lattice parameters based on originals and volume and
-    # c/a ratio changes:
-    v = get_hex_vol(bl.a, bl.c)
-    v_new = v * (1 + vol_change / 100)
-
-    ca_new = (bl.c / bl.a) * (1 + ca_change / 100)
-    a_new = get_hex_a(ca_new, v_new)
-    c_new = ca_new * a_new
-
-    bl_new = BravaisLattice('hexagonal', a=a_new, c=c_new)
-    cs_new = CrystalStructure(bl_new, copy.deepcopy(cs.motif))
-    return cs_new
-
-
-def make_structure(bs_opt, crystal_structures):
-
-    if bs_opt.get('import') is None:
-        remove_kys = ['type', 'import', 'sigma', 'crystal_structure_modify']
-        struct_opt = {}
-        for k, v in bs_opt.items():
-
-            if k in remove_kys:
-                continue
-
-            elif k == 'cs_idx':
-                cs = crystal_structures[v]
-                csm = bs_opt.get('crystal_structure_modify')
-                if csm is not None:
-                    cs = modify_crystal_structure(cs, **csm)
-                struct_opt.update({'crystal_structure': cs})
-
-            else:
-                struct_opt.update({k: v})
-
-        base_as = STRUCT_LOOKUP[bs_opt['type']](**struct_opt)
-
-    else:
-
-        # Retrieve the initial base AtomisticStructure object from a previous
-        # simulation
-
-        imp_archive = bs_opt['import']['archive']['path']
-        imp_id = bs_opt['import']['id']
-        imp_sim_idx = bs_opt['import']['sim_idx']
-        imp_opt_step = bs_opt['import']['opt_step']
-        imp_tile = bs_opt['import'].get('tile')
-
-        imp_pick_pth = os.path.join(imp_archive, imp_id, 'sims.pickle')
-        imp_pick = readwrite.read_pickle(imp_pick_pth)
-        imp_as = imp_pick['all_sims'][imp_sim_idx]
-        base_as = imp_as.generate_structure(
-            opt_idx=imp_opt_step, tile=imp_tile)
-
-    return base_as
-
-
 def plot_gamma_surface_grids(opt, common_series_info, stage):
 
     g_preview = []
@@ -1406,6 +1143,37 @@ def get_structure_checks_list(checks_dict, structure_type):
             ret.append(k)
 
     return ret
+
+
+def main2(opts_path, opts_spec_path, config, resources, software):
+    """config, resources, software will be replaced with a single database
+    connection instance.
+
+    """
+
+    SimGroup.set_machine_id(config['machine_id'])
+    SimGroup.load_software_lookup()
+
+    # Generate a new SimGroup object
+    sim_group = SimGroup(opts_path, opts_spec_path)
+
+    # sim0opt = sim_group.get_sim_options(0)
+    # prt(readwrite.format_dict(sim0opt), 'sim0opt')
+    # exit()
+
+    # Generate input files on stage (current machine)
+    sim_group.write_initial_runs()
+
+    # Save current state of sim group as JSON file
+    sim_group.save_state()
+
+    # Copy to scratch
+    sim_group.copy_to_scratch()
+
+    # Submit initial run groups on scratch
+    sim_group.submit_run_groups([0])
+
+    print('Finished setting up simulation group: {}'.format(sim_group.hid))
 
 
 def main(opt):
@@ -1578,6 +1346,7 @@ def main(opt):
                     'save': True,
                     'group_atoms_by': ['species', 'crystal_idx', 'species_count']
                 }
+                # should be srs_as.visualise(...):
                 base_as.visualise(**vs_opts)
 
         # Process constraints options
@@ -1655,7 +1424,3 @@ def main(opt):
     series_msg = ' series.' if len(all_scratch_paths) > 0 else '.'
     print('Finished setting up simulation{}'
           ' session_id: {}'.format(series_msg, s_id))
-
-
-if __name__ == '__main__':
-    main(OPT)

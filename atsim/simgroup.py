@@ -269,13 +269,14 @@ class SimGroup(object):
             self.sequences = state['sequences']
             self.sim_updates = state['sim_updates']
             self.sims = state['sims']
-            self.run_opt = state['run_opt']
             self.software_name = state['software_name']
             self.path_options = state['path_options']
             self.options_unparsed = state['options_unparsed']
             self.options = state['options']
             self.hid = state['hid']
             self.job_name = state['job_name']
+
+            run_opt = state['run_opt']
 
         else:
 
@@ -303,7 +304,6 @@ class SimGroup(object):
 
             # Process run group options:
             self.software_name = None
-            self.run_opt = self._parse_run_group_opt(run_opt)
 
             path_options = {**SimGroup.path_options_def, **path_options}
             sub_dirs = [utils.parse_times(i)[0]
@@ -317,9 +317,11 @@ class SimGroup(object):
 
         # For state or new:
         add_path = self.path_options['sub_dirs'] + [self.hid]
-        self.stage = Stage(self.run_opt['stage_id'], add_path)
-        self.scratch = Scratch(self.run_opt['scratch_id'], add_path)
-        self.archive = Archive(self.run_opt['archive_id'], add_path)
+        self.stage = Stage(run_opt['stage_name'], add_path)
+        self.scratch = Scratch(run_opt['scratch_name'], add_path)
+        self.archive = Archive(run_opt['archive_name'], add_path)
+
+        self.run_opt = self._parse_run_group_opt(run_opt)
 
         # prt(format_list(self.sim_updates), 'self.sim_updates')
         # exit()
@@ -334,11 +336,23 @@ class SimGroup(object):
             run_group = run_opt['groups'][rg_idx]
 
             # Load software entry
-            soft_id = run_group['software_id']
+            software_nickname = run_group['software_nickname']
             software = dict_from_list(
                 SimGroup.software_lookup['software'],
-                {'id': soft_id}
+                {'software_nickname': software_nickname}
             )
+            soft_id = software['id']
+
+            # Check this software is allowed on this scratch
+            soft_scratch = dict_from_list(
+                SimGroup.software_lookup['scratch_software'],
+                {'software_id': soft_id, 'scratch_id': self.scratch.scratch_id}
+            )
+            if not soft_scratch:
+                msg = ('Specified software is not available on specified '
+                       'Scratch.')
+                raise ValueError(msg)
+
             # Load software name:
             software_name = dict_from_list(
                 SimGroup.software_lookup['software_name'],
@@ -354,11 +368,17 @@ class SimGroup(object):
                 raise ValueError('All run groups must use the same software '
                                  '(name)!')
 
+            # Check valid num cores specified
             if not software['min_cores'] <= run_group['num_cores'] <= software['max_cores']:
                 msg = '{} core(s) is not supported on the specified software.'
                 raise ValueError(msg.format(run_group['num_cores']))
 
+            # Check scratch
+            if run_group['is_sge'] and not self.scratch.sge:
+                raise ValueError('SGE is not supported on specified Scratch.')
+
             run_group['software'] = software
+            run_group['software_id'] = soft_id
 
             rg_sim_idx = run_group['sim_idx']
             sim_idx_msg = ('Run group `sim_idx` must be either "all" or a '

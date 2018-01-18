@@ -5,7 +5,7 @@ import yaml
 from shutil import copytree
 from atsim import SET_UP_PATH, OPT_FILE_NAMES
 from atsim import utils
-from atsim.utils import prt, dict_from_list
+from atsim.utils import prt, dict_from_list, mut_exc_args
 
 with open(os.path.join(SET_UP_PATH, OPT_FILE_NAMES['resources'])) as res_fs:
     RESOURCES = yaml.safe_load(res_fs)
@@ -16,22 +16,25 @@ class Resource(object):
 
     def __init__(self, resource_id, add_path=None):
         """Initialise resource object from ID and 'database' file."""
-        res = dict_from_list(RESOURCES['resource'], {'id': resource_id})
-        machine = dict_from_list(RESOURCES['machine'], {
-                                 'id': res['machine_id']})
+
+        res_defn = dict_from_list(RESOURCES['resource'],
+                                  {'id': resource_id})
+
+        mach_defn = dict_from_list(RESOURCES['machine'],
+                                   {'id': res_defn['machine_id']})
 
         if add_path is None:
             add_path = []
 
         # Instantiate a "pure" path object in this case, which does not have
         # access to the file system.
-        if machine['os_type'] == 'nt':
+        if mach_defn['os_type'] == 'nt':
             path_class = pathlib.PureWindowsPath
 
-        elif machine['os_type'] == 'posix':
+        elif mach_defn['os_type'] == 'posix':
             path_class = pathlib.PurePosixPath
 
-        self.base_path = path_class(res['base_path'])
+        self.base_path = path_class(res_defn['base_path'])
         self.path = self.base_path.joinpath(*add_path)
 
         # Check base_path is absolute
@@ -39,11 +42,10 @@ class Resource(object):
             msg = ('Resource `base_path` "{}" must be an absolute path.')
             raise ValueError(msg.format(self.base_path))
 
-        self.resource_id = resource_id
-        self.machine_id = res['machine_id']
-        self.name = res['name']
-        self.os_type = machine['os_type']
-        self.is_dropbox = machine['is_dropbox']
+        self.resource_id = res_defn['id']
+        self.machine_id = res_defn['machine_id']
+        self.os_type = mach_defn['os_type']
+        self.is_dropbox = mach_defn['is_dropbox']
 
     def make_paths_concrete(self):
         """Convert `base_path` and `path` to "concrete" path objects.
@@ -67,13 +69,13 @@ class Stage(Resource):
     """Class to represent the area on the local machine in which simulations
     input files are generated."""
 
-    def __init__(self, stage_id, add_path=None):
+    def __init__(self, name, add_path=None):
 
-        stage = dict_from_list(RESOURCES['stage'], {'id': stage_id})
-        res_id = stage['resource_id']
-
+        stage_defn = dict_from_list(RESOURCES['stage'], {'name': name})
+        res_id = stage_defn['resource_id']
         super().__init__(res_id, add_path)
-
+        self.name = name
+        self.stage_id = stage_defn['id']
         self.make_paths_concrete()
 
 
@@ -81,22 +83,27 @@ class Scratch(Resource):
     """Class to represent the area on a machine in which simulations are to be
     run."""
 
-    def __init__(self, scratch_id, add_path=None):
+    def __init__(self, name, add_path=None):
 
-        scratch = dict_from_list(RESOURCES['scratch'], {'id': scratch_id})
-        res_id = scratch['resource_id']
+        scratch_defn = dict_from_list(RESOURCES['scratch'], {'name': name})
+        res_id = scratch_defn['resource_id']
         super().__init__(res_id, add_path)
+        self.name = name
+        self.scratch_id = scratch_defn['id']
+        self.sge = scratch_defn['sge']
 
 
 class Archive(Resource):
     """Class to represent the area on a machine in which completed simulations
     are archived."""
 
-    def __init__(self, archive_id, add_path=None):
+    def __init__(self, name, add_path=None):
 
-        archive = dict_from_list(RESOURCES['archive'], {'id': archive_id})
-        res_id = archive['resource_id']
+        arch_defn = dict_from_list(RESOURCES['archive'], {'name': name})
+        res_id = arch_defn['resource_id']
         super().__init__(res_id, add_path)
+        self.name = name
+        self.archive_id = arch_defn['id']
 
 
 class ResourceConnection(object):
@@ -204,24 +211,39 @@ class ResourceConnection(object):
 
             copytree(self.src.path, self.dst.path)
 
-    def run_command(self, cmd):
-        """Execute a command on the destination resource."""
+    def run_command(self, cmd, cwd=None):
+        """Execute a command on the destination resource.
+
+        Parameters
+        ----------
+        cmd : str
+            The command to execute
+        cwd : str, optional
+            The directory in which to execute the command, relative to the
+            `path` of the destination resource.
+
+        """
 
         self.check_conn()
 
         # no_dir_msg = 'Directory does not exist on scratch. Aborting.'
 
+        if cwd is not None:
+            cwd = str(self.dst.path.joinpath(cwd))
+        else:
+            cwd = str(self.dst.path)
+
         if self.remote:
 
             run_args = ['bash', '-c']
             cmd_str = 'ssh {} "cd {} && {}"'
-            run_args.append(cmd_str.format(self.host, self.dst.path, cmd))
+            run_args.append(cmd_str.format(self.host, cwd, cmd))
             _ = subprocess.run(run_args)
 
         else:
 
             if self.dst.os_type == 'nt':
-                subprocess.run([cmd], shell=True)
+                subprocess.run([cmd], shell=True, cwd=cwd)
 
             elif self.dst.os_type == 'posix':
                 pass

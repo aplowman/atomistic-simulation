@@ -220,6 +220,7 @@ def validate_ms_opt(opt_fn, lookup_opt_fn):
         'archive',
         'database',
         'check',
+        'run',
     ]
     for dk in deep_keys:
         if opt.get(dk) is not None:
@@ -233,7 +234,6 @@ def validate_ms_opt(opt_fn, lookup_opt_fn):
         'constraints',
         'castep',
         'lammps',
-        'crystal_structures',
         'series',
         'method',
         'make_plots',
@@ -246,6 +246,9 @@ def validate_ms_opt(opt_fn, lookup_opt_fn):
         'database',
         'offline_files',
         'check',
+        'run',
+        'sequences',
+        'path_options',
     ]
 
     check_invalid_key(opt_unflat, allowed_keys)
@@ -268,10 +271,6 @@ def validate_ms_opt(opt_fn, lookup_opt_fn):
 
         elif k == 'structure':
             valid_opt.update({k: validate_ms_base_structure(v, opt_lookup)})
-
-        elif k == 'crystal_structures':
-            valid_opt.update(
-                {k: validate_ms_crystal_structures(v, opt_lookup)})
 
         elif k == 'series':
             valid_opt.update({k: validate_ms_series(v)})
@@ -379,6 +378,8 @@ def validate_ms_base_structure(opt, opt_lookup):
         'type',
         'overlap_tol',
         'import',
+        'crystal_structures',
+        'constraints',
     ]
     allowed_keys_import = [
         'import',
@@ -458,6 +459,10 @@ def validate_ms_base_structure(opt, opt_lookup):
 
         elif k == 'boundary_vac':
             valid_bs.update({k: validate_ms_boundary_vac(v, opt_lookup)})
+
+        elif k == 'crystal_structures':
+            valid_bs.update(
+                {k: validate_ms_crystal_structures(v, opt_lookup)})
 
         else:
             valid_bs.update({k: v})

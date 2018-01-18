@@ -1,10 +1,14 @@
 from pathlib import Path
+from collections import namedtuple
 import os
 
 # Useful paths
 SCRIPTS_PATH = os.path.join(str(Path(__file__).parents[0]))
 REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
 SET_UP_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
+
+from atsim.simulation.sim import CastepSimulation, LammpsSimulation
+
 
 # Allowed series names and their allowed keys:
 VLD_SRS_NM = ['name']
@@ -35,7 +39,12 @@ SERIES_NAMES = list(ALLOWED_SERIES_KEYS.keys())
 
 # Options file names
 OPT_FILE_NAMES = {
-    'makesims': 'makesims.yml',
+    'config': 'config.yml',
+    'resources': 'resources.yml',
+    'software': 'software.yml',
+    'sequences': 'sequences.yml',
+    'opt_spec': 'opt_spec.yml',
+    'makesims': 'makesims_dev_sequence.yml',
     'process': 'process.yml',
     'harvest': 'harvest.yml',
     'makeplots': 'makeplots.yml',
@@ -43,3 +52,14 @@ OPT_FILE_NAMES = {
     'lookup': 'lookup.yml',
     'defaults': 'defaults.yml',
 }
+
+# Mapping between software name and Simulation subclass:
+SIM_CLASS_MAP = {
+    'castep': CastepSimulation,
+    'lammps': LammpsSimulation,
+}
+
+BaseUpdate = namedtuple(
+    'BaseUpdate',
+    ['address', 'val', 'val_seq_type', 'mode']
+)

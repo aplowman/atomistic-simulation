@@ -411,7 +411,7 @@ def dir_exists_remote(host, dir_path):
         return False
 
 
-def rsync_remote(src, host, dst, exclude=None, include=None):
+def rsync_remote(src, host, dst, exclude=None, include=None, mkdirs=False):
     """
     Execute an rsync command to a remote host.
 
@@ -424,6 +424,9 @@ def rsync_remote(src, host, dst, exclude=None, include=None):
         List of strings to pass to --include option. If this is specified,
         only matching paths with by copied and all subdirectories will be
         traversed. Cannot be used with `exclude`.
+    mkdirs : bool
+        If True, first call `mkdir -p` with the `dst`. Note: this doesn't make
+        sense if `dst` is a file path (it will still generate a directory).
     """
 
     # Validation
@@ -438,8 +441,13 @@ def rsync_remote(src, host, dst, exclude=None, include=None):
         in_ex_str = ''.join([' --include="{}"'.format(i) for i in include])
         in_ex_str += ' --include="*/" --exclude="*"'
 
-    rsync_cmd = ('rsync -az --chmod=Du=rwx,Dgo=rx,Fu=rw,Fog=r{}'
-                 ' "{}" {}:{}').format(in_ex_str, src, host, dst)
+    mkdirs_cmd = ''
+    if mkdirs:
+        mkdirs_cmd = ' --rsync-path="mkdir -p {} && rsync"'.format(dst)
+
+    rsync_cmd = ('rsync -az --chmod=Du=rwx,Dgo=rx,Fu=rw,Fog=r{}{}'
+                 ' "{}" {}:{}').format(in_ex_str, mkdirs_cmd, src, host, dst)
+
     subprocess.run(['bash', '-c', rsync_cmd])
 
 
@@ -997,3 +1005,175 @@ def merge(*lists):
 def transpose(lst):
     """Return the transpose of a 2D list."""
     return [list(i) for i in zip(*lst)]
+
+
+class RestrictedDict(dict):
+    """
+    Stores the properties of an object. It's a dictionary that's
+    restricted to a tuple of allowed keys. Any attempt to set an invalid
+    key raises an error.
+
+    Copied from http://code.activestate.com/recipes/578042-restricted-dictionary/
+
+    >>> p = RestrictedDict(('x','y'))
+    >>> print p
+    RestrictedDict(('x', 'y'), {})
+    >>> p['x'] = 1
+    >>> p['y'] = 'item'
+    >>> print p
+    RestrictedDict(('x', 'y'), {'y': 'item', 'x': 1})
+    >>> p.update({'x': 2, 'y': 5})
+    >>> print p
+    RestrictedDict(('x', 'y'), {'y': 5, 'x': 2})
+    >>> p['x']
+    2
+    >>> p['z'] = 0
+    Traceback (most recent call last):
+    ...
+    KeyError: 'z is not allowed as key'
+    >>> q = RestrictedDict(('x', 'y'), x=2, y=5)
+    >>> p==q
+    True
+    >>> q = RestrictedDict(('x', 'y', 'z'), x=2, y=5)
+    >>> p==q
+    False
+    >>> len(q)
+    2
+    >>> q.keys()
+    ['y', 'x']
+    >>> q._allowed_keys
+    ('x', 'y', 'z')
+    >>> p._allowed_keys = ('x', 'y', 'z')
+    >>> p['z'] = 3
+    >>> print p
+    RestrictedDict(('x', 'y', 'z'), {'y': 5, 'x': 2, 'z': 3})
+
+    """
+
+    def __init__(self, allowed_keys, seq=(), **kwargs):
+        """
+        Initializes the class instance. The allowed_keys tuple is
+        required, and it cannot be changed later.
+        If seq and/or kwargs are provided, the values are added (just
+        like a normal dictionary).
+        """
+        super(RestrictedDict, self).__init__()
+        self._allowed_keys = tuple(allowed_keys)
+        # normalize arguments to a (key, value) iterable
+        if hasattr(seq, 'keys'):
+            get = seq.__getitem__
+            seq = ((k, get(k)) for k in seq.keys())
+        if kwargs:
+            from itertools import chain
+            seq = chain(seq, kwargs.iteritems())
+        # scan the items keeping track of the keys' order
+        for k, v in seq:
+            self.__setitem__(k, v)
+
+    def __setitem__(self, key, value):
+        """Checks if the key is allowed before setting the value"""
+        if key in self._allowed_keys:
+            super(RestrictedDict, self).__setitem__(key, value)
+        else:
+            raise KeyError("%s is not allowed as key" % key)
+
+    def update(self, e=None, **kwargs):
+        """
+        Equivalent to dict.update(), but it was needed to call
+        RestrictedDict.__setitem__() instead of dict.__setitem__
+        """
+        try:
+            for k in e:
+                self.__setitem__(k, e[k])
+        except AttributeError:
+            for (k, v) in e:
+                self.__setitem__(k, v)
+        for k in kwargs:
+            self.__setitem__(k, kwargs[k])
+
+    def __eq__(self, other):
+        """
+        Two RestrictedDicts are equal when their dictionaries and allowed keys
+        are all equal.
+        """
+        if other is None:
+            return False
+        try:
+            allowedcmp = (self._allowed_keys == other._allowed_keys)
+            if allowedcmp:
+                dictcmp = super(RestrictedDict, self).__eq__(other)
+            else:
+                return False
+        except AttributeError:
+            # Other is not a RestrictedDict
+            return False
+        return bool(dictcmp)
+
+    def __ne__(self, other):
+        """x.__ne__(y) <==> not x.__eq__(y)"""
+        return not self.__eq__(other)
+
+    def __repr__(self):
+        """Representation of the RestrictedDict"""
+        return 'RestrictedDict(%s, %s)' % (self._allowed_keys.__repr__(),
+                                           super(RestrictedDict, self).__repr__())
+
+
+def mut_exc_args(*arg_groups):
+    """Check exactly one group of function arguments are all not `None` and
+    all other are `None`.
+
+    Parameters
+    ----------
+    arg_groups : list of dict of str keys
+
+    """
+
+    # Check within each group, all are either `None` or not `None`:
+    all_msg = ('The following arguments must be all `None` or all not '
+               '`None`: {}. Specify all or them or none of them.')
+
+    all_none = [all([group[i] is None for i in group]) for group in arg_groups]
+    all_not_none = [all([group[i] is not None for i in group])
+                    for group in arg_groups]
+
+    for i_idx, (i, j) in enumerate(zip(all_none, all_not_none)):
+        if not (i or j):
+            all_msg_fmt = all_msg.format(list(arg_groups[i_idx].keys()))
+            raise ValueError(all_msg_fmt)
+
+    # Check exactly one group is all not `None`:
+    arg_grp_keys = [list(i.keys()) for i in arg_groups]
+    one_msg = ('Exactly one group in the following groups of arguments'
+               ' must all be specified: {}'.format(arg_grp_keys))
+    if sum(all_not_none) != 1:
+        raise ValueError(one_msg)
+
+
+def parse_float(num_str):
+    """Parse a string as a floating point number where the string may
+    be given as a fraction with a forward slash.
+
+    """
+
+    if "/" in num_str:
+        num, den = num_str.split("/")
+        num_parsed = float(num) / float(den)
+    else:
+        num_parsed = float(num_str)
+
+    return num_parsed
+
+
+def parse_times(format_str):
+    """Parse a string which contain time format code and one or
+    more `%%r` to represent a random digit from 0 to 9."""
+
+    time_parsed = time.strftime(format_str)
+    rnd_all = ''
+    while '%r' in time_parsed:
+        rnd = str(random.randint(0, 9))
+        rnd_all += rnd
+        time_parsed = time_parsed.replace('%r', rnd, 1)
+
+    return time_parsed, rnd_all

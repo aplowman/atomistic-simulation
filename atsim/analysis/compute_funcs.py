@@ -305,7 +305,7 @@ def supercell_type(out, sim, sim_idx):
 
     Notes
     -----
-    It is neccessary for this to be a "compute" rather than a "parameter"
+    It is necessary for this to be a "compute" rather than a "parameter"
     for compatibility reasons.
 
     """

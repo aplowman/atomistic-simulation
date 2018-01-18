@@ -23,7 +23,7 @@ def write_lammps_atoms(supercell, atom_sites, species, species_idx, path, atom_s
         Directory in which to generate the atoms file.
     atom_style : str ("atomic" or "full")
         Corresponds to the LAMMPs command `atom_style`. Determines which
-        columns are neccessary in writing the atom data.
+        columns are necessary in writing the atom data.
     charges : list or ndarray of float of shape (M, ), optional
         The charge associated with each species type. Only used if `atom_style`
         is "full".
@@ -123,7 +123,7 @@ def write_lammps_inputs(supercell, atom_sites, species, species_idx, path,
         Directory in which to generate input files.
     atom_style : str ("atomic" or "full")
         Corresponds to the LAMMPs command `atom_style`. Determines which
-        columns are neccessary in writing the atom data.
+        columns are necessary in writing the atom data.
     atom_constraints : dict, optional
         A dict with the following keys:
             fix_`mn`_idx : ndarray of dimension 1

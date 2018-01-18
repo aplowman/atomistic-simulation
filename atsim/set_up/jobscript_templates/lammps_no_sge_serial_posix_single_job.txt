@@ -2,5 +2,5 @@
 while read line; do
         cd $line
 		echo current dir is: $line
-        lmp_linux < in.lammps >/dev/null
+        <replace_with_executable> < in.lammps >/dev/null
 done < <replace_with_dir_list>

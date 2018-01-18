@@ -10,4 +10,4 @@
 
 SUBDIR=`sed -n 1p <replace_with_dir_list>`
 cd $SUBDIR
-mpirun -n $NSLOTS castep.mpi <replace_with_seed_name>
+mpirun -n $NSLOTS <replace_with_executable> <replace_with_seed_name>

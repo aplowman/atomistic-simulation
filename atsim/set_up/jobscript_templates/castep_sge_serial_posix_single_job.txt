@@ -9,4 +9,4 @@
 
 SUBDIR=`sed -n 1p <replace_with_dir_list>`
 cd $SUBDIR
-castep.serial <replace_with_seed_name>
+<replace_with_executable> <replace_with_seed_name>

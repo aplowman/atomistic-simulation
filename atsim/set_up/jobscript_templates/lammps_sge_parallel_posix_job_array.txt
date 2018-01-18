@@ -11,4 +11,4 @@
 
 SUBDIR=`sed -n "${SGE_TASK_ID}p" <replace_with_dir_list>`
 cd $SUBDIR
-mpirun -n $NSLOTS lmp_linux < in.lammps
+mpirun -n $NSLOTS <replace_with_executable> < in.lammps

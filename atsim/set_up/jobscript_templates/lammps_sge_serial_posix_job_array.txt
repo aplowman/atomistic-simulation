@@ -10,4 +10,4 @@
 
 SUBDIR=`sed -n "${SGE_TASK_ID}p" <replace_with_dir_list>`
 cd $SUBDIR
-lmp_linux < in.lammps
+<replace_with_executable> < in.lammps

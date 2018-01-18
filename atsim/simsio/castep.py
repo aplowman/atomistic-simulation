@@ -188,47 +188,48 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
     if species_idx.min() < 0 or species_idx.max() > (atom_sites.shape[1] - 1):
         raise IndexError('`species_idx` must index `atom_sites`')
 
-    for k, v in atom_constraints.items():
+    if atom_constraints is not None:
+        for k, v in atom_constraints.items():
 
-        if isinstance(v, (np.ndarray, list)):
+            if isinstance(v, (np.ndarray, list)):
 
-            atom_constraints[k] = utils.parse_as_int_arr(v)
-            v = atom_constraints[k]
+                atom_constraints[k] = utils.parse_as_int_arr(v)
+                v = atom_constraints[k]
 
-            if v.ndim != 1:
-                raise ValueError('`atom_constraints[{}]` must be a 1D list, '
-                                 '1D array or str.'.format(k))
+                if v.ndim != 1:
+                    raise ValueError('`atom_constraints[{}]` must be a 1D list, '
+                                    '1D array or str.'.format(k))
 
-            if v.min() < 1 or v.max() > atom_sites.shape[1]:
-                raise IndexError('`atom_constraints[{}]` must index '
-                                 '`atom_sites`'.format(k))
+                if v.min() < 1 or v.max() > atom_sites.shape[1]:
+                    raise IndexError('`atom_constraints[{}]` must index '
+                                    '`atom_sites`'.format(k))
 
-        elif v is not None:
-            raise ValueError('`atom_constraints[{}]` must be a 1D list or 1D '
-                             'array.'.format(k))
+            elif v is not None:
+                raise ValueError('`atom_constraints[{}]` must be a 1D list or 1D '
+                                'array.'.format(k))
 
-    f_xy = atom_constraints.get('fix_xy_idx')
-    f_xz = atom_constraints.get('fix_xz_idx')
-    f_yz = atom_constraints.get('fix_yz_idx')
-    f_xyz = atom_constraints.get('fix_xyz_idx')
+        f_xy = atom_constraints.get('fix_xy_idx')
+        f_xz = atom_constraints.get('fix_xz_idx')
+        f_yz = atom_constraints.get('fix_yz_idx')
+        f_xyz = atom_constraints.get('fix_xyz_idx')
 
-    if f_xy is None:
-        f_xy = np.array([])
-    if f_xz is None:
-        f_xz = np.array([])
-    if f_yz is None:
-        f_yz = np.array([])
-    if f_xyz is None:
-        f_xyz = np.array([])
+        if f_xy is None:
+            f_xy = np.array([])
+        if f_xz is None:
+            f_xz = np.array([])
+        if f_yz is None:
+            f_yz = np.array([])
+        if f_xyz is None:
+            f_xyz = np.array([])
 
-    atom_constr_opt = [f_xy, f_xz, f_yz, f_xyz]
-    atom_constr_pairs = list(itertools.combinations(atom_constr_opt, 2))
+        atom_constr_opt = [f_xy, f_xz, f_yz, f_xyz]
+        atom_constr_pairs = list(itertools.combinations(atom_constr_opt, 2))
 
-    for pair in atom_constr_pairs:
-        if len(pair[0]) > 0 and len(pair[1]) > 0:
-            if len(np.intersect1d(pair[0], pair[1])) > 0:
-                raise ValueError('`{}_idx` and `{}_idx`  cannot '
-                                 'contain the same indices.'.format(pair[0], pair[1]))
+        for pair in atom_constr_pairs:
+            if len(pair[0]) > 0 and len(pair[1]) > 0:
+                if len(np.intersect1d(pair[0], pair[1])) > 0:
+                    raise ValueError('`{}_idx` and `{}_idx`  cannot '
+                                    'contain the same indices.'.format(pair[0], pair[1]))
 
     os.makedirs(path, exist_ok=True)
 
@@ -255,105 +256,107 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
         cf.write('%endblock positions_abs\n')
 
         # Cell constraints:
-        encoded_params = get_castep_cell_constraints(**cell_constraints)
+        if cell_constraints is not None:
+            encoded_params = get_castep_cell_constraints(**cell_constraints)
 
-        if (not (encoded_params[0] == [1, 2, 3] and
-                 encoded_params[1] == [4, 5, 6])) and (
-                task in geom_opt_str):
+            if (not (encoded_params[0] == [1, 2, 3] and
+                    encoded_params[1] == [4, 5, 6])) and (
+                    task in geom_opt_str):
 
-            if (encoded_params[0] == [0, 0, 0] and
-                    encoded_params[1] == [0, 0, 0]):
-                cf.write('\nfix_all_cell = True\n')
+                if (encoded_params[0] == [0, 0, 0] and
+                        encoded_params[1] == [0, 0, 0]):
+                    cf.write('\nfix_all_cell = True\n')
 
-            else:
-                cf.write('\n%block cell_constraints\n')
-                cf.write('{}\t{}\t{}\n'.format(*encoded_params[0]))
-                cf.write('{}\t{}\t{}\n'.format(*encoded_params[1]))
-                cf.write('%endblock cell_constraints\n')
+                else:
+                    cf.write('\n%block cell_constraints\n')
+                    cf.write('{}\t{}\t{}\n'.format(*encoded_params[0]))
+                    cf.write('{}\t{}\t{}\n'.format(*encoded_params[1]))
+                    cf.write('%endblock cell_constraints\n')
 
         # Atom constraints:
-        if any([len(x) for x in atom_constr_opt]) > 0:
+        if atom_constraints is not None:
+            if any([len(x) for x in atom_constr_opt]) > 0:
 
-            # For each atom, get the index within like-species atoms:
-            # 1-based indexing instead of 0-based!
-            sub_idx = np.zeros((atom_sites.shape[1]), dtype=int) - 1
-            for sp_idx in range(len(species)):
-                w = np.where(species_idx == sp_idx)[0]
-                sub_idx[w] = np.arange(w.shape[0]) + 1
+                # For each atom, get the index within like-species atoms:
+                # 1-based indexing instead of 0-based!
+                sub_idx = np.zeros((atom_sites.shape[1]), dtype=int) - 1
+                for sp_idx in range(len(species)):
+                    w = np.where(species_idx == sp_idx)[0]
+                    sub_idx[w] = np.arange(w.shape[0]) + 1
 
-            cnst_fs = ['{:<5d}', '{:<5}', '{:<5d}', '{:24.15f}']
-            cf.write('\n%block ionic_constraints\n')
+                cnst_fs = ['{:<5d}', '{:<5}', '{:<5d}', '{:24.15f}']
+                cf.write('\n%block ionic_constraints\n')
 
-            nc_xyz = f_xyz.shape[0]
-            nc_xy = f_xy.shape[0]
-            nc_xz = f_xz.shape[0]
-            nc_yz = f_yz.shape[0]
+                nc_xyz = f_xyz.shape[0]
+                nc_xy = f_xy.shape[0]
+                nc_xz = f_xz.shape[0]
+                nc_yz = f_yz.shape[0]
 
-            if nc_xyz > 0:
-                f_xyz -= 1
-                f_xyz_sp = np.tile(
-                    atom_species[f_xyz], (1, 3)).reshape(nc_xyz * 3, 1)
-                f_xyz_sub_idx = np.repeat(sub_idx[f_xyz], 3)[:, np.newaxis]
-                f_xyz_cnst_idx = (np.arange(nc_xyz * 3) + 1)[:, np.newaxis]
-                f_xyz_cnst_coef = np.tile(np.eye(3), (nc_xyz, 1))
+                if nc_xyz > 0:
+                    f_xyz -= 1
+                    f_xyz_sp = np.tile(
+                        atom_species[f_xyz], (1, 3)).reshape(nc_xyz * 3, 1)
+                    f_xyz_sub_idx = np.repeat(sub_idx[f_xyz], 3)[:, np.newaxis]
+                    f_xyz_cnst_idx = (np.arange(nc_xyz * 3) + 1)[:, np.newaxis]
+                    f_xyz_cnst_coef = np.tile(np.eye(3), (nc_xyz, 1))
 
-                cnst_arrs_xyz = [f_xyz_cnst_idx, f_xyz_sp, f_xyz_sub_idx,
-                                 f_xyz_cnst_coef]
+                    cnst_arrs_xyz = [f_xyz_cnst_idx, f_xyz_sp, f_xyz_sub_idx,
+                                    f_xyz_cnst_coef]
 
-                cf.write(format_arr(cnst_arrs_xyz,
-                                    format_spec=cnst_fs,
-                                    col_delim=' '))
+                    cf.write(format_arr(cnst_arrs_xyz,
+                                        format_spec=cnst_fs,
+                                        col_delim=' '))
 
-            if nc_xy > 0:
-                f_xy -= 1
-                f_xy_sp = np.tile(
-                    atom_species[f_xy], (1, 2)).reshape(nc_xy * 2, 1)
-                f_xy_sub_idx = np.repeat(sub_idx[f_xy], 2)[:, np.newaxis]
-                f_xy_cnst_idx = (np.arange(nc_xy * 2) + 1 +
-                                 (nc_xyz * 3))[:, np.newaxis]
-                f_xy_cnst_coef = np.tile(np.eye(3)[[0, 1]], (nc_xy, 1))
+                if nc_xy > 0:
+                    f_xy -= 1
+                    f_xy_sp = np.tile(
+                        atom_species[f_xy], (1, 2)).reshape(nc_xy * 2, 1)
+                    f_xy_sub_idx = np.repeat(sub_idx[f_xy], 2)[:, np.newaxis]
+                    f_xy_cnst_idx = (np.arange(nc_xy * 2) + 1 +
+                                    (nc_xyz * 3))[:, np.newaxis]
+                    f_xy_cnst_coef = np.tile(np.eye(3)[[0, 1]], (nc_xy, 1))
 
-                cnst_arrs_xy = [f_xy_cnst_idx, f_xy_sp, f_xy_sub_idx,
-                                f_xy_cnst_coef]
+                    cnst_arrs_xy = [f_xy_cnst_idx, f_xy_sp, f_xy_sub_idx,
+                                    f_xy_cnst_coef]
 
-                cf.write(format_arr(cnst_arrs_xy,
-                                    format_spec=cnst_fs,
-                                    col_delim=' '))
+                    cf.write(format_arr(cnst_arrs_xy,
+                                        format_spec=cnst_fs,
+                                        col_delim=' '))
 
-            if nc_xz > 0:
-                f_xz -= 1
-                f_xz_sp = np.tile(
-                    atom_species[f_xz], (1, 2)).reshape(nc_xz * 2, 1)
-                f_xz_sub_idx = np.repeat(sub_idx[f_xz], 2)[:, np.newaxis]
-                f_xz_cnst_idx = (np.arange(nc_xz * 2) + 1 +
-                                 (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
-                f_xz_cnst_coef = np.tile(np.eye(3)[[0, 2]], (nc_xz, 1))
+                if nc_xz > 0:
+                    f_xz -= 1
+                    f_xz_sp = np.tile(
+                        atom_species[f_xz], (1, 2)).reshape(nc_xz * 2, 1)
+                    f_xz_sub_idx = np.repeat(sub_idx[f_xz], 2)[:, np.newaxis]
+                    f_xz_cnst_idx = (np.arange(nc_xz * 2) + 1 +
+                                    (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
+                    f_xz_cnst_coef = np.tile(np.eye(3)[[0, 2]], (nc_xz, 1))
 
-                cnst_arrs_xz = [f_xz_cnst_idx, f_xz_sp, f_xz_sub_idx,
-                                f_xz_cnst_coef]
+                    cnst_arrs_xz = [f_xz_cnst_idx, f_xz_sp, f_xz_sub_idx,
+                                    f_xz_cnst_coef]
 
-                cf.write(format_arr(cnst_arrs_xz,
-                                    format_spec=cnst_fs,
-                                    col_delim=' '))
+                    cf.write(format_arr(cnst_arrs_xz,
+                                        format_spec=cnst_fs,
+                                        col_delim=' '))
 
-            if nc_yz > 0:
-                f_yz -= 1
-                f_yz_sp = np.tile(
-                    atom_species[f_yz], (1, 2)).reshape(nc_yz * 2, 1)
-                f_yz_sub_idx = np.repeat(sub_idx[f_yz], 2)[:, np.newaxis]
-                f_yz_cnst_idx = (np.arange(nc_yz * 2) + 1 + (nc_xz * 2) +
-                                 (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
+                if nc_yz > 0:
+                    f_yz -= 1
+                    f_yz_sp = np.tile(
+                        atom_species[f_yz], (1, 2)).reshape(nc_yz * 2, 1)
+                    f_yz_sub_idx = np.repeat(sub_idx[f_yz], 2)[:, np.newaxis]
+                    f_yz_cnst_idx = (np.arange(nc_yz * 2) + 1 + (nc_xz * 2) +
+                                    (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
 
-                f_yz_cnst_coef = np.tile(np.eye(3)[[1, 2]], (nc_yz, 1))
+                    f_yz_cnst_coef = np.tile(np.eye(3)[[1, 2]], (nc_yz, 1))
 
-                cnst_arrs_yz = [f_yz_cnst_idx, f_yz_sp, f_yz_sub_idx,
-                                f_yz_cnst_coef]
+                    cnst_arrs_yz = [f_yz_cnst_idx, f_yz_sp, f_yz_sub_idx,
+                                    f_yz_cnst_coef]
 
-                cf.write(format_arr(cnst_arrs_yz,
-                                    format_spec=cnst_fs,
-                                    col_delim=' '))
+                    cf.write(format_arr(cnst_arrs_yz,
+                                        format_spec=cnst_fs,
+                                        col_delim=' '))
 
-            cf.write('%endblock ionic_constraints\n')
+                cf.write('%endblock ionic_constraints\n')
 
         # Symmetry ops
         if sym_ops is not None:

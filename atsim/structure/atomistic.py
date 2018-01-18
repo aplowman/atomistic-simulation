@@ -1,10 +1,11 @@
 import warnings
 import spglib
 from mendeleev import element
-from atsim.structure.crystal import CrystalBox
+from atsim.structure.crystal import CrystalBox, CrystalStructure
+from atsim.structure import site_labs_to_jsonable, site_labs_from_jsonable
 from atsim import geometry, vectors, utils
 from atsim.structure.visualise import visualise as struct_visualise
-from atsim.utils import prt
+from atsim.utils import prt, RestrictedDict, mut_exc_args
 from vecmaths import rotation
 import numpy as np
 import copy
@@ -88,40 +89,169 @@ class AtomisticStructure(object):
 
     TODO:
     -   Re-write docstrings.
+    -   Consolidate atom/lattice/interstice into a list of Sites objects.
 
     """
 
-    def __init__(self, supercell, atom_sites, atom_labels, origin=None,
+    # Keys allowed in the meta attribute:
+    ok_meta = ['supercell_type']
+
+    def __init__(self, supercell=None, atom_sites=None, atom_labels=None, origin=None,
                  lattice_sites=None, lattice_labels=None, interstice_sites=None,
                  interstice_labels=None, crystals=None, crystal_structures=None,
-                 overlap_tol=1):
+                 overlap_tol=1, state=None):
         """Constructor method for AtomisticStructure object."""
 
-        if origin is None:
-            origin = np.zeros((3, 1))
+        mut_exc_args(
+            {
+                'supercell': supercell,
+                'atom_sites': atom_sites,
+                'atom_labels': atom_labels,
+            },
+            {'state': state}
+        )
 
-        self.origin = utils.to_col_vec(origin)
+        if state:
 
-        self.atom_sites = atom_sites
-        self.atom_labels = atom_labels
-        self.supercell = supercell
-        self.meta = {}
+            self.origin = state['origin']
 
-        self.symmetry_ops = None
-        self.lattice_sites = lattice_sites
-        self.lattice_labels = lattice_labels
-        self.interstice_sites = interstice_sites
-        self.interstice_labels = interstice_labels
-        self.crystals = crystals
-        self.crystal_structures = crystal_structures
-        self._overlap_tol = overlap_tol
+            self.atom_sites = state['atom_sites']
+            self.atom_labels = state['atom_labels']
+            self.supercell = state['supercell']
+            self.meta = state['meta']
 
-        self.check_overlapping_atoms(overlap_tol)
+            self.lattice_sites = state.get('lattice_sites')
+            self.lattice_labels = state.get('lattice_labels')
+            self.interstice_sites = state.get('interstice_sites')
+            self.interstice_labels = state.get('interstice_labels')
 
-        # Check handedness:
-        if self.volume < 0:
-            raise ValueError('Supercell does not form a right - handed '
-                             'coordinate system.')
+            self.crystals = state['crystals']
+            self.crystal_structures = state['crystal_structures']
+            self._overlap_tol = state['_overlap_tol']
+
+        else:
+
+            if origin is None:
+                origin = np.zeros((3, 1))
+
+            self.origin = utils.to_col_vec(origin)
+
+            self.atom_sites = atom_sites
+            self.atom_labels = atom_labels
+            self.supercell = supercell
+            self.meta = RestrictedDict(AtomisticStructure.ok_meta)
+
+            self.lattice_sites = lattice_sites
+            self.lattice_labels = lattice_labels
+            self.interstice_sites = interstice_sites
+            self.interstice_labels = interstice_labels
+            self.crystals = crystals
+            self.crystal_structures = crystal_structures
+            self._overlap_tol = overlap_tol
+
+            self.check_overlapping_atoms(overlap_tol)
+
+            # Check handedness:
+            if self.volume < 0:
+                raise ValueError('Supercell does not form a right - handed '
+                                 'coordinate system.')
+
+    def to_jsonable(self):
+        """Generate a dict representation that can be JSON serialised."""
+
+        # Only add meta keys allowed in this class, since a subclass may need
+        # to jsonify meta keys allowed in it's own class.
+        meta_js = {key: val for key, val in self.meta.items()
+                   if key in AtomisticStructure.ok_meta}
+
+        crystals_js = []
+        for crys in self.crystals:
+            crystals_js.append({
+                'crystal': crys['crystal'].tolist(),
+                'origin': crys['origin'].tolist(),
+                'cs_idx': crys['cs_idx'],
+                'cs_orientation': crys['cs_orientation'].tolist(),
+                'cs_origin': crys['cs_origin'],
+            })
+
+        crys_struct_js = [i.to_jsonable() for i in self.crystal_structures]
+
+        state = {
+            'origin': self.origin.tolist(),
+            'supercell': self.supercell.tolist(),
+            'atom_sites': self.atom_sites.tolist(),
+            'atom_labels': site_labs_to_jsonable(self.atom_labels),
+            'lattice_sites': None,
+            'lattice_labels': None,
+            'interstice_sites': None,
+            'interstice_labels': None,
+            'meta': meta_js,
+            'crystals': crystals_js,
+            'crystal_structures': crys_struct_js,
+            '_overlap_tol': self._overlap_tol,
+        }
+
+        if self.lattice_sites is not None:
+            state.update({
+                'lattice_sites': self.lattice_sites.tolist(),
+                'lattice_labels': site_labs_to_jsonable(self.lattice_labels),
+            })
+
+        if self.interstice_sites is not None:
+            state.update({
+                'interstice_sites': self.interstice_sites.tolist(),
+                'interstice_labels': site_labs_to_jsonable(self.interstice_labels),
+            })
+
+        return state
+
+    @classmethod
+    def from_jsonable(cls, state):
+        """Instantiate from a JSONable dict."""
+
+        crystals_native = []
+        for crys in state['crystals']:
+            crystals_native.append({
+                'crystal': np.array(crys['crystal']),
+                'origin': np.array(crys['origin']),
+                'cs_idx': crys['cs_idx'],
+                'cs_orientation': np.array(crys['cs_orientation']),
+                'cs_origin': crys['cs_origin'],
+            })
+
+        crys_struct_native = [CrystalStructure.from_jsonable(i)
+                              for i in state['crystal_structures']]
+
+        meta_native = RestrictedDict(
+            AtomisticStructure.ok_meta,
+            {key: val for key, val in state['meta'].items()
+             if key in AtomisticStructure.ok_meta},
+        )
+
+        state.update({
+            'origin': np.array(state['origin']),
+            'supercell': np.array(state['supercell']),
+            'atom_sites': np.array(state['atom_sites']),
+            'atom_labels': site_labs_from_jsonable(state['atom_labels']),
+            'meta': meta_native,
+            'crystals': crystals_native,
+            'crystal_structures': crys_struct_native,
+            '_overlap_tol': state['_overlap_tol'],
+        })
+
+        if state.get('lattice_sites') is not None:
+            state.update({
+                'lattice_sites': np.array(state['lattice_sites']),
+                'lattice_labels': site_labs_from_jsonable(state['lattice_labels']),
+            })
+
+        if state.get('interstice_sites') is not None:
+            state.update({
+                'interstice_sites': np.array(state['interstice_sites']),
+                'interstice_labels': site_labs_from_jsonable(state['interstice_labels']),
+            })
+
+        return cls(state=state)
 
     def translate(self, shift):
         """

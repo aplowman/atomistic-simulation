@@ -117,197 +117,256 @@ class BravaisLattice(object):
 
     """
 
-    def __init__(self, lattice_system, centring_type=None, a=None, b=None,
-                 c=None, α=None, β=None, γ=None, degrees=True, align='ax'):
+    def __init__(self, lattice_system=None, centring_type=None, a=None, b=None,
+                 c=None, α=None, β=None, γ=None, degrees=True, align='ax', state=None):
         """Constructor method for BravaisLattice object."""
 
-        if centring_type is None:
-            if lattice_system == 'rhombohedral':
-                centring_type = 'R'
-            else:
-                centring_type = 'P'
+        utils.mut_exc_args(
+            {'lattice_system': lattice_system},
+            {'state': state}
+        )
 
-        # List valid Bravais lattice systems and centering types:
-        all_lattice_systems = ['triclinic', 'monoclinic', 'orthorhombic',
-                               'tetragonal', 'rhombohedral', 'hexagonal',
-                               'cubic']
-        all_centring_types = ['P', 'B', 'I', 'F', 'R']
+        if state:
+            self.lattice_system = state['lattice_system']
+            self.centring_type = state['centring_type']
+            self.a = state['a']
+            self.b = state['b']
+            self.c = state['c']
+            self.α = state['α']
+            self.β = state['β']
+            self.γ = state['γ']
+            self.degrees = state['degrees']
+            self.lattice_system = state['lattice_system']
+            self.centring_type = state['centring_type']
+            self.vecs = state['vecs']
+            self.lattice_sites_frac = state['lattice_sites_frac']
 
-        # Check specified lattice system and centering type are compatible:
-        if lattice_system not in all_lattice_systems:
-            raise ValueError('"{}" is not a valid lattice system. '
-                             '`lattice_system` must be one of: {}.'.format(
-                                 lattice_system, all_lattice_systems))
-
-        if centring_type not in all_centring_types:
-            raise ValueError('"{}" is not a valid centering type. '
-                             'centring_type must be one of {}.'.format(
-                                 centring_type, all_centring_types))
-
-        if (
-            (lattice_system not in ['orthorhombic', 'cubic'] and
-             centring_type == 'F')
-            or (lattice_system not in ['orthorhombic', 'cubic', 'tetragonal']
-                and centring_type == 'I')
-            or (lattice_system not in ['orthorhombic', 'monoclinic']
-                and centring_type == 'B')
-            or (lattice_system == 'rhombohedral' and centring_type != 'R')
-            or (lattice_system != 'rhombohedral' and centring_type == 'R')
-        ):
-            raise ValueError('Lattice system {} and centering type {} are not '
-                             'compatible.'.format(
-                                 lattice_system, centring_type))
-
-        # Check specified lattice parameters are compatible with specified
-        # lattice system:
-
-        if lattice_system == 'triclinic':
-            equal_to = {}
-            not_equal_to = {3: 90, 4: 90, 5: 90}
-            equal_groups = []
-            unique_groups = [[0, 1, 2], [3, 4, 5]]
-            defaults = {0: 1, 1: 2, 2: 3, 3: 60, 4: 80, 5: 50}
-
-        elif lattice_system == 'monoclinic':
-            equal_to = {3: 90}
-            not_equal_to = {4: 90}
-            equal_groups = [[3, 5]]
-            unique_groups = [[0, 1, 2], [3, 4], [4, 5]]
-            defaults = {0: 1, 1: 2, 2: 3, 3: 90, 4: 100, 5: 90}
-
-        elif lattice_system == 'orthorhombic':
-            equal_to = {3: 90, 4: 90, 5: 90}
-            not_equal_to = {}
-            equal_groups = [[3, 4, 5]]
-            unique_groups = [[0, 1, 2]]
-            defaults = {0: 1, 1: 2, 2: 3, 3: 90, 4: 90, 5: 90}
-
-        elif lattice_system == 'tetragonal':
-            equal_to = {3: 90, 4: 90, 5: 90}
-            not_equal_to = {}
-            equal_groups = [[0, 1], [3, 4, 5]]
-            unique_groups = [[0, 2]]
-            defaults = {0: 1, 1: 1, 2: 2, 3: 90, 4: 90, 5: 90}
-
-        elif lattice_system == 'rhombohedral':
-            equal_to = {3: 90, 5: 120}
-            not_equal_to = {}
-            equal_groups = [[0, 1], [3, 4]]
-            unique_groups = [[0, 2]]
-            defaults = {0: 1, 1: 1, 2: 2, 3: 90, 4: 90, 5: 120}
-
-        elif lattice_system == 'hexagonal':
-            equal_to = {3: 90, 5: 120}
-            not_equal_to = {}
-            equal_groups = [[0, 1], [3, 4]]
-            unique_groups = [[0, 2]]
-            defaults = {0: 1, 1: 1, 2: 2, 3: 90, 4: 90, 5: 120}
-
-        elif lattice_system == 'cubic':
-            equal_to = {3: 90, 4: 90, 5: 90}
-            not_equal_to = {}
-            equal_groups = [[0, 1, 2], [3, 4, 5]]
-            unique_groups = []
-            defaults = {0: 1, 1: 1, 2: 1, 3: 90, 4: 90, 5: 90}
-
-        if not degrees:
-            α = np.degrees(α)
-            β = np.degrees(β)
-            γ = np.degrees(γ)
-
-        a, b, c, α, β, γ = utils.validate_numeric_params(
-            [a, b, c, α, β, γ],
-            equal_to=equal_to,
-            not_equal_to=not_equal_to,
-            equal_groups=equal_groups,
-            unique_groups=unique_groups,
-            defaults=defaults)
-
-        self.a = a
-        self.b = b
-        self.c = c
-        self.α = α
-        self.β = β
-        self.γ = γ
-        self.lattice_system = lattice_system
-        self.centring_type = centring_type
-
-        # Form lattice column vectors from lattice parameters by aligining `a`
-        # along x and `b` in the xy plane:
-
-        α_rad = np.deg2rad(α)
-        β_rad = np.deg2rad(β)
-        γ_rad = np.deg2rad(γ)
-
-        align_opt = ['ax', 'cz']
-
-        if align == 'ax':
-            a_x = self.a
-            b_x = self.b * np.cos(γ_rad)
-            b_y = self.b * np.sin(γ_rad)
-            c_x = self.c * np.cos(β_rad)
-            c_y = (abs(self.c) * abs(self.b) * np.cos(α_rad) - b_x * c_x) / b_y
-            c_z = np.sqrt(c**2 - c_x**2 - c_y**2)
-
-            vecs = np.array([
-                [a_x,   0,   0],
-                [b_x, b_y,   0],
-                [c_x, c_y, c_z]
-            ]).T
-        elif align == 'cz':
-            f = (1 - (np.cos(α_rad))**2 - (np.cos(β_rad))**2 - (np.cos(γ_rad))**2
-                 + 2 * np.cos(α_rad) * np.cos(β_rad) * np.cos(γ_rad))**0.5
-            a_x = self.a * f / np.sin(α_rad)
-            a_y = self.a * (np.cos(γ_rad) - np.cos(α_rad)
-                            * np.cos(β_rad)) / np.sin(α_rad)
-            a_z = self.a * np.cos(β_rad)
-            b_y = self.b * np.sin(α_rad)
-            b_z = self.b * np.cos(α_rad)
-            c_z = self.c
-
-            vecs = np.array([
-                [a_x, a_y, a_z],
-                [0,   b_y, b_z],
-                [0,     0, c_z]
-            ]).T
         else:
-            raise ValueError('"{}" is not a valid axes alignment option. '
-                             '`align` must be one of: {}.'.format(
-                                 align, align_opt))
-        self.vecs = snap_arr(vecs, 0, 1e-14)
 
-        # Set lattice sites for the specified centring type:
-        if centring_type == 'P':  # Primitive
-            lat_sites_frac = np.array([[0, 0, 0]], dtype=float).T
+            if centring_type is None:
+                if lattice_system == 'rhombohedral':
+                    centring_type = 'R'
+                else:
+                    centring_type = 'P'
 
-        elif centring_type == 'B':  # Base-centred
-            lat_sites_frac = np.array([
-                [0, 0, 0],
-                [0.5, 0.5, 0]
-            ]).T
+            # List valid Bravais lattice systems and centering types:
+            all_lattice_systems = ['triclinic', 'monoclinic', 'orthorhombic',
+                                   'tetragonal', 'rhombohedral', 'hexagonal',
+                                   'cubic']
+            all_centring_types = ['P', 'B', 'I', 'F', 'R']
 
-        elif centring_type == 'I':  # Body-centred
-            lat_sites_frac = np.array([
-                [0, 0, 0],
-                [0.5, 0.5, 0.5]
-            ]).T
+            # Check specified lattice system and centering type are compatible:
+            if lattice_system not in all_lattice_systems:
+                raise ValueError('"{}" is not a valid lattice system. '
+                                 '`lattice_system` must be one of: {}.'.format(
+                                     lattice_system, all_lattice_systems))
 
-        elif centring_type == 'F':  # Face-centred
-            lat_sites_frac = np.array([
-                [0, 0, 0],
-                [0.5, 0.5, 0],
-                [0.5, 0, 0.5],
-                [0, 0.5, 0.5]
-            ]).T
+            if centring_type not in all_centring_types:
+                raise ValueError('"{}" is not a valid centering type. '
+                                 'centring_type must be one of {}.'.format(
+                                     centring_type, all_centring_types))
 
-        elif centring_type == 'R':  # Rhombohedrally-centred
-            lat_sites_frac = np.array([
-                [0, 0, 0],
-                [1 / 3, 2 / 3, 1 / 3],
-                [2 / 3, 1 / 3, 2 / 3],
-            ]).T
+            if (
+                (lattice_system not in ['orthorhombic', 'cubic'] and
+                 centring_type == 'F')
+                or (lattice_system not in ['orthorhombic', 'cubic', 'tetragonal']
+                    and centring_type == 'I')
+                or (lattice_system not in ['orthorhombic', 'monoclinic']
+                    and centring_type == 'B')
+                or (lattice_system == 'rhombohedral' and centring_type != 'R')
+                or (lattice_system != 'rhombohedral' and centring_type == 'R')
+            ):
+                raise ValueError('Lattice system {} and centering type {} are not '
+                                 'compatible.'.format(
+                                     lattice_system, centring_type))
 
-        self.lattice_sites_frac = lat_sites_frac
+            # Check specified lattice parameters are compatible with specified
+            # lattice system:
+
+            if lattice_system == 'triclinic':
+                equal_to = {}
+                not_equal_to = {3: 90, 4: 90, 5: 90}
+                equal_groups = []
+                unique_groups = [[0, 1, 2], [3, 4, 5]]
+                defaults = {0: 1, 1: 2, 2: 3, 3: 60, 4: 80, 5: 50}
+
+            elif lattice_system == 'monoclinic':
+                equal_to = {3: 90}
+                not_equal_to = {4: 90}
+                equal_groups = [[3, 5]]
+                unique_groups = [[0, 1, 2], [3, 4], [4, 5]]
+                defaults = {0: 1, 1: 2, 2: 3, 3: 90, 4: 100, 5: 90}
+
+            elif lattice_system == 'orthorhombic':
+                equal_to = {3: 90, 4: 90, 5: 90}
+                not_equal_to = {}
+                equal_groups = [[3, 4, 5]]
+                unique_groups = [[0, 1, 2]]
+                defaults = {0: 1, 1: 2, 2: 3, 3: 90, 4: 90, 5: 90}
+
+            elif lattice_system == 'tetragonal':
+                equal_to = {3: 90, 4: 90, 5: 90}
+                not_equal_to = {}
+                equal_groups = [[0, 1], [3, 4, 5]]
+                unique_groups = [[0, 2]]
+                defaults = {0: 1, 1: 1, 2: 2, 3: 90, 4: 90, 5: 90}
+
+            elif lattice_system == 'rhombohedral':
+                equal_to = {3: 90, 5: 120}
+                not_equal_to = {}
+                equal_groups = [[0, 1], [3, 4]]
+                unique_groups = [[0, 2]]
+                defaults = {0: 1, 1: 1, 2: 2, 3: 90, 4: 90, 5: 120}
+
+            elif lattice_system == 'hexagonal':
+                equal_to = {3: 90, 5: 120}
+                not_equal_to = {}
+                equal_groups = [[0, 1], [3, 4]]
+                unique_groups = [[0, 2]]
+                defaults = {0: 1, 1: 1, 2: 2, 3: 90, 4: 90, 5: 120}
+
+            elif lattice_system == 'cubic':
+                equal_to = {3: 90, 4: 90, 5: 90}
+                not_equal_to = {}
+                equal_groups = [[0, 1, 2], [3, 4, 5]]
+                unique_groups = []
+                defaults = {0: 1, 1: 1, 2: 1, 3: 90, 4: 90, 5: 90}
+
+            if not degrees:
+                α = np.degrees(α)
+                β = np.degrees(β)
+                γ = np.degrees(γ)
+
+            a, b, c, α, β, γ = utils.validate_numeric_params(
+                [a, b, c, α, β, γ],
+                equal_to=equal_to,
+                not_equal_to=not_equal_to,
+                equal_groups=equal_groups,
+                unique_groups=unique_groups,
+                defaults=defaults)
+
+            self.a = a
+            self.b = b
+            self.c = c
+            self.α = α
+            self.β = β
+            self.γ = γ
+            self.degrees = degrees
+            self.lattice_system = lattice_system
+            self.centring_type = centring_type
+
+            # Form lattice column vectors from lattice parameters by aligining `a`
+            # along x and `b` in the xy plane:
+
+            α_rad = np.deg2rad(α)
+            β_rad = np.deg2rad(β)
+            γ_rad = np.deg2rad(γ)
+
+            align_opt = ['ax', 'cz']
+
+            if align == 'ax':
+
+                a_x = self.a
+                b_x = self.b * np.cos(γ_rad)
+                b_y = self.b * np.sin(γ_rad)
+                c_x = self.c * np.cos(β_rad)
+                c_y = (abs(self.c) * abs(self.b) *
+                       np.cos(α_rad) - b_x * c_x) / b_y
+                c_z = np.sqrt(c**2 - c_x**2 - c_y**2)
+
+                vecs = np.array([
+                    [a_x, 0, 0],
+                    [b_x, b_y, 0],
+                    [c_x, c_y, c_z]
+                ]).T
+
+            elif align == 'cz':
+
+                f = (1 - (np.cos(α_rad))**2 - (np.cos(β_rad))**2 - (np.cos(γ_rad))**2
+                     + 2 * np.cos(α_rad) * np.cos(β_rad) * np.cos(γ_rad))**0.5
+                a_x = self.a * f / np.sin(α_rad)
+                a_y = self.a * (np.cos(γ_rad) - np.cos(α_rad)
+                                * np.cos(β_rad)) / np.sin(α_rad)
+                a_z = self.a * np.cos(β_rad)
+                b_y = self.b * np.sin(α_rad)
+                b_z = self.b * np.cos(α_rad)
+                c_z = self.c
+
+                vecs = np.array([
+                    [a_x, a_y, a_z],
+                    [0, b_y, b_z],
+                    [0, 0, c_z]
+                ]).T
+
+            else:
+                raise ValueError('"{}" is not a valid axes alignment option. '
+                                 '`align` must be one of: {}.'.format(
+                                     align, align_opt))
+
+            self.vecs = snap_arr(vecs, 0, 1e-14)
+
+            # Set lattice sites for the specified centring type:
+            if centring_type == 'P':  # Primitive
+                lat_sites_frac = np.array([[0, 0, 0]], dtype=float).T
+
+            elif centring_type == 'B':  # Base-centred
+                lat_sites_frac = np.array([
+                    [0, 0, 0],
+                    [0.5, 0.5, 0]
+                ]).T
+
+            elif centring_type == 'I':  # Body-centred
+                lat_sites_frac = np.array([
+                    [0, 0, 0],
+                    [0.5, 0.5, 0.5]
+                ]).T
+
+            elif centring_type == 'F':  # Face-centred
+                lat_sites_frac = np.array([
+                    [0, 0, 0],
+                    [0.5, 0.5, 0],
+                    [0.5, 0, 0.5],
+                    [0, 0.5, 0.5]
+                ]).T
+
+            elif centring_type == 'R':  # Rhombohedrally-centred
+                lat_sites_frac = np.array([
+                    [0, 0, 0],
+                    [1 / 3, 2 / 3, 1 / 3],
+                    [2 / 3, 1 / 3, 2 / 3],
+                ]).T
+
+            self.lattice_sites_frac = lat_sites_frac
+
+    def to_jsonable(self):
+        """Generate a dict representation that can be JSON serialised."""
+
+        ret = {
+            'a': self.a,
+            'b': self.b,
+            'c': self.c,
+            'α': self.α,
+            'β': self.β,
+            'γ': self.γ,
+            'degrees': self.degrees,
+            'lattice_system': self.lattice_system,
+            'centring_type': self.centring_type,
+            'vecs': self.vecs.tolist(),
+            'lattice_sites_frac': self.lattice_sites_frac.tolist(),
+        }
+
+        return ret
+
+    @classmethod
+    def from_jsonable(cls, state):
+        """Instantiate from a JSONable dict."""
+
+        state.update({
+            'vecs': np.array(state['vecs']),
+            'lattice_sites_frac': np.array(state['lattice_sites_frac'])
+        })
+
+        return cls(state=state)
 
     @property
     def lattice_sites(self):

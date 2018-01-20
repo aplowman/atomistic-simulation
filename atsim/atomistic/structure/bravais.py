@@ -1,9 +1,12 @@
+"""matsim.atomistic.structure.bravais.py"""
+
 import numpy as np
 from plotly import graph_objs
 from plotly.offline import plot, iplot
-from atsim import utils
 from vecmaths import geometry
 from vecmaths.utils import snap_arr
+
+from atsim import utils
 
 
 def get_hex_vol(a, c):

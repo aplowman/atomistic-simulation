@@ -1,15 +1,19 @@
+"""matsim.atomistic.structure.bicrystal.py"""
+
 import warnings
 import copy
+from functools import partial
+
 import numpy as np
 import spglib
-from functools import partial
-from atsim.structure.atomistic import AtomisticStructure
-from atsim import mathsutils
-from atsim.structure.crystal import CrystalBox
-from atsim.structure import gbhelper
-from atsim.utils import prt, RestrictedDict, mut_exc_args
 from vecmaths import rotation
 from vecmaths import vectors
+
+from atsim import mathsutils
+from atsim.utils import prt, RestrictedDict, mut_exc_args
+from atsim.atomistic.structure import gbhelper
+from atsim.atomistic.structure.atomistic import AtomisticStructure
+from atsim.atomistic.structure.crystal import CrystalBox
 
 
 CSL_FROM_PARAMS_GB_TYPES = {

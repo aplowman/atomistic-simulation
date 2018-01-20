@@ -1,14 +1,56 @@
+"""matsim.atomistic.structure.atomistic.py"""
+
+import copy
 import warnings
+
+import numpy as np
 import spglib
 from mendeleev import element
-from atsim.structure.crystal import CrystalBox, CrystalStructure
-from atsim.structure import site_labs_to_jsonable, site_labs_from_jsonable
-from atsim import geometry, vectors, utils
-from atsim.structure.visualise import visualise as struct_visualise
-from atsim.utils import prt, RestrictedDict, mut_exc_args
 from vecmaths import rotation
-import numpy as np
-import copy
+
+from atsim import geometry, vectors, utils
+from atsim.utils import RestrictedDict, mut_exc_args
+from atsim.atomistic.structure import site_labs_from_jsonable, site_labs_to_jsonable
+from atsim.atomistic.structure.crystal import CrystalBox, CrystalStructure
+from atsim.atomistic.structure.visualise import visualise as struct_visualise
+
+
+def modify_crystal_structure(cs, vol_change, ca_change):
+    """
+    Regenerate a CrystalStructure with a modified bravais lattice.
+
+    Parameters
+    ----------
+    cs : CrystalStructure object
+    vol_change : float
+        Percentage change in volume
+    ca_change : float
+        Percentage change in c/a ratio
+
+    Returns
+    -------
+    CrystalStructure
+
+    """
+    bl = cs.bravais_lattice
+
+    # Modify hexagonal CrystalStructure
+    if bl.lattice_system != 'hexagonal':
+        raise NotImplementedError('Cannot modify non-hexagonal crystal '
+                                  'structure.')
+
+    # Generate new a and c lattice parameters based on originals and volume and
+    # c/a ratio changes:
+    v = get_hex_vol(bl.a, bl.c)
+    v_new = v * (1 + vol_change / 100)
+
+    ca_new = (bl.c / bl.a) * (1 + ca_change / 100)
+    a_new = get_hex_a(ca_new, v_new)
+    c_new = ca_new * a_new
+
+    bl_new = BravaisLattice('hexagonal', a=a_new, c=c_new)
+    cs_new = CrystalStructure(bl_new, copy.deepcopy(cs.motif))
+    return cs_new
 
 
 class AtomisticStructureException(Exception):

@@ -8,10 +8,11 @@ Each of these classes share common instance attributes:
 
 """
 import os
+
 import numpy as np
-from atsim import readwrite, REF_PATH, plotting, utils
-from atsim.utils import prt
 from plotly.offline import plot, iplot
+
+from atsim import readwrite, REF_PATH, plotting, utils
 
 
 def visualise(structure, show_iplot=False, save=False, save_args=None, plot_2d='xyz', ret_fig=False,

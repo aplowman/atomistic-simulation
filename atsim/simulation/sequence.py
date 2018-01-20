@@ -5,18 +5,17 @@ import copy
 import numpy as np
 import yaml
 from atsim.utils import (set_nested_dict, get_recursive,
-                         update_dict, prt, mut_exc_args)
-from atsim import readwrite, BaseUpdate
+                         update_dict, prt, mut_exc_args,)
+from atsim import readwrite
+from atsim.simulation import BaseUpdate
 
 
 class SimSequence(object):
     """Options which parameterise a sequence of simulations."""
 
-    seq_defn = None
+    def __init__(self, spec, seq_defn):
 
-    def __init__(self, spec):
-
-        params, spec = self._validate_spec(spec)
+        params, spec = self._validate_spec(spec, seq_defn)
 
         # Store this for easily saving/loading as JSON:
         self.spec = copy.deepcopy(spec)
@@ -48,19 +47,19 @@ class SimSequence(object):
         return {'spec': self.spec}
 
     @classmethod
-    def from_jsonable(cls, state):
+    def from_jsonable(cls, state, seqn_defn):
         """Generate new instance from JSONable dict"""
-        return cls(state['spec'])
+        return cls(state['spec'], seqn_defn)
 
-    @classmethod
-    def load_sequence_definitions(cls, path):
-        """Load sequence definitions from a YAML file."""
-        with open(path, 'r') as seq_file:
-            seq_defn = yaml.safe_load(seq_file)
+    # @classmethod
+    # def load_sequence_definitions(cls, path):
+    #     """Load sequence definitions from a YAML file."""
+    #     with open(path, 'r') as seq_file:
+    #         seq_defn = yaml.safe_load(seq_file)
 
-        cls.seq_defn = seq_defn
+    #     cls.seq_defn = seq_defn
 
-    def _validate_spec(self, spec):
+    def _validate_spec(self, spec, seq_defn):
         """
         TODO: if `map_to_dict`, check `val_name` is not None.
 
@@ -103,7 +102,7 @@ class SimSequence(object):
                 req_spec_msg += 'must have `{}` key.'.format(i)
                 raise ValueError(req_spec_msg)
 
-        params = SimSequence.seq_defn[spec['name']]
+        params = seq_defn[spec['name']]
 
         for i in req_params:
             if i not in params:
@@ -123,11 +122,11 @@ class SimSequence(object):
                                ' sequence "{}".'.format(spec_key, spec['name']))
                 raise ValueError(ok_spec_msg)
 
-        if spec['name'] not in SimSequence.seq_defn:
+        if spec['name'] not in seq_defn:
             raise ValueError(
                 msg + 'Sequence name "{}" not known. Sequence name should be '
                 'one of: {}'.format(spec['name'], list(
-                    SimSequence.seq_defn.keys()))
+                    seq_defn.keys()))
             )
 
         if not params['range_allowed']:

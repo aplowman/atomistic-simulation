@@ -1,13 +1,16 @@
-import numpy as np
-import os
+"""matsim.atomistic.structure.crystal.py"""
+
 import copy
-from atsim.structure import site_labs_to_jsonable, site_labs_from_jsonable
-from atsim.structure.bravais import BravaisLattice
-from atsim.structure.visualise import visualise as struct_visualise
-from atsim import geometry, vectors, readwrite, REF_PATH, plotting, utils, mathsutils
-from atsim.simsio import castep
+
+import numpy as np
 from beautifultable import BeautifulTable
+
+from atsim import geometry, vectors, utils, mathsutils
 from atsim.utils import prt, mut_exc_args
+from atsim.atomistic.software import castep
+from atsim.atomistic.structure import site_labs_to_jsonable, site_labs_from_jsonable
+from atsim.atomistic.structure.bravais import BravaisLattice
+from atsim.atomistic.structure.visualise import visualise as struct_visualise
 
 
 class Crystal(object):

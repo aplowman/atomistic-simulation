@@ -9,6 +9,12 @@ import atsim.dbhelpers as dbh
 from atsim.readwrite import read_pickle, write_pickle, find_files_in_dir_glob, factor_common_files
 from atsim import SET_UP_PATH, SCRIPTS_PATH
 from atsim.simsio import castep, lammps
+from atsim import database
+
+from atsim.simgroup import SimGroup
+from atsim import opt_parser
+from atsim.utils import prt
+import yaml
 
 
 def search_database_by_session_id(database, s_id):
@@ -122,61 +128,103 @@ def move_offline_files(s_id, src_path, offline_files):
         print('No offline files found.')
 
 
-def main(opt, s_id):
+def main(opts_path, opts_spec_path, config):
+    """
 
-    if opt['database']['dropbox']:
-        # Download database file:
-        dbx = dbh.get_dropbox()
-        tmp_db_path = os.path.join(SET_UP_PATH, 'temp_db')
-        db_path = opt['database']['path']
-        db_exists = dbh.check_dropbox_file_exist(dbx, db_path)
-        if not db_exists:
-            raise ValueError('Cannot find database on Dropbox. Exiting.')
-        dbh.download_dropbox_file(dbx, db_path, tmp_db_path)
-        db = read_pickle(tmp_db_path)
+    human_id
+    scratch_name
 
-    else:
-        db = read_pickle(opt['database']['path'])
+    assume current machine is scratch machine (raise error if not)
 
-    # Find the base options for this sid:
-    base_opt = search_database_by_session_id(db, s_id)
+    search on database for human id
+    get scratch path
 
-    # For compatibility:
-    if base_opt.get('set_up'):
-        base_opt = {**base_opt, **base_opt['set_up']}
+    instantiate SimGroup object
 
-    src_path = os.path.join(base_opt['scratch']['path'], s_id)
-    dst_path = os.path.join(base_opt['archive']['path'], s_id)
-    sms_path = os.path.join(src_path, 'sims.pickle')
+    """
 
-    print('session_id: {}'.format(s_id))
-    print('Source path: {}'.format(src_path))
-    print('Destination path: {}'.format(dst_path))
+    with open(opts_spec_path, 'r') as opts_spec_path_fp:
+        opts_spec = yaml.safe_load(opts_spec_path_fp)['process']
+        opt_parser.validate_opt_spec(opts_spec)
 
-    error_idx = check_errors(sms_path, src_path, opt.get('skip_idx'))
-    if len(error_idx) > 0:
-        raise ValueError('Errors found! Exiting process.py.')
+    with open(opts_path, 'r') as opts_path_fp:
+        opts_unparsed = yaml.safe_load(opts_path_fp)
 
-    # off_fls = base_opt['scratch']['offline_files']
-    # move_offline_files(s_id, src_path, off_fls)
+    opts_parsed = opt_parser.parse_opt(opts_unparsed, opts_spec)
+    hid = opts_parsed['human_id']
 
-    if not os.path.isdir(src_path):
-        raise ValueError('Source path is not a directory: {}'.format(src_path))
+    prt(opts_parsed, 'opts_parsed')
 
-    arch_opt = base_opt['archive']
-    is_dropbox = arch_opt.get('dropbox')
-    exclude = opt.get('exclude')
+    db_conn = database.connect_db(config['db'])
+    prt(db_conn, 'db_conn')
 
-    cpy_msg = 'remote Dropbox' if is_dropbox else 'local computer'
-    print('Copying completed sims to archive (on {}).'.format(cpy_msg))
-    print('From path: {}'.format(src_path))
-    print('To path: {}'.format(dst_path))
+    try:
+        with db_conn.cursor() as cursor:
+            # Read a single record
+            sql = "SELECT `path` FROM `sim_group` WHERE `human_id`=%s"
+            cursor.execute(sql, (hid,))
+            sim_group_path = cursor.fetchone()['path']
+    finally:
+        db_conn.close()
 
-    if is_dropbox is True:
-        dbh.upload_dropbox_dir(dbx, src_path, dst_path, exclude=exclude)
-    else:
-        # If Archive is not on Dropbox, assume it is on the scratch machine
-        # i.e. the one from which this script (process.py) is run.
-        copy_tree(src_path, dst_path)
+    sg_path = os.path.join(sim_group_path, 'sim_group.json')
+    sim_group = SimGroup.from_jsonable(sg_path, opts_spec_path)
 
-    print('Archive copying finished.')
+    prt(sim_group, 'sim_group')
+
+    # if opt['database']['dropbox']:
+    #     # Download database file:
+    #     dbx = dbh.get_dropbox()
+    #     tmp_db_path = os.path.join(SET_UP_PATH, 'temp_db')
+    #     db_path = opt['database']['path']
+    #     db_exists = dbh.check_dropbox_file_exist(dbx, db_path)
+    #     if not db_exists:
+    #         raise ValueError('Cannot find database on Dropbox. Exiting.')
+    #     dbh.download_dropbox_file(dbx, db_path, tmp_db_path)
+    #     db = read_pickle(tmp_db_path)
+
+    # else:
+    #     db = read_pickle(opt['database']['path'])
+
+    # # Find the base options for this sid:
+    # base_opt = search_database_by_session_id(db, s_id)
+
+    # # For compatibility:
+    # if base_opt.get('set_up'):
+    #     base_opt = {**base_opt, **base_opt['set_up']}
+
+    # src_path = os.path.join(base_opt['scratch']['path'], s_id)
+    # dst_path = os.path.join(base_opt['archive']['path'], s_id)
+    # sms_path = os.path.join(src_path, 'sims.pickle')
+
+    # print('session_id: {}'.format(s_id))
+    # print('Source path: {}'.format(src_path))
+    # print('Destination path: {}'.format(dst_path))
+
+    # error_idx = check_errors(sms_path, src_path, opt.get('skip_idx'))
+    # if len(error_idx) > 0:
+    #     raise ValueError('Errors found! Exiting process.py.')
+
+    # # off_fls = base_opt['scratch']['offline_files']
+    # # move_offline_files(s_id, src_path, off_fls)
+
+    # if not os.path.isdir(src_path):
+    #     raise ValueError('Source path is not a directory: {}'.format(src_path))
+
+    # arch_opt = base_opt['archive']
+    # is_dropbox = arch_opt.get('dropbox')
+    # exclude = opt.get('exclude')
+
+    # cpy_msg = 'remote Dropbox' if is_dropbox else 'local computer'
+    # print('Copying completed sims to archive (on {}).'.format(cpy_msg))
+    # print('From path: {}'.format(src_path))
+    # print('To path: {}'.format(dst_path))
+
+    # if is_dropbox is True:
+    #     dbh.upload_dropbox_dir(dbx, src_path, dst_path, exclude=exclude)
+    # else:
+    #     # If Archive is not on Dropbox, assume it is on the scratch machine
+    #     # i.e. the one from which this script (process.py) is run.
+    #     copy_tree(src_path, dst_path)
+
+    # print('Archive copying finished.')

@@ -1,10 +1,13 @@
+"""matsim.atomistic.software.castep.py"""
+
 import os
 import itertools
 import numpy as np
-from atsim import utils
-from atsim import readwrite
-from atsim.readwrite import format_arr
+
 import mendeleev
+
+from atsim import utils
+from atsim.readwrite import format_arr, find_files_in_dir
 
 
 def get_castep_cell_constraints(lengths_equal, angles_equal, fix_lengths,
@@ -406,8 +409,7 @@ def read_castep_output(dir_path, seedname=None, ignore_missing_output=False):
     """
 
     # Find the files ending in .castep in `dir_path`:
-    all_cst_files = readwrite.find_files_in_dir(
-        dir_path, r'.castep$', recursive=False)
+    all_cst_files = find_files_in_dir(dir_path, r'.castep$', recursive=False)
 
     # If no .castep files in `dir_path, raise IOError.
     if len(all_cst_files) == 0:

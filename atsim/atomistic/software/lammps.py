@@ -1,7 +1,10 @@
+"""matsim.atomistic.software.lammps.py"""
+
 import os
+
 import numpy as np
-from atsim import readwrite
-from atsim.readwrite import format_arr
+
+from atsim.readwrite import format_arr, find_files_in_dir
 
 
 def write_lammps_atoms(supercell, atom_sites, species, species_idx, path, atom_style, charges=None):
@@ -695,7 +698,7 @@ def read_lammps_output(dir_path, log_name='log.lammps'):
 
     # Convert * wildcard in `dump_name` to regex (see ref. [1]):
     dump_name = dump_name.replace('.', '\.').replace('*', '.*')
-    dmp_fns = readwrite.find_files_in_dir(dir_path, dump_name)
+    dmp_fns = find_files_in_dir(dir_path, dump_name)
 
     all_dmps = {}
     atoms = []

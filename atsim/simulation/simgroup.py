@@ -2,26 +2,30 @@
 or more simulation sequences.
 
 """
+
 import os
 import copy
-import yaml
 import json
 import shutil
+
 import numpy as np
-from atsim import utils
-from atsim import opt_parser
-from atsim.sequence import SimSequence
-from atsim.structure.crystal import CrystalStructure
-from atsim.structure.bravais import BravaisLattice
-from atsim.utils import (get_date_time_stamp, nest, merge, prt, dict_from_list,
-                         mut_exc_args, set_nested_dict, get_recursive, update_dict)
 
-from atsim import SET_UP_PATH, OPT_FILE_NAMES, SIM_CLASS_MAP, SCRIPTS_PATH, BaseUpdate
-from atsim.simulation.sim import AtomisticSimulation
+from atsim import (JS_TEMPLATE_DIR, utils, parse_opt, CONFIG, DB_CONFIG,
+                   database, OPTSPEC)
+from atsim.simulation import BaseUpdate
+from atsim.simulation.sequence import SimSequence
+from atsim.atomistic.simulation.castep import CastepSimulation
+from atsim.atomistic.simulation.lammps import LammpsSimulation
+from atsim.utils import (nest, merge, prt, dict_from_list, mut_exc_args,
+                         set_nested_dict, get_recursive, update_dict)
 from atsim.resources import Stage, Scratch, Archive, ResourceConnection
-from atsim.readwrite import replace_in_file, delete_line, add_line, write_list_file, format_dict, format_list
+from atsim.readwrite import replace_in_file, delete_line, add_line, write_list_file
 
-JS_TEMPLATE_DIR = os.path.join(SCRIPTS_PATH, 'set_up', 'jobscript_templates')
+# Maps a given software to a Simulation class.
+SOFTWARE_CLASS_MAP = {
+    'castep': CastepSimulation,
+    'lammps': LammpsSimulation
+}
 
 
 def write_jobscript(path, calc_paths, method, num_cores, is_sge, job_array, executable,
@@ -237,31 +241,17 @@ class SimGroup(object):
         'human_id': '%Y-%m-%d-%H%M_%%r%%r%%r%%r%%r',
     }
 
-    machine_id = None
-    software_lookup = None
-
-    @classmethod
-    def set_machine_id(cls, machine_id):
-        """Set resource ID of current machine."""
-        cls.machine_id = machine_id
-
-    @classmethod
-    def load_software_lookup(cls):
-        soft_path = os.path.join(SET_UP_PATH, OPT_FILE_NAMES['software'])
-        with open(soft_path) as soft_fs:
-            cls.software_lookup = yaml.safe_load(soft_fs)
-
-    def __init__(self, opts_path=None, opts_spec_path=None, state=None):
+    def __init__(self, opts=None, opts_raw=None, seq_defn=None, state=None):
         """Initialise a SimGroup object.
 
-        If generating a new SimGroup, use parameters `opts_path` and
-        `opts_spec_path`. If loading from a saved state (e.g. from JSON), use
+        If generating a new SimGroup, use parameters `opts` and
+        `seq_defn`. If loading from a saved state (e.g. from JSON), use
         parameter `state`.
 
         """
 
         mut_exc_args(
-            {'opts_path': opts_path, 'opts_spec_path': opts_spec_path},
+            {'opts': opts, 'opts_raw': opts_raw, 'seq_defn': seq_defn},
             {'state': state}
         )
 
@@ -275,30 +265,18 @@ class SimGroup(object):
             self.options = state['options']
             self.hid = state['hid']
             self.job_name = state['job_name']
-
+            self.db_id = state['db_id']
             run_opt = state['run_opt']
 
         else:
 
-            with open(opts_spec_path, 'r') as opts_spec_path_fp:
-                opts_spec = yaml.safe_load(opts_spec_path_fp)['makesims']
-                opt_parser.validate_opt_spec(opts_spec)
+            sequences = opts.pop('sequences')
+            run_opt = opts.pop('run')
+            path_options = opts.pop('path_options', {})
 
-            with open(opts_path, 'r') as opts_path_fp:
-                opts_unparsed = yaml.safe_load(opts_path_fp)
-
-            opts_parsed = opt_parser.parse_opt(opts_unparsed, opts_spec)
-            sequences = opts_parsed.pop('sequences')
-            run_opt = opts_parsed.pop('run')
-            path_options = opts_parsed.pop('path_options', {})
-
-            self.options_unparsed = opts_unparsed
-            self.options = opts_parsed
-
-            seq_fn = os.path.join(SET_UP_PATH, OPT_FILE_NAMES['sequences'])
-            SimSequence.load_sequence_definitions(seq_fn)
-
-            self.sequences = [SimSequence(i) for i in sequences]
+            self.options_unparsed = opts_raw
+            self.options = opts
+            self.sequences = [SimSequence(i, seq_defn) for i in sequences]
             self.sim_updates = self._get_sim_updates()
             self.sims = None
 
@@ -314,6 +292,7 @@ class SimGroup(object):
             self.path_options = path_options
             self.hid = hid
             self.job_name = 'j_' + hid_num
+            self.db_id = None
 
         # For state or new:
         add_path = self.path_options['sub_dirs'] + [self.hid]
@@ -322,12 +301,6 @@ class SimGroup(object):
         self.archive = Archive(run_opt['archive_name'], add_path)
 
         self.run_opt = self._parse_run_group_opt(run_opt)
-
-        # prt(format_list(self.sim_updates), 'self.sim_updates')
-        # exit()
-
-        # prt(self.stage.__dict__, 'self.stage')
-        # prt(self.scratch.__dict__, 'self.scratch')
 
     def _parse_run_group_opt(self, run_opt):
 
@@ -476,7 +449,7 @@ class SimGroup(object):
     @property
     def sim_class(self):
         """Get the Simulation class associated with this group."""
-        return SIM_CLASS_MAP[self.software_name]
+        return SOFTWARE_CLASS_MAP[self.software_name]
 
     def get_sim(self, sim_idx=None):
         """Get a Simulation object belonging to this group."""
@@ -545,12 +518,13 @@ class SimGroup(object):
             'path_options': self.path_options,
             'options_unparsed': self.options_unparsed,
             'hid': self.hid,
+            'db_id': self.db_id,
             'job_name': self.job_name,
         }
         return ret
 
     @classmethod
-    def from_jsonable(cls, state, opts_spec_path):
+    def from_jsonable(cls, state, seq_defn=None):
         """Instantiate from a JSONable dict."""
 
         sim_updates_ntv = []
@@ -580,25 +554,21 @@ class SimGroup(object):
             sim_updates_ntv.append(i_js)
 
         # Get correct Simulation class from software method:
-        sim_class = SIM_CLASS_MAP[state['software_name']]
+        sim_class = SOFTWARE_CLASS_MAP[state['software_name']]
         sims_native = [sim_class.from_jsonable(i) for i in state['sims']]
 
-        # Parse options:
-        with open(opts_spec_path, 'r') as opts_spec_path_fp:
-            opts_spec = yaml.safe_load(opts_spec_path_fp)['makesims']
-
         opts_unparsed = state['options_unparsed']
-        opts_parsed = opt_parser.parse_opt(opts_unparsed, opts_spec)
+        opts_parsed = parse_opt(opts_unparsed, OPTSPEC)
 
         opts_parsed.pop('sequences')
         opts_parsed.pop('run')
         opts_parsed.pop('path_options', {})
 
-        seq_fn = os.path.join(SET_UP_PATH, OPT_FILE_NAMES['sequences'])
-        SimSequence.load_sequence_definitions(seq_fn)
+        seqs = [SimSequence.from_jsonable(i, seq_defn)
+                for i in state['sequences']]
 
         state.update({
-            'sequences': [SimSequence.from_jsonable(i) for i in state['sequences']],
+            'sequences': seqs,
             'sim_updates': sim_updates_ntv,
             'sims': sims_native,
             'run_opt': state['run_opt'],
@@ -607,6 +577,7 @@ class SimGroup(object):
             'options_unparsed': opts_unparsed,
             'options': opts_parsed,
             'hid': state['hid'],
+            'db_id': state['db_id'],
             'job_name': state['job_name'],
         })
 
@@ -627,13 +598,13 @@ class SimGroup(object):
             json.dump(self.to_jsonable(), sim_group_fp, indent=2)
 
     @classmethod
-    def load_state(cls, path, opts_spec_path):
+    def load_state(cls, path, opts_spec):
         """Load a JSON file representing a SimGroup object."""
 
         with open(path, 'r') as sim_group_fp:
             sg_json = json.load(sim_group_fp)
 
-        return cls.from_jsonable(sg_json, opts_spec_path)
+        return cls.from_jsonable(sg_json, opts_spec)
 
     def write_initial_runs(self):
         """Populate the sims attribute and write input files on stage."""
@@ -643,7 +614,7 @@ class SimGroup(object):
                              ' SimGroup object.')
 
         # Check this machine is the stage machine
-        if self.stage.machine_id != SimGroup.machine_id:
+        if self.stage.machine_id != CONFIG['machine_id']:
             raise ValueError('This machine does not have the same ID as that '
                              'of the Stage associated with this SimGroup.')
 
@@ -747,11 +718,35 @@ class SimGroup(object):
 
             conn.run_command(cmd, cwd=rg_path)
 
+    def add_to_db(self):
+        """Connect to database, add a sim_group entry, with this human_id and
+        absolute scratch path, get a db_id to set."""
+
+        db_conn = database.connect_db(DB_CONFIG)
+
+        try:
+            with db_conn.cursor() as cursor:
+                sql = (
+                    "INSERT INTO `sim_group` (`human_id`, ""`path`) "
+                    "VALUES (%s, %s)"
+                )
+                cursor.execute(sql, (self.hid, str(self.scratch.path)))
+                db_id = cursor.lastrowid
+                self.db_id = db_id
+
+            db_conn.commit()
+
+        finally:
+            db_conn.close()
+
     def copy_to_scratch(self):
         """Copy group from Stage to Scratch."""
+
+        self.add_to_db()
+
         self.check_is_stage_machine()
         conn = self.get_stage_to_scratch_conn()
-        conn.copy()
+        conn.copy_to_dest()
 
     def get_machine_resource(self):
         """Returns a list of Resource (Stage and/or Scratch) this machine
@@ -766,10 +761,10 @@ class SimGroup(object):
         """
 
         ret = []
-        if SimGroup.machine_id == self.stage.machine_id:
+        if CONFIG['machine_id'] == self.stage.machine_id:
             ret.append(self.stage)
 
-        if SimGroup.machine_id == self.scratch.machine_id:
+        if CONFIG['machine_id'] == self.scratch.machine_id:
             ret.append(self.scratch)
 
         return ret
@@ -857,3 +852,6 @@ class SimGroup(object):
         run_path = sim_path + [self.path_options['run_fmt'].format(run_idx)]
 
         return run_path
+
+    def process(self):
+        """Find completed sims, parse results and save a JSON to archive."""

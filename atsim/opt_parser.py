@@ -6,6 +6,12 @@ import yaml
 from atsim.utils import unflatten_dict_keys, dict_from_list, prt, parse_float
 
 
+def validate_all_opt_specs(all_opt_specs):
+
+    for _, val in all_opt_specs.items():
+        validate_opt_spec(val)
+
+
 def validate_opt_spec(opt_specs):
     """Validate an options specification dict.
 

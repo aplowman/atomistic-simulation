@@ -1,8 +1,8 @@
+"""matsim.atomistic.structure.__init__.py"""
+
 import os
 from pathlib import Path
 import numpy as np
-
-REF_PATH = os.path.join(str(Path(__file__).parents[1]), 'ref')
 
 
 def site_labs_to_jsonable(labs):

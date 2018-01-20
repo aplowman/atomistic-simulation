@@ -3,12 +3,12 @@ import pathlib
 import subprocess
 import yaml
 from shutil import copytree
-from atsim import SET_UP_PATH, OPT_FILE_NAMES
+from atsim import SET_UP_PATH, CONFIG
 from atsim import utils
 from atsim.utils import prt, dict_from_list, mut_exc_args
 
-with open(os.path.join(SET_UP_PATH, OPT_FILE_NAMES['resources'])) as res_fs:
-    RESOURCES = yaml.safe_load(res_fs)
+# with open(os.path.join(SET_UP_PATH, OPT_FILE_NAMES['resources'])) as res_fs:
+#     RESOURCES = yaml.safe_load(res_fs)
 
 
 class Resource(object):
@@ -176,9 +176,41 @@ class ResourceConnection(object):
                 msg = 'Destination `base_path` "" does not exist.'
                 raise ValueError(msg.format(self.dst.base_path))
 
-    def copy(self):
-        """Copy the contents of the source resource to the destination
-        resource.
+    def copy_from_dest(self, path):
+        """Copy content from the destination resource to the source resource.
+
+        """
+        self.check_conn()
+
+        msg = ('Copying from resource "{}" to{} resource "{}".')
+        is_rem_str = ' remote' if self.remote else ''
+        print(msg.format(self.dst.name, is_rem_str, self.src.name))
+
+        # if self.remote:
+
+        #     if self.src.os_type == 'nt':
+
+        #         # Convert path to posix style for use within "Bash on Windows":
+        #         path_args = ['/mnt', self.src.path.drive[0].lower(),
+        #                      *self.src.path.parts[1:]]
+        #         src_path = pathlib.PurePosixPath(*path_args)
+
+        #     elif self.src.os_type == 'posix':
+        #         src_path = self.src.path
+
+        #     # Add trailing slash to path (for rsync):
+        #     src_path = str(src_path) + '/'
+        #     utils.rsync_remote(src_path, self.host, self.dst.path, mkdirs=True)
+
+        # else:
+
+        #     if self.dst.path.exists():
+        #         raise ValueError(exists_msg)
+
+        #     copytree(self.src.path, self.dst.path)
+
+    def copy_to_dest(self):
+        """Copy content from the source resource to the destination resource.
 
         """
         exists_msg = 'Destination directory already exists.'

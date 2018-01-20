@@ -1,65 +1,38 @@
+"""matsim.__init__.py"""
+
 from pathlib import Path
 from collections import namedtuple
 import os
+import yaml
+from atsim.set_up.dbconfig import DB_CONFIG
+from atsim.opt_parser import parse_opt, validate_all_opt_specs
 
-# Useful paths
-SCRIPTS_PATH = os.path.join(str(Path(__file__).parents[0]))
-REF_PATH = os.path.join(SCRIPTS_PATH, 'ref')
-SET_UP_PATH = os.path.join(SCRIPTS_PATH, 'set_up')
+_SCRIPTS_PATH = os.path.join(str(Path(__file__).parents[0]))
+REF_PATH = os.path.join(_SCRIPTS_PATH, 'ref')
+SET_UP_PATH = os.path.join(_SCRIPTS_PATH, 'set_up')
 
-from atsim.simulation.sim import CastepSimulation, LammpsSimulation
+# Get file names of all options files
+_CONFIG_FN = os.path.join(SET_UP_PATH, 'config.yml')
+_OPT_SPEC_FN = os.path.join(SET_UP_PATH, 'opt_spec.yml')
 
+# Load configuration data:
+with open(_CONFIG_FN, 'r') as _config_fp:
+    CONFIG = yaml.safe_load(_config_fp)
 
-# Allowed series names and their allowed keys:
-VLD_SRS_NM = ['name']
-VLD_SRS_NM_VLS = VLD_SRS_NM + ['vals']
-VLD_SRS_NM_VLS_SSS = VLD_SRS_NM_VLS + ['start', 'step', 'stop']
-ALLOWED_SERIES_KEYS = {
-    'elec_energy_tol': VLD_SRS_NM_VLS_SSS,
-    'gb_size': VLD_SRS_NM_VLS,
-    'box_lat': VLD_SRS_NM_VLS,
-    'relative_shift': VLD_SRS_NM_VLS,
-    'kpoint': VLD_SRS_NM_VLS_SSS,
-    'cut_off_energy': VLD_SRS_NM_VLS_SSS,
-    'smearing_width': VLD_SRS_NM_VLS_SSS,
-    'nextra_bands': VLD_SRS_NM_VLS_SSS,
-    'geom_energy_tol': VLD_SRS_NM_VLS_SSS,
-    'geom_stress_tol': VLD_SRS_NM_VLS_SSS,
-    'boundary_vac': VLD_SRS_NM_VLS_SSS,
-    'boundary_vac_flat': VLD_SRS_NM_VLS_SSS,
-    'boundary_vac_linear': VLD_SRS_NM_VLS_SSS,
-    'point_defect_charge': VLD_SRS_NM_VLS_SSS,
-    'point_defect_idx': VLD_SRS_NM_VLS_SSS,
-    'gamma_surface': VLD_SRS_NM_VLS + ['grid_spec', 'preview'],
-    'cs_vol_range': VLD_SRS_NM_VLS_SSS,
-    'cs_ca_range': VLD_SRS_NM_VLS_SSS,
-    'lookup': VLD_SRS_NM + ['src', 'parent_series', 'parent_val']
-}
-SERIES_NAMES = list(ALLOWED_SERIES_KEYS.keys())
+# Load options specification data:
+with open(_OPT_SPEC_FN, 'r') as _spec_fp:
+    OPTSPEC = yaml.safe_load(_spec_fp)
 
-# Options file names
-OPT_FILE_NAMES = {
-    'config': 'config.yml',
-    'resources': 'resources.yml',
-    'software': 'software.yml',
-    'sequences': 'sequences.yml',
-    'opt_spec': 'opt_spec.yml',
-    'makesims': 'makesims_dev_sequence.yml',
-    'process': 'process.yml',
-    'harvest': 'harvest.yml',
-    'makeplots': 'makeplots.yml',
-    'serieshelper': 'serieshelper.yml',
-    'lookup': 'lookup.yml',
-    'defaults': 'defaults.yml',
-}
+# Validation option specification file
+validate_all_opt_specs(OPTSPEC)
 
-# Mapping between software name and Simulation subclass:
-SIM_CLASS_MAP = {
-    'castep': CastepSimulation,
-    'lammps': LammpsSimulation,
-}
+# Parse config file:
+CONFIG = parse_opt(CONFIG, OPTSPEC['config'])
 
-BaseUpdate = namedtuple(
-    'BaseUpdate',
-    ['address', 'val', 'val_seq_type', 'mode']
-)
+# Get additional option file n
+SEQ_FN = os.path.join(SET_UP_PATH, 'sequences.yml')
+MAKESIMS_FN = os.path.join(SET_UP_PATH, CONFIG['option_paths']['makesims'])
+PROCESS_FN = os.path.join(SET_UP_PATH, CONFIG['option_paths']['process'])
+
+# Jobscript template directory:
+JS_TEMPLATE_DIR = os.path.join(_SCRIPTS_PATH, 'set_up', 'jobscript_templates')

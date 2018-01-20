@@ -1,11 +1,18 @@
-import numpy as np
-from atsim.vectors import rotation_matrix
-from atsim.simsio import castep
+"""matsim.atomistic.structure.gbhelper.py
+
+Construct grain boundaries functions.
+
+"""
+
 from functools import reduce
 
-# Construct grain boundaries functions
+import numpy as np
 
-def construct_180_u0w_mZrO2(cellfile, uvw_vecs=None, 
+from atsim.vectors import rotation_matrix
+from atsim.atomistic.software import castep
+
+
+def construct_180_u0w_mZrO2(cellfile, uvw_vecs=None,
                             repeats=[3, 1, 1], bound_vac=0.0,
                             transls=[0.0, 0.0], term_plns=None):
     """

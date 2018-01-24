@@ -1310,8 +1310,28 @@ def make_structure(bs_opt, crystal_structures):
         imp_pick_pth = os.path.join(imp_archive, imp_id, 'sims.pickle')
         imp_pick = readwrite.read_pickle(imp_pick_pth)
         imp_as = imp_pick['all_sims'][imp_sim_idx]
+
+        kwargs = {key: val for key, val in bs_opt.items() 
+                    if key not in ['import', 'overlap_tol']}
+
+        if 'boundary_vac_flat_args' in kwargs:
+            bv = kwargs.pop('boundary_vac_flat_args')
+            bv.update({
+                'thickness': bv.pop('vac_thickness'),
+                'func': 'flat',
+            })
+            kwargs['boundary_vac'] = [bv]
+
+        elif 'boundary_vac_linear_args' in kwargs:
+            bv = kwargs.pop('boundary_vac_linear_args')
+            bv.update({
+                'thickness': bv.pop('vac_thickness'),
+                'func': 'linear',
+            })
+            kwargs['boundary_vac'] = [bv]
+
         base_as = imp_as.generate_structure(
-            opt_idx=imp_opt_step, tile=imp_tile)
+            opt_idx=imp_opt_step, tile=imp_tile, kwargs=kwargs)
 
     return base_as
 
@@ -1466,7 +1486,10 @@ def main(opt):
     if opt.get('crystal_structures') is not None:
         crys_structs = make_crystal_structures(opt['crystal_structures'])
 
+    print('making base structure')
     base_as = make_structure(opt['structure'], crys_structs)
+
+    print('checking base structure')
     base_as.check_atomic_environment(checks_list_base)
 
     # Copy makesims options file
@@ -1526,6 +1549,8 @@ def main(opt):
         if not plot_gamma_surface_grids(opt, csi, stage):
             return
 
+    # print('all_upd: {}'.format(all_upd))
+
     # Generate simulation series:
     skipped_sims = []
     num_sims = len(all_upd)
@@ -1537,7 +1562,12 @@ def main(opt):
         srs_opt = copy.deepcopy(opt)
         utils.update_dict(srs_opt, upd)
 
+        # print('srs_opt[structure]: in upd loop: \n{}\n'.format(srs_opt['structure']))
+
         srs_as = make_structure(srs_opt['structure'], crys_structs)
+
+        print('makesimes: bv: {}'.format(srs_as.boundary_vac))
+
         try:
             srs_as.check_atomic_environment(checks_list_series)
         except AtomisticStructureException as e:
@@ -1576,9 +1606,9 @@ def main(opt):
                     'save_args': save_args,
                     'show_iplot': False,
                     'save': True,
-                    'group_atoms_by': ['species', 'crystal_idx', 'species_count']
+                    'group_atoms_by': ['species', 'crystal_idx',]# 'species_count']
                 }
-                base_as.visualise(**vs_opts)
+                srs_as.visualise(**vs_opts)
 
         # Process constraints options
         process_constraints(srs_opt, srs_as)

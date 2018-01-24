@@ -4,11 +4,8 @@ import subprocess
 import yaml
 from shutil import copytree
 from atsim import SET_UP_PATH, CONFIG
-from atsim import utils
+from atsim import utils, database
 from atsim.utils import prt, dict_from_list, mut_exc_args
-
-# with open(os.path.join(SET_UP_PATH, OPT_FILE_NAMES['resources'])) as res_fs:
-#     RESOURCES = yaml.safe_load(res_fs)
 
 
 class Resource(object):
@@ -17,24 +14,20 @@ class Resource(object):
     def __init__(self, resource_id, add_path=None):
         """Initialise resource object from ID and 'database' file."""
 
-        res_defn = dict_from_list(RESOURCES['resource'],
-                                  {'id': resource_id})
-
-        mach_defn = dict_from_list(RESOURCES['machine'],
-                                   {'id': res_defn['machine_id']})
+        res_defn = database.get_resource(resource_id)
 
         if add_path is None:
             add_path = []
 
         # Instantiate a "pure" path object in this case, which does not have
         # access to the file system.
-        if mach_defn['os_type'] == 'nt':
+        if res_defn['machine_os_type'] == 'nt':
             path_class = pathlib.PureWindowsPath
 
-        elif mach_defn['os_type'] == 'posix':
+        elif res_defn['machine_os_type'] == 'posix':
             path_class = pathlib.PurePosixPath
 
-        self.base_path = path_class(res_defn['base_path'])
+        self.base_path = path_class(res_defn['resource_base_path'])
         self.path = self.base_path.joinpath(*add_path)
 
         # Check base_path is absolute
@@ -42,10 +35,11 @@ class Resource(object):
             msg = ('Resource `base_path` "{}" must be an absolute path.')
             raise ValueError(msg.format(self.base_path))
 
-        self.resource_id = res_defn['id']
+        self.resource_id = res_defn['resource_id']
         self.machine_id = res_defn['machine_id']
-        self.os_type = mach_defn['os_type']
-        self.is_dropbox = mach_defn['is_dropbox']
+        self.machine_name = res_defn['machine_name']
+        self.os_type = res_defn['machine_os_type']
+        self.is_dropbox = res_defn['machine_is_dropbox']
 
     def make_paths_concrete(self):
         """Convert `base_path` and `path` to "concrete" path objects.
@@ -71,11 +65,11 @@ class Stage(Resource):
 
     def __init__(self, name, add_path=None):
 
-        stage_defn = dict_from_list(RESOURCES['stage'], {'name': name})
+        stage_defn = database.get_stage_by_name(name)
         res_id = stage_defn['resource_id']
         super().__init__(res_id, add_path)
         self.name = name
-        self.stage_id = stage_defn['id']
+        self.stage_id = stage_defn['stage_id']
         self.make_paths_concrete()
 
 
@@ -85,12 +79,12 @@ class Scratch(Resource):
 
     def __init__(self, name, add_path=None):
 
-        scratch_defn = dict_from_list(RESOURCES['scratch'], {'name': name})
+        scratch_defn = database.get_scratch_by_name(name)
         res_id = scratch_defn['resource_id']
         super().__init__(res_id, add_path)
         self.name = name
-        self.scratch_id = scratch_defn['id']
-        self.sge = scratch_defn['sge']
+        self.scratch_id = scratch_defn['scratch_id']
+        self.sge = scratch_defn['scratch_is_sge']
 
 
 class Archive(Resource):
@@ -99,11 +93,11 @@ class Archive(Resource):
 
     def __init__(self, name, add_path=None):
 
-        arch_defn = dict_from_list(RESOURCES['archive'], {'name': name})
+        arch_defn = database.get_archive_by_name(name)
         res_id = arch_defn['resource_id']
         super().__init__(res_id, add_path)
         self.name = name
-        self.archive_id = arch_defn['id']
+        self.archive_id = arch_defn['archive_id']
 
 
 class ResourceConnection(object):
@@ -111,11 +105,8 @@ class ResourceConnection(object):
 
     def __init__(self, src, dst):
 
-        res_conn = dict_from_list(
-            RESOURCES['resource_conn'],
-            {'source_id': src.resource_id,
-             'destination_id': dst.resource_id}
-        )
+        res_conn = database.get_resource_connection(
+            src.resource_id, dst.resource_id)
 
         if res_conn is None:
             raise ValueError('No resource connection information between source'

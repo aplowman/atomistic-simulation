@@ -1,5 +1,5 @@
 """matsim.atomistic.simulation.__init__.py"""
-from atsim.atomistic.structure import atomistic, bicrystal
+from atsim.atomistic.structure import atomistic, bicrystal, bravais, crystal
 
 STRUCT_LOOKUP = {
     'BulkCrystal': atomistic.BulkCrystal,

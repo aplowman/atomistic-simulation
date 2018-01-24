@@ -235,7 +235,7 @@ class SimGroup(object):
         'sim_numbers': True,
         'sim_numbers_join': '__',
         'sequence_names': False,
-        'subdirs': [],
+        'sub_dirs': [],
         'run_fmt': '{0}',
         'calcs_path': 'calcs',
         'human_id': '%Y-%m-%d-%H%M_%%r%%r%%r%%r%%r',
@@ -263,9 +263,13 @@ class SimGroup(object):
             self.path_options = state['path_options']
             self.options_unparsed = state['options_unparsed']
             self.options = state['options']
-            self.hid = state['hid']
-            self.job_name = state['job_name']
+            self.human_id = state['human_id']
+            self.name = state['job_name']
             self.db_id = state['db_id']
+            self.stage = state['stage']
+            self.scratch = state['scratch']
+            self.archive = state['archive']
+
             run_opt = state['run_opt']
 
         else:
@@ -290,17 +294,19 @@ class SimGroup(object):
             path_options.update({'sub_dirs': sub_dirs})
 
             self.path_options = path_options
-            self.hid = hid
-            self.job_name = 'j_' + hid_num
+            self.human_id = hid
+            self.name = 'j_' + hid_num
             self.db_id = None
 
-        # For state or new:
-        add_path = self.path_options['sub_dirs'] + [self.hid]
-        self.stage = Stage(run_opt['stage_name'], add_path)
-        self.scratch = Scratch(run_opt['scratch_name'], add_path)
-        self.archive = Archive(run_opt['archive_name'], add_path)
+            add_path = self.path_options['sub_dirs'] + [self.human_id]
+            self.stage = Stage(run_opt['stage'], add_path)
+            self.scratch = Scratch(run_opt['scratch'], add_path)
+            self.archive = Archive(run_opt['archive'], add_path)
 
+        # For state or new:
         self.run_opt = self._parse_run_group_opt(run_opt)
+
+        prt(self.run_opt, 'self.run_opt')
 
     def _parse_run_group_opt(self, run_opt):
 
@@ -309,30 +315,16 @@ class SimGroup(object):
             run_group = run_opt['groups'][rg_idx]
 
             # Load software entry
-            software_nickname = run_group['software_nickname']
-            software = dict_from_list(
-                SimGroup.software_lookup['software'],
-                {'software_nickname': software_nickname}
-            )
-            soft_id = software['id']
+            soft_inst_name = run_group['software_instance']
+            soft_inst = database.get_software_instance_by_name(soft_inst_name)
+            software_name = soft_inst['software_name']
 
-            # Check this software is allowed on this scratch
-            soft_scratch = dict_from_list(
-                SimGroup.software_lookup['scratch_software'],
-                {'software_id': soft_id, 'scratch_id': self.scratch.scratch_id}
-            )
-            if not soft_scratch:
-                msg = ('Specified software is not available on specified '
-                       'Scratch.')
-                raise ValueError(msg)
+            scratch_ids = database.get_software_instance_ok_scratch(
+                soft_inst_name)
 
-            # Load software name:
-            software_name = dict_from_list(
-                SimGroup.software_lookup['software_name'],
-                {'id': software['software_name_id']}
-            )['name']
-
-            software['name'] = software_name
+            if self.scratch.scratch_id not in scratch_ids:
+                msg = ('Software instance "{}" is not allowed on scratch "{}"')
+                raise ValueError(msg.format(soft_inst_name, self.scratch.name))
 
             if self.software_name is None:
                 self.software_name = software_name
@@ -342,16 +334,17 @@ class SimGroup(object):
                                  '(name)!')
 
             # Check valid num cores specified
-            if not software['min_cores'] <= run_group['num_cores'] <= software['max_cores']:
-                msg = '{} core(s) is not supported on the specified software.'
-                raise ValueError(msg.format(run_group['num_cores']))
+            ncores = run_group['num_cores']
+            if not soft_inst['min_cores'] <= ncores <= soft_inst['max_cores']:
+                msg = ('{} core(s) is not supported on the specified '
+                       'software instance.')
+                raise ValueError(msg.format(ncores))
 
             # Check scratch
             if run_group['is_sge'] and not self.scratch.sge:
                 raise ValueError('SGE is not supported on specified Scratch.')
 
-            run_group['software'] = software
-            run_group['software_id'] = soft_id
+            run_group['software_instance'] = soft_inst
 
             rg_sim_idx = run_group['sim_idx']
             sim_idx_msg = ('Run group `sim_idx` must be either "all" or a '
@@ -512,21 +505,62 @@ class SimGroup(object):
             'sequences': [i.to_jsonable() for i in self.sequences],
             'sim_updates': sim_updates_js,
             'sims': [i.to_jsonable() for i in self.sims],
-            'run_opt': self.run_opt,
-            # software_name not strictly necessary, should re-parse this on import
-            'software_name': self.software_name,
-            'path_options': self.path_options,
             'options_unparsed': self.options_unparsed,
-            'hid': self.hid,
+            'human_id': self.human_id,
             'db_id': self.db_id,
-            'job_name': self.job_name,
         }
         return ret
 
-    @classmethod
-    def from_jsonable(cls, state, seq_defn=None):
-        """Instantiate from a JSONable dict."""
+    def save_state(self):
+        """Write a JSON file representing this SimGroup object."""
+        path = self.stage.path.joinpath('sim_group.json')
+        with path.open('w') as sim_group_fp:
+            json.dump(self.to_jsonable(), sim_group_fp, indent=2)
 
+    @classmethod
+    def load_state(cls, human_id, resource_type, seq_defn):
+        """Load from database/JSON file representing a SimGroup object.
+
+        Parameters
+        ----------
+        resource_type : str
+            One of: "stage", "scratch".
+
+        """
+
+        # First get info from database
+        sg_params = database.get_sim_group(human_id)
+
+        # Instantiate resource objects:
+        stage_name = sg_params['run_opt'].pop('stage')['name']
+        scratch_name = sg_params['run_opt'].pop('scratch')['name']
+        archive_name = sg_params['run_opt'].pop('archive')['name']
+
+        add_path = sg_params['path_options']['sub_dirs']
+        add_path += [sg_params['human_id']]
+        stage = Stage(stage_name, add_path)
+        scratch = Scratch(scratch_name, add_path)
+        archive = Archive(archive_name, add_path)
+
+        # Now want to open the JSON file. Need to find out whether
+        if resource_type == 'stage':
+            json_path = stage.path.joinpath('sim_group.json')
+        elif resource_type == 'scratch':
+            json_path = scratch.path.joinpath('sim_group.json')
+
+        state = sg_params
+        state.update({
+            'stage': stage,
+            'scratch': scratch,
+            'archive': archive,
+        })
+
+        with open(json_path, 'r') as sim_group_fp:
+            state.update({
+                **json.load(sim_group_fp)
+            })
+
+        # Load sim updates:
         sim_updates_ntv = []
         for i in state['sim_updates']:
 
@@ -571,14 +605,10 @@ class SimGroup(object):
             'sequences': seqs,
             'sim_updates': sim_updates_ntv,
             'sims': sims_native,
-            'run_opt': state['run_opt'],
-            'software_name': state['software_name'],
-            'path_options': state['path_options'],
             'options_unparsed': opts_unparsed,
             'options': opts_parsed,
-            'hid': state['hid'],
+            'human_id': state['human_id'],
             'db_id': state['db_id'],
-            'job_name': state['job_name'],
         })
 
         sim_group = cls(state=state)
@@ -591,21 +621,6 @@ class SimGroup(object):
 
         return sim_group
 
-    def save_state(self):
-        """Write a JSON file representing this SimGroup object."""
-        path = self.stage.path.joinpath('sim_group.json')
-        with path.open('w') as sim_group_fp:
-            json.dump(self.to_jsonable(), sim_group_fp, indent=2)
-
-    @classmethod
-    def load_state(cls, path, opts_spec):
-        """Load a JSON file representing a SimGroup object."""
-
-        with open(path, 'r') as sim_group_fp:
-            sg_json = json.load(sim_group_fp)
-
-        return cls.from_jsonable(sg_json, opts_spec)
-
     def write_initial_runs(self):
         """Populate the sims attribute and write input files on stage."""
 
@@ -614,8 +629,8 @@ class SimGroup(object):
                              ' SimGroup object.')
 
         # Check this machine is the stage machine
-        if self.stage.machine_id != CONFIG['machine_id']:
-            raise ValueError('This machine does not have the same ID as that '
+        if self.stage.machine_name != CONFIG['machine_name']:
+            raise ValueError('This machine does not have the same name as that '
                              'of the Stage associated with this SimGroup.')
 
         stage_path = self.stage.path
@@ -635,6 +650,7 @@ class SimGroup(object):
             # Loop over each simulation in this run group
             sim_paths_stage = []
             sim_paths_scratch = []
+            soft_inst = run_group['software_instance']
             for sim_idx in run_group['sim_idx']:
 
                 run_path = self.get_run_path(sim_idx, rg_idx)
@@ -648,7 +664,7 @@ class SimGroup(object):
                 self.sims[sim_idx].runs.append({
                     'run_group_id': rg_idx,
                     'run_state': 'on_stage',
-                    'software_id': run_group['software_id'],
+                    'software_instance_id': soft_inst['id'],
                     'result': None,
                     'num_cores': run_group['num_cores'],
                 })
@@ -669,11 +685,11 @@ class SimGroup(object):
                 'selective_submission': False,
                 'scratch_os': self.scratch.os_type,
                 'scratch_path': str(rg_path_scratch),
-                'parallel_env': run_group['software']['parallel_env'],
-                'module_load': run_group['software']['module_load'],
-                'job_name': self.job_name,
+                'parallel_env': soft_inst['parallel_env'],
+                'module_load': soft_inst['module_load'],
+                'job_name': self.name,
                 'seedname': 'sim',
-                'executable': run_group['software']['executable'],
+                'executable': soft_inst['executable'],
             }
 
             if run_group['is_sge']:
@@ -721,28 +737,11 @@ class SimGroup(object):
     def add_to_db(self):
         """Connect to database, add a sim_group entry, with this human_id and
         absolute scratch path, get a db_id to set."""
-
-        db_conn = database.connect_db(DB_CONFIG)
-
-        try:
-            with db_conn.cursor() as cursor:
-                sql = (
-                    "INSERT INTO `sim_group` (`human_id`, ""`path`) "
-                    "VALUES (%s, %s)"
-                )
-                cursor.execute(sql, (self.hid, str(self.scratch.path)))
-                db_id = cursor.lastrowid
-                self.db_id = db_id
-
-            db_conn.commit()
-
-        finally:
-            db_conn.close()
+        sg_id = database.add_sim_group(self)
+        self.db_id = sg_id
 
     def copy_to_scratch(self):
         """Copy group from Stage to Scratch."""
-
-        self.add_to_db()
 
         self.check_is_stage_machine()
         conn = self.get_stage_to_scratch_conn()
@@ -761,10 +760,10 @@ class SimGroup(object):
         """
 
         ret = []
-        if CONFIG['machine_id'] == self.stage.machine_id:
+        if CONFIG['machine_name'] == self.stage.machine_name:
             ret.append(self.stage)
 
-        if CONFIG['machine_id'] == self.scratch.machine_id:
+        if CONFIG['machine_name'] == self.scratch.machine_name:
             ret.append(self.scratch)
 
         return ret

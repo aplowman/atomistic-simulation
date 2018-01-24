@@ -23,5 +23,6 @@ setup(
         'dropbox',
         'PyYAML',
         'beautifultable',
+        'passlib',
     ]
 )

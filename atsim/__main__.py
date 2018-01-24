@@ -24,6 +24,17 @@ def main(args):
 
         makesims.main(ms_opts, ms_opts_raw, seq_defn)
 
+    elif args[1] == 'load':
+        from atsim.simulation.simgroup import SimGroup
+
+        # Parse the sequences.yml sequence definitions:
+        with open(SEQ_FN, 'r') as seq_defn_fp:
+            seq_defn = yaml.safe_load(seq_defn_fp)
+
+        sim_group = SimGroup.load_state(args[2], 'stage', seq_defn)
+        prt(sim_group, 'sim_group')
+        exit()
+
     elif args[1] == 'process':
         from atsim.analysis import process
 

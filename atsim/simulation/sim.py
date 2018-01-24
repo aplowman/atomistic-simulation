@@ -20,7 +20,7 @@ class AtomisticSimulation(object):
         self.options = options
         self.results = None
 
-    def generate_structure(self, opt_idx=-1, tile=None):
+    def generate_structure(self, opt_idx=-1, tile=None, kwargs=None):
         """
         Generate an AtomisticStructure object for a given optimisation step
         after the simulation has run.
@@ -102,14 +102,15 @@ class AtomisticSimulation(object):
             'crystal_structures': self.structure.crystal_structures,
         }
 
-        if 'bicrystal' in self.structure.meta:
+        if 'bicrystal' in self.structure.meta['supercell_type']:
 
             # Regenerate a bicrystal
             bc_params = {
                 'as_params': as_params,
                 'maintain_inv_sym': self.structure.maintain_inv_sym,
-                'nbi': self.structure.nbi,
-                'rot_mat': self.structure.rot_mat
+                'non_gb_idx': self.structure.non_boundary_idx,
+                'rot_mat': self.structure.rot_mat,
+                **kwargs
             }
             opt_structure = Bicrystal(**bc_params)
 

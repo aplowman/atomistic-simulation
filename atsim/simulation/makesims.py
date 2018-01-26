@@ -1291,7 +1291,23 @@ def make_structure(bs_opt, crystal_structures):
                     cs = modify_crystal_structure(cs, **csm)
                 struct_opt.update({'crystal_structure': cs})
 
+            elif k == 'boundary_vac_flat_args':
+
+                bv = {
+                    'thickness': v['vac_thickness'],
+                    'func': 'flat',
+                }
+                struct_opt.update({'boundary_vac': [bv]})
+
+            elif k == 'boundary_vac_linear_args':
+                bv = {
+                    'thickness': v['vac_thicknss'],
+                    'func': 'linear',
+                }
+                struct_opt.update({'boundary_vac': [bv]})
+
             else:
+
                 struct_opt.update({k: v})
 
         base_as = STRUCT_LOOKUP[bs_opt['type']](**struct_opt)

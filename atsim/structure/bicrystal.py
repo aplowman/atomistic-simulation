@@ -797,17 +797,37 @@ def csl_surface_bicrystal_from_parameters(crystal_structure, csl_vecs,
 
     bc = csl_bicrystal_from_parameters(**bc_params)
 
+    cidx_lab = bc.atom_labels['crystal_idx']
+    sp_lab = bc.atom_labels['species']
+    sp_count_lab = bc.atom_labels['species_count']
+
     # Remove atoms from removed crystal
-    atoms_keep = np.where(bc.crystal_idx == surface_idx)[0]
+    cidx = cidx_lab[0][cidx_lab[1]]
+    atoms_keep = np.where(cidx == surface_idx)[0]
     bc.atom_sites = bc.atom_sites[:, atoms_keep]
-    bc.species_idx = bc.species_idx[atoms_keep]
-    bc.motif_idx = bc.motif_idx[atoms_keep]
-    bc.crystal_idx = bc.crystal_idx[atoms_keep]
+
+    sp_lab_new = (sp_lab[0], sp_lab[1][atoms_keep])
+    sp_count_lab_new = (sp_count_lab[0], sp_count_lab[1][atoms_keep])
+    crystal_idx_lab_new = (cidx_lab[0], cidx_lab[1][atoms_keep])
+
+    bc.atom_labels.update({
+        'species': sp_lab_new,
+        'species_count': sp_count_lab_new,
+        'crystal_idx': crystal_idx_lab_new,
+    })
+
+    cidx_lat_lab = bc.lattice_labels['crystal_idx']
 
     # Remove lattice sites from removed crystal
-    lat_keep = np.where(bc.lat_crystal_idx == surface_idx)[0]
-    bc.lattice_sites = bc.lattice_sites[:, lat_keep]
-    bc.lat_crystal_idx = bc.lat_crystal_idx[lat_keep]
+    cidx_lat = cidx_lat_lab[0][cidx_lat_lab[1]]
+    lats_keep = np.where(cidx_lat == surface_idx)[0]
+    bc.lattice_sites = bc.lattice_sites[:, lats_keep]
+
+    crystal_idx_lat_lab_new = (cidx_lat_lab[0], cidx_lat_lab[1][lats_keep])
+
+    bc.lattice_labels.update({
+        'crystal_idx': crystal_idx_lat_lab_new,
+    })
 
     bc.meta.update({'supercell_type': ['surface', 'surface_bicrystal']})
     return bc

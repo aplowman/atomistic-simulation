@@ -234,13 +234,14 @@ class ResourceConnection(object):
 
             copytree(self.src.path, self.dst.path)
 
-    def run_command(self, cmd, cwd=None):
+    def run_command(self, cmd, cwd=None, output=False, shell=True, new_proc=False):
         """Execute a command on the destination resource.
 
         Parameters
         ----------
-        cmd : str
-            The command to execute
+        cmd : list
+            The first element is the command to execute and additional elements
+            are optional arguments for that command.
         cwd : str, optional
             The directory in which to execute the command, relative to the
             `path` of the destination resource.
@@ -258,15 +259,51 @@ class ResourceConnection(object):
 
         if self.remote:
 
+            # Concatentate the command, since we're passing via SSH:
+            cmd_str = ' '.join(cmd)
+
             run_args = ['bash', '-c']
-            cmd_str = 'ssh {} "cd {} && {}"'
-            run_args.append(cmd_str.format(self.host, cwd, cmd))
-            _ = subprocess.run(run_args)
+            ssh_cmd = 'ssh {} "cd {} && {}"'
+            run_args.append(ssh_cmd.format(self.host, cwd, cmd_str))
+
+            run_params = {
+                'args': run_args,
+                'shell': shell,
+                'encoding': 'utf-8',
+            }
+
+            if output:
+                run_params.update({
+                    'stdout': subprocess.PIPE,
+                    'stderr': subprocess.PIPE
+                })
+
+            print('run_params: \n{}\n'.format(run_params))
+            cmd_out = subprocess.run(**run_params)
 
         else:
 
             if self.dst.os_type == 'nt':
-                subprocess.run([cmd], shell=True, cwd=cwd)
+                run_params = {
+                    'args': cmd,
+                    'shell': shell,
+                    'cwd': cwd,
+                    'encoding': 'utf-8',
+                }
+
+                if output:
+                    run_params.update({
+                        'stdout': subprocess.PIPE,
+                        'stderr': subprocess.PIPE
+                    })
+
+                print('run_params: {}'.format(run_params))
+
+                if new_proc:
+                    cmd_out = subprocess.Popen(**run_params)
+
+                else:
+                    cmd_out = subprocess.run(**run_params)
 
             elif self.dst.os_type == 'posix':
                 pass
@@ -285,3 +322,11 @@ class ResourceConnection(object):
         #         js_path = os.path.join(scratch.path, 'jobscript.sh')
         #         os.chmod(js_path, 0o744)
         #         subprocess.Popen(js_path, shell=True)
+
+        if cmd_out.stderr:
+            msg = ('ResourceConnection could not invoke '
+                   'command: {}. Error is: {}')
+            raise ValueError(msg.format(cmd, cmd_out.stderr))
+
+        if output:
+            return cmd_out.stdout

@@ -76,6 +76,31 @@ def exec_select(sql, args, fetch_all=False):
     return result
 
 
+def exec_update(sql, args):
+    """Execute an update SQL statement.
+
+    Parameters
+    ----------
+    sql : str
+    args : tuple
+
+    Returns
+    -------
+
+
+    """
+
+    conn = connect_db()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(sql, args)
+
+        conn.commit()
+
+    finally:
+        conn.close()
+
+
 def add_user_account(user_name, password, email):
     """Add a user account."""
 
@@ -845,12 +870,15 @@ def get_software_instance_by_name(name, user_cred=None):
     user_id = get_user_id(user_cred)
 
     sql = (
-        'select si.* , s.name "software_name" '
+        'select si.*, s.name "software_name" '
         'from software_instance si '
         'inner join software s on s.id = si.software_id '
         'where s.user_account_id = %s and '
         'si.name = %s'
     )
+
+    print('sql: {}'.format(sql))
+
     software_inst = exec_select(sql, (user_id, name))
 
     if not software_inst:
@@ -939,7 +967,7 @@ def get_sim_group(human_id, user_cred=None):
         'stage': get_stage_by_id(sim_group['stage_id']),
         'scratch': get_scratch_by_id(sim_group['scratch_id']),
         'archive': get_archive_by_id(sim_group['archive_id']),
-        'run_groups': [],
+        'groups': [],
     }
 
     # Get run groups:
@@ -961,7 +989,7 @@ def get_sim_group(human_id, user_cred=None):
         elif software_name != rg_soft_name:
             raise ValueError('Software name problemo!')
 
-        run_opt['run_groups'].append({
+        run_opt['groups'].append({
             **run_group,
             'software_instance': soft_inst,
             'software_name': rg_soft_name,
@@ -1020,10 +1048,16 @@ def add_sim_group(sim_group, user_cred=None):
     rg_insert_ids = []
     for run_group in sim_group.run_opt['groups']:
 
-        rg_insert = add_run_group(sg_id, run_group, sim_insert_ids, 0)
+        rg_insert = add_run_group(sg_id, run_group, sim_insert_ids, 1)
         rg_insert_ids.append(rg_insert)
 
-    return sg_id
+    out = {
+        'sim_group_id': sg_id,
+        'sim_ids': sim_insert_ids,
+        'run_group_ids': rg_insert_ids,
+    }
+
+    return out
 
 
 def get_run_groups(sim_group_id, user_cred=None):
@@ -1102,6 +1136,80 @@ def add_run_group(sim_group_id, run_group, sim_insert_ids, run_state, user_cred=
             sql_run_sge = ('insert into run_sge (run_id) values (%s)')
             rn_sge_insert = exec_insert(sql_run_sge, (rn_insert))
 
-        run_insert_ids.append((rn_insert, rn_sge_insert))
+        run_insert_ids.append([rn_insert, rn_sge_insert])
 
     return rg_insert_id, rg_sge_insert_id, run_insert_ids
+
+
+def check_run_group_ownership(run_group_id, user_cred=None):
+    """Check given user owns given run group."""
+
+    user_cred = user_cred or CONFIG['user']
+    _ = get_user_id(user_cred)
+
+    sql = (
+        'select * '
+        'from run_group rg '
+        'inner join sim_group sg on sg.id = rg.sim_group_id '
+        'where rg.id = %s'
+    )
+    check_res = exec_select(sql, (run_group_id,))
+    if not check_res:
+        msg = 'No run group with ID {} is associated with this user.'
+        raise ValueError(msg.format(run_group_id))
+
+
+def set_run_state(run_group_id, state_id, user_cred=None):
+    """Change the run state for all runs within a run group."""
+
+    user_cred = user_cred or CONFIG['user']
+    _ = get_user_id(user_cred)
+
+    check_run_group_ownership(run_group_id)
+
+    sql_runs = (
+        'update run '
+        'set run_state_id = %s '
+        'where run_group_id = %s'
+    )
+    exec_update(sql_runs, (state_id, run_group_id))
+
+
+def set_run_group_submitted(run_group_id, hostname, submit_time, user_cred=None):
+    """Set a run group to the submitted state."""
+
+    user_cred = user_cred or CONFIG['user']
+    _ = get_user_id(user_cred)
+
+    check_run_group_ownership(run_group_id)
+
+    sql = (
+        'update run_group '
+        'set submit_time = %s, hostname = %s '
+        'where id = %s'
+    )
+    exec_update(sql, (submit_time, hostname, run_group_id))
+
+    # For all runs in this run_group, change state to 3 ("in queue"):
+    sql_run_state = (
+        'update run '
+        'set run_state_id = %s '
+        'where run_group_id = %s'
+    )
+    exec_update(sql_run_state, (3, run_group_id))
+
+
+def set_run_group_sge_jobid(run_group_id, job_id, user_cred=None):
+    """Add job ID to a run_group_sge row."""
+
+    user_cred = user_cred or CONFIG['user']
+    _ = get_user_id(user_cred)
+
+    check_run_group_ownership(run_group_id)
+
+    sql = (
+        'update run_group_sge '
+        'set job_id = %s '
+        'where run_group_id = %s'
+    )
+    exec_update(sql, (job_id, run_group_id))

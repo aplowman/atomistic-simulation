@@ -13,10 +13,12 @@ class CastepSimulation(AtomisticSimulation):
     def __init__(self, options=None, state=None):
         """Initialise a CastepSimulation."""
         super().__init__(options=options, state=state)
-        self._process_options()
+
+        if options:
+            self._process_options()
 
     def _process_options(self):
-        """Additional processing on LAMMPS options to prepare for writing input
+        """Additional processing on CASTEP options to prepare for writing input
         files.
 
         """

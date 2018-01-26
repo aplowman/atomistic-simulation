@@ -7,6 +7,7 @@ import os
 import copy
 import json
 import shutil
+from datetime import datetime
 
 import numpy as np
 
@@ -269,8 +270,7 @@ class SimGroup(object):
             self.stage = state['stage']
             self.scratch = state['scratch']
             self.archive = state['archive']
-
-            run_opt = state['run_opt']
+            self.run_opt = state['run_opt']
 
         else:
 
@@ -302,11 +302,7 @@ class SimGroup(object):
             self.stage = Stage(run_opt['stage'], add_path)
             self.scratch = Scratch(run_opt['scratch'], add_path)
             self.archive = Archive(run_opt['archive'], add_path)
-
-        # For state or new:
-        self.run_opt = self._parse_run_group_opt(run_opt)
-
-        prt(self.run_opt, 'self.run_opt')
+            self.run_opt = self._parse_run_group_opt(run_opt)
 
     def _parse_run_group_opt(self, run_opt):
 
@@ -316,6 +312,7 @@ class SimGroup(object):
 
             # Load software entry
             soft_inst_name = run_group['software_instance']
+            print('soft_inst_name: {}'.format(soft_inst_name))
             soft_inst = database.get_software_instance_by_name(soft_inst_name)
             software_name = soft_inst['software_name']
 
@@ -542,7 +539,7 @@ class SimGroup(object):
         scratch = Scratch(scratch_name, add_path)
         archive = Archive(archive_name, add_path)
 
-        # Now want to open the JSON file. Need to find out whether
+        # Now want to open the JSON file:
         if resource_type == 'stage':
             json_path = stage.path.joinpath('sim_group.json')
         elif resource_type == 'scratch':
@@ -553,6 +550,7 @@ class SimGroup(object):
             'stage': stage,
             'scratch': scratch,
             'archive': archive,
+            'job_name': state.pop('name'),
         })
 
         with open(json_path, 'r') as sim_group_fp:
@@ -592,7 +590,7 @@ class SimGroup(object):
         sims_native = [sim_class.from_jsonable(i) for i in state['sims']]
 
         opts_unparsed = state['options_unparsed']
-        opts_parsed = parse_opt(opts_unparsed, OPTSPEC)
+        opts_parsed = parse_opt(opts_unparsed, OPTSPEC['makesims'])
 
         opts_parsed.pop('sequences')
         opts_parsed.pop('run')
@@ -722,30 +720,67 @@ class SimGroup(object):
             js_ext = 'sh' if self.scratch.os_type == 'posix' else 'bat'
             js_fn = 'jobscript.{}'.format(js_ext)
             rg_path = '/'.join(['run_groups', str(rg_idx)])
-            js_path = self.scratch.path.joinpath(rg_path, js_fn)
 
             if run_group['is_sge']:
-                cmd = 'qsub {}'.format(js_path)
+                cmd = ['qsub', '{}'.format(js_fn)]
             else:
-                cmd = str(js_path)
+                cmd = [js_fn]
 
-            prt(cmd, 'cmd')
-            prt(rg_path, 'rg_path')
+            # Execute command to get the hostname on Scratch:
+            hostname = conn.run_command(['hostname'], output=True, shell=True)
 
-            conn.run_command(cmd, cwd=rg_path)
+            # Execute command to submit the jobscript:
+            submit_out = conn.run_command(
+                cmd, cwd=rg_path, output=True, shell=True, new_proc=True)
+
+            # Get approximate time of execution, in a MySQL format:
+            dt_fmt = '%Y-%m-%d %H:%M:%S'
+            submit_time = datetime.strftime(datetime.now(), dt_fmt)
+
+            # Get ID in run_group table:
+            rg_id = run_group['id']
+
+            # Update the database:
+            database.set_run_group_submitted(rg_id, hostname, submit_time)
+
+            if run_group['is_sge']:
+
+                # Get the Job-ID from the submit return
+                job_id_task_id = submit_out.split()[2]
+                job_id = int(job_id_task_id.split('.')[0])
+
+                database.set_run_group_sge_jobid(rg_id, job_id)
 
     def add_to_db(self):
         """Connect to database, add a sim_group entry, with this human_id and
         absolute scratch path, get a db_id to set."""
-        sg_id = database.add_sim_group(self)
-        self.db_id = sg_id
+
+        db_ret = database.add_sim_group(self)
+        for rg_idx in range(len(self.run_opt['groups'])):
+
+            run_group = self.run_opt['groups'][rg_idx]
+            rg_ids = db_ret['run_group_ids'][rg_idx]
+
+            run_group.update({
+                'id': rg_ids[0],
+                'sge_id': rg_ids[1]
+            })
+
+        self.db_id = db_ret['sim_group_id']
 
     def copy_to_scratch(self):
         """Copy group from Stage to Scratch."""
 
         self.check_is_stage_machine()
+
+        # Copy directory to scratch:
         conn = self.get_stage_to_scratch_conn()
         conn.copy_to_dest()
+
+        # Change state of all runs to 2 ("pending_run")
+        run_groups = database.get_run_groups(self.db_id)
+        for rg_id in [i['id'] for i in run_groups]:
+            database.set_run_state(rg_id, 2)
 
     def get_machine_resource(self):
         """Returns a list of Resource (Stage and/or Scratch) this machine

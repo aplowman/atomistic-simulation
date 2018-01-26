@@ -5,4 +5,3 @@ for /f "tokens=*" %%G in ('type "<replace_with_dir_list>"') do (
 	echo current dir is !cd!
 	<replace_with_executable> < in.lammps > NUL
 )
-pause

@@ -694,11 +694,7 @@ def read_lammps_output(dir_path, log_name='log.lammps'):
     # Get the format of dummp files from the log file
     log_path = os.path.join(dir_path, log_name)
     log_out = read_lammps_log(log_path)
-    dump_name = log_out['dump_name']
-
-    # Convert * wildcard in `dump_name` to regex (see ref. [1]):
-    dump_name = dump_name.replace('.', '\.').replace('*', '.*')
-    dmp_fns = find_files_in_dir(dir_path, dump_name)
+    dmp_fns = get_dump_filenames(dir_path, log_out)
 
     all_dmps = {}
     atoms = []
@@ -751,3 +747,41 @@ def read_lammps_output(dir_path, log_name='log.lammps'):
     }
 
     return out
+
+
+def get_dump_filenames(dir_path, log_out):
+    """Get file names of dump files, given a parsed log file."""
+
+    # Get the format of dummp files from the log file
+    dump_name = log_out['dump_name']
+
+    # Convert * wildcard in `dump_name` to regex (see ref. [1]):
+    dump_name = dump_name.replace('.', '\.').replace('*', '.*')
+    dmp_fns = find_files_in_dir(dir_path, dump_name)
+
+    return dmp_fns
+
+
+def check_success(dir_path, log_name='log.lammps'):
+    """Check if the files in a given directory are indicative of
+    a successful LAMMPS run.
+
+    """
+
+    # Check no errors in log file:
+    log_path = os.path.join(dir_path, log_name)
+
+    try:
+        log_out = read_lammps_log(log_path)
+
+    except FileNotFoundError:
+        return False
+
+    if log_out['errors']:
+        return False
+
+    # Check at least one dump file exists:
+    if not get_dump_filenames(dir_path, log_out):
+        return False
+
+    return True

@@ -749,7 +749,6 @@ class CrystalStructure(object):
                 *(atom_sites_frac[:, atom_idx]),
                 *[v[0][v[1]][atom_idx] for _, v in self.atom_labels.items()]
             ]
-            prt(row, 'row')
             atoms_str.append_row(row)
 
         ret = ('{!s}-{!s} Bravais lattice + {!s}-atom motif\n\n'

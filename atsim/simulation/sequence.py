@@ -201,9 +201,6 @@ class SimSequence(object):
         vals_add = ['sequence_id', 'vals']
         nest_add = ['sequence_id', 'nest_idx']
 
-        prt(self.vals, 'self.vals')
-        prt(self.additional_spec, 'self.additional_spec')
-
         updates = []
         for val in self.vals:
 

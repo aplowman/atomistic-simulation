@@ -140,10 +140,12 @@ def get_user_id(user_cred):
         raise ValueError(msg)
 
 
-def get_machines(user_cred):
+def get_machines(user_cred=None):
     """Retrieve all machines belonging to a user."""
 
+    user_cred = user_cred or CONFIG['user']
     user_id = get_user_id(user_cred)
+
     sql = (
         'select * from machine where user_account_id = %s'
     )
@@ -336,6 +338,28 @@ def get_stages(user_cred=None):
     return exec_select(sql, (user_id,), fetch_all=True)
 
 
+def get_machine_by_name(name, user_cred=None):
+    """Get a machine by its name for a given user."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    sql = (
+        'select * '
+        'from machine '
+        'where '
+        'name = %s and '
+        'user_account_id = %s'
+    )
+    machine = exec_select(sql, (name, user_id))
+
+    if not machine:
+        msg = ('No machine with name "{}" exists for given user.')
+        raise ValueError(msg.format(name))
+
+    return machine
+
+
 def get_archive_by_name(name, user_cred=None):
     """Get an archive resource by name."""
 
@@ -430,6 +454,31 @@ def get_scratch_by_id(scratch_id, user_cred=None):
     if not scratch:
         msg = ('No scratch with ID "{}" exists for given user.')
         raise ValueError(msg.format(scratch_id))
+
+    return scratch
+
+
+def get_scratch_by_resource_id(resource_id, user_cred=None):
+    """Get a scratch resource by its resource ID."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    sql = (
+        'select s.id "scratch_id", s.is_sge "scratch_is_sge", '
+        'r.id "resource_id", r.name "name" '
+        'from scratch s '
+        'inner join resource r on s.resource_id = r.id '
+        'inner join machine m on r.machine_id = m.id '
+        'where '
+        'm.user_account_id = %s and '
+        'r.id = %s'
+    )
+    scratch = exec_select(sql, (user_id, resource_id))
+
+    if not scratch:
+        msg = ('No scratch with resource ID "{}" exists for given user.')
+        raise ValueError(msg.format(resource_id))
 
     return scratch
 
@@ -537,6 +586,33 @@ def get_resource_connection(src_res_id, dst_res_id, user_cred=None):
     return res_conn
 
 
+def get_resource_connections_by_source(src_res_id, user_cred=None):
+    """Get a all resource connection for a given source resource ID."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    sql = (
+        'select '
+        'rc.host, rc.is_remote, rc.destination_id '
+        'from resource_connection rc '
+        'inner join resource rs on rs.id = rc.source_id '
+        'inner join resource rd on rd.id = rc.destination_id '
+        'inner join machine ms on rs.machine_id = ms.id '
+        'inner join machine md on rd.machine_id = md.id '
+        'where '
+        'ms.user_account_id = %s and '
+        'md.user_account_id = %s and '
+        'rs.id = %s'
+    )
+    res_conn = exec_select(sql, (user_id, user_id, src_res_id), fetch_all=True)
+    if not res_conn:
+        msg = ('No resource connection with source ID {} is configured.')
+        raise ValueError(msg.format(src_res_id))
+
+    return res_conn
+
+
 def get_archives(user_cred=None):
     """Retrieve all archive resources belonging to a user."""
 
@@ -612,9 +688,10 @@ def add_resource_connection(source_name, source_type, dest_name, dest_type,
     return res_conn_id
 
 
-def get_resource_connections(user_cred):
+def get_resource_connections(user_cred=None):
     """Get resource connections for a given user."""
 
+    user_cred = user_cred or CONFIG['user']
     user_id = get_user_id(user_cred)
 
     # Big sql statement since we want to identify what type the source and
@@ -877,8 +954,6 @@ def get_software_instance_by_name(name, user_cred=None):
         'si.name = %s'
     )
 
-    print('sql: {}'.format(sql))
-
     software_inst = exec_select(sql, (user_id, name))
 
     if not software_inst:
@@ -1016,8 +1091,8 @@ def add_sim_group(sim_group, user_cred=None):
     sql = (
         'insert into sim_group '
         '(human_id, user_account_id, stage_id, scratch_id, archive_id, '
-        'path_options, name) '
-        'values (%s, %s, %s, %s, %s, %s, %s)'
+        'path_options, name, archive_started) '
+        'values (%s, %s, %s, %s, %s, %s, %s, %s)'
     )
 
     path_opt = json.dumps(sim_group.path_options)
@@ -1029,7 +1104,8 @@ def add_sim_group(sim_group, user_cred=None):
         sim_group.scratch.scratch_id,
         sim_group.archive.archive_id,
         path_opt,
-        sim_group.name
+        sim_group.name,
+        0
     ))
 
     # Add sims to sim table
@@ -1048,7 +1124,8 @@ def add_sim_group(sim_group, user_cred=None):
     rg_insert_ids = []
     for run_group in sim_group.run_opt['groups']:
 
-        rg_insert = add_run_group(sg_id, run_group, sim_insert_ids, 1)
+        sge = sim_group.scratch.sge
+        rg_insert = add_run_group(sg_id, run_group, sim_insert_ids, 1, sge)
         rg_insert_ids.append(rg_insert)
 
     out = {
@@ -1058,6 +1135,34 @@ def add_sim_group(sim_group, user_cred=None):
     }
 
     return out
+
+
+def get_sim_group_runs(sim_group_id, state=None, user_cred=None):
+    """Get all runs associated with a given sim group, optionally in a given
+    state."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    sql = (
+        'select r.*, s.order_id "sim_order_id", '
+        'rg.order_id "run_group_order_id" '
+        'from run_group rg '
+        'inner join sim_group sg on sg.id = rg.sim_group_id '
+        'inner join run r on r.run_group_id = rg.id '
+        'inner join sim s on s.id = r.sim_id '
+        'where sg.id = %s and '
+        'sg.user_account_id = %s'
+    )
+    args = (sim_group_id, user_id)
+
+    if state:
+        sql += ' and r.run_state_id = %s'
+        args = (sim_group_id, user_id, state)
+
+    run_groups = exec_select(sql, args, fetch_all=True)
+
+    return run_groups
 
 
 def get_run_groups(sim_group_id, user_cred=None):
@@ -1079,10 +1184,8 @@ def get_run_groups(sim_group_id, user_cred=None):
     return run_groups
 
 
-def add_run_group(sim_group_id, run_group, sim_insert_ids, run_state, user_cred=None):
+def add_run_group(sim_group_id, run_group, sim_insert_ids, run_state, sge, user_cred=None):
     """Add a run group to a given sim group."""
-
-    print('rg: {}'.format(run_group))
 
     # First get existing run groups:
     pre_rgs = get_run_groups(sim_group_id, user_cred)
@@ -1102,7 +1205,7 @@ def add_run_group(sim_group_id, run_group, sim_insert_ids, run_state, user_cred=
     ))
 
     rg_sge_insert_id = None
-    if run_group['is_sge']:
+    if sge:
         # Also add to run_group_sge table:
         sql_sge = (
             'insert into run_group_sge '
@@ -1119,18 +1222,19 @@ def add_run_group(sim_group_id, run_group, sim_insert_ids, run_state, user_cred=
 
     # Add to the run table
     run_insert_ids = []
-    for sim_idx in run_group['sim_idx']:
+    for sim_idx_idx, sim_idx in enumerate(run_group['sim_idx']):
 
         sim_id = sim_insert_ids[sim_idx]
 
         sql_run = (
-            'insert into run (sim_id, run_group_id, run_state_id) '
-            'values (%s, %s, %s)'
+            'insert into run (sim_id, run_group_id, run_state_id, order_id) '
+            'values (%s, %s, %s, %s)'
         )
-        rn_insert = exec_insert(sql_run, (sim_id, rg_insert_id, run_state))
+        args = (sim_id, rg_insert_id, run_state, sim_idx_idx + 1)
+        rn_insert = exec_insert(sql_run, args)
 
         rn_sge_insert = None
-        if run_group['is_sge']:
+        if sge:
 
             # Also add to run_sge table:
             sql_run_sge = ('insert into run_sge (run_id) values (%s)')
@@ -1145,21 +1249,102 @@ def check_run_group_ownership(run_group_id, user_cred=None):
     """Check given user owns given run group."""
 
     user_cred = user_cred or CONFIG['user']
-    _ = get_user_id(user_cred)
+    user_id = get_user_id(user_cred)
 
     sql = (
         'select * '
         'from run_group rg '
         'inner join sim_group sg on sg.id = rg.sim_group_id '
-        'where rg.id = %s'
+        'inner join user_account u on u.id = sg.user_account_id '
+        'where rg.id = %s and '
+        'u.id = %s'
     )
-    check_res = exec_select(sql, (run_group_id,))
+    check_res = exec_select(sql, (run_group_id, user_id))
     if not check_res:
         msg = 'No run group with ID {} is associated with this user.'
         raise ValueError(msg.format(run_group_id))
 
 
-def set_run_state(run_group_id, state_id, user_cred=None):
+def check_many_runs_ownership(run_ids, user_cred=None):
+    """Check given user owns all in a set of runs."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    sql = (
+        'select r.id '
+        'from run r '
+        'inner join run_group rg on rg.id = r.run_group_id '
+        'inner join sim_group sg on sg.id = rg.sim_group_id '
+        'inner join user_account u on u.id = sg.user_account_id '
+        'where r.id in %s and '
+        'u.id = %s'
+    )
+    check_res = exec_select(sql, (run_ids, user_id), fetch_all=True)
+
+    owned_run_ids = sorted([i['id'] for i in check_res])
+    if sorted(run_ids) != owned_run_ids:
+        msg = 'Not all runs with IDs {} are associated with this user.'
+        raise ValueError(msg.format(run_ids))
+
+
+def check_run_ownership(run_id, user_cred=None):
+    """Check given user owns given run."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    sql = (
+        'select * '
+        'from run r '
+        'inner join run_group rg on rg.id = r.run_group_id '
+        'inner join sim_group sg on sg.id = rg.sim_group_id '
+        'inner join user_account u on u.id = sg.user_account_id '
+        'where r.id = %s and '
+        'u.id = %s'
+    )
+    check_res = exec_select(sql, (run_id, user_id))
+    if not check_res:
+        msg = 'No run with ID {} is associated with this user.'
+        raise ValueError(msg.format(run_id))
+
+
+def set_run_state(run_id, state_id, user_cred=None):
+    """Set the run state for a given run."""
+
+    user_cred = user_cred or CONFIG['user']
+    _ = get_user_id(user_cred)
+
+    check_run_ownership(run_id)
+
+    sql_runs = (
+        'update run '
+        'set run_state_id = %s '
+        'where id = %s'
+    )
+    exec_update(sql_runs, (state_id, run_id))
+
+
+def set_many_run_states(run_ids, state_id, user_cred=None):
+    """Set many runs to a given state."""
+
+    if not run_ids:
+        return
+
+    user_cred = user_cred or CONFIG['user']
+    _ = get_user_id(user_cred)
+
+    check_many_runs_ownership(run_ids)
+
+    sql_runs = (
+        'update run '
+        'set run_state_id = %s '
+        'where id in %s'
+    )
+    exec_update(sql_runs, (state_id, run_ids))
+
+
+def set_all_run_states(run_group_id, state_id, user_cred=None):
     """Change the run state for all runs within a run group."""
 
     user_cred = user_cred or CONFIG['user']
@@ -1175,7 +1360,7 @@ def set_run_state(run_group_id, state_id, user_cred=None):
     exec_update(sql_runs, (state_id, run_group_id))
 
 
-def set_run_group_submitted(run_group_id, hostname, submit_time, user_cred=None):
+def set_run_group_submitted(run_group_id, hostname, submit_time, run_state_id, user_cred=None):
     """Set a run group to the submitted state."""
 
     user_cred = user_cred or CONFIG['user']
@@ -1183,20 +1368,17 @@ def set_run_group_submitted(run_group_id, hostname, submit_time, user_cred=None)
 
     check_run_group_ownership(run_group_id)
 
+    if run_state_id not in [3, 5]:
+        msg = 'Run state should be set to 3 ("in_queue") or 5 ("running")'
+        raise ValueError(msg)
+
     sql = (
         'update run_group '
         'set submit_time = %s, hostname = %s '
         'where id = %s'
     )
     exec_update(sql, (submit_time, hostname, run_group_id))
-
-    # For all runs in this run_group, change state to 3 ("in queue"):
-    sql_run_state = (
-        'update run '
-        'set run_state_id = %s '
-        'where run_group_id = %s'
-    )
-    exec_update(sql_run_state, (3, run_group_id))
+    set_all_run_states(run_group_id, run_state_id)
 
 
 def set_run_group_sge_jobid(run_group_id, job_id, user_cred=None):
@@ -1213,3 +1395,84 @@ def set_run_group_sge_jobid(run_group_id, job_id, user_cred=None):
         'where run_group_id = %s'
     )
     exec_update(sql, (job_id, run_group_id))
+
+
+def check_scratch_ownership(srcatch_id, user_cred=None):
+    """Check given user owns given scratch."""
+
+    get_scratch_by_id(srcatch_id, user_cred)
+
+
+def get_runs_by_scratch(scratch_id, run_state_ids=None, user_cred=None):
+    """Get all runs on a given scratch for this user, optionally filtered by
+    run state.
+
+    """
+
+    user_cred = user_cred or CONFIG['user']
+    _ = get_user_id(user_cred)
+
+    check_scratch_ownership(scratch_id, user_cred)
+
+    sql = (
+        'select r.id "run_id", r.order_id "run_order_id", r.run_state_id, '
+        'rg.id "run_group_id", rgs.job_id '
+        'from run r '
+        'inner join run_group rg on rg.id = r.run_group_id '
+        'inner join run_group_sge rgs on rgs.run_group_id = rg.id '
+        'inner join sim_group sg on sg.id = rg.sim_group_id '
+        'where sg.scratch_id = %s'
+    )
+
+    if run_state_ids is None:
+        run_state_ids = []
+
+    if run_state_ids:
+        sql += ' and r.run_state_id = '
+
+    for rs_id_idx, _ in enumerate(run_state_ids):
+
+        if rs_id_idx > 0:
+            sql += ' or %s'
+        else:
+            sql += '%s'
+
+    if run_state_ids:
+        args = (scratch_id, *run_state_ids)
+    else:
+        args = (scratch_id,)
+
+    runs = exec_select(sql, args, fetch_all=True)
+    return runs
+
+
+def check_archive_started(sim_group_id, user_cred=None):
+    """Check if archiving has started for given sim group and user."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    sql = (
+        'select archive_started '
+        'from sim_group '
+        'where user_account_id = %s and '
+        'id = %s'
+    )
+    started = exec_select(sql, (user_id, sim_group_id))['archive_started']
+
+    return bool(started)
+
+
+def set_archive_started(sim_group_id, user_cred=None):
+    """Check if archiving has started for given sim group and user."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    sql = (
+        'update sim_group '
+        'set archive_started = %s '
+        'where user_account_id = %s and '
+        'id = %s'
+    )
+    exec_update(sql, (1, user_id, sim_group_id))

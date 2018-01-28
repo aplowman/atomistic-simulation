@@ -32,6 +32,7 @@ CONFIG = parse_opt(CONFIG, OPTSPEC['config'])
 # Get additional option file n
 SEQ_FN = os.path.join(SET_UP_PATH, 'sequences.yml')
 MAKESIMS_FN = os.path.join(SET_UP_PATH, CONFIG['option_paths']['makesims'])
+UPDATE_FN = os.path.join(SET_UP_PATH, CONFIG['option_paths']['update'])
 PROCESS_FN = os.path.join(SET_UP_PATH, CONFIG['option_paths']['process'])
 
 # Jobscript template directory:

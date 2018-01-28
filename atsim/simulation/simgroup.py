@@ -4,9 +4,11 @@ or more simulation sequences.
 """
 
 import os
+import sys
 import copy
 import json
 import shutil
+import time
 from datetime import datetime
 
 import numpy as np
@@ -306,13 +308,14 @@ class SimGroup(object):
 
     def _parse_run_group_opt(self, run_opt):
 
+        # TODO: raise exception if sge.jobarray False and len(sim_idx) > 1
+
         for rg_idx, _ in enumerate(run_opt['groups']):
 
             run_group = run_opt['groups'][rg_idx]
 
             # Load software entry
             soft_inst_name = run_group['software_instance']
-            print('soft_inst_name: {}'.format(soft_inst_name))
             soft_inst = database.get_software_instance_by_name(soft_inst_name)
             software_name = soft_inst['software_name']
 
@@ -336,10 +339,6 @@ class SimGroup(object):
                 msg = ('{} core(s) is not supported on the specified '
                        'software instance.')
                 raise ValueError(msg.format(ncores))
-
-            # Check scratch
-            if run_group['is_sge'] and not self.scratch.sge:
-                raise ValueError('SGE is not supported on specified Scratch.')
 
             run_group['software_instance'] = soft_inst
 
@@ -445,8 +444,6 @@ class SimGroup(object):
         """Get a Simulation object belonging to this group."""
 
         sim_opt = self.get_sim_options(sim_idx)
-
-        # prt(sim_opt, 'sim_opt')
         sim = self.sim_class(sim_opt)
 
         return sim
@@ -508,10 +505,21 @@ class SimGroup(object):
         }
         return ret
 
-    def save_state(self):
+    def save_state(self, resource_type, path=None):
         """Write a JSON file representing this SimGroup object."""
-        path = self.stage.path.joinpath('sim_group.json')
-        with path.open('w') as sim_group_fp:
+
+        json_fn = 'sim_group.json'
+
+        if resource_type == 'stage':
+            json_path = self.stage.path.joinpath(json_fn)
+
+        elif resource_type == 'scratch':
+            json_path = self.scratch.path.joinpath(json_fn)
+
+        if path:
+            json_path = json_path.with_name(json_path.name + '.' + path)
+
+        with json_path.open('w') as sim_group_fp:
             json.dump(self.to_jsonable(), sim_group_fp, indent=2)
 
     @classmethod
@@ -540,10 +548,13 @@ class SimGroup(object):
         archive = Archive(archive_name, add_path)
 
         # Now want to open the JSON file:
+        json_fn = 'sim_group.json'
+
         if resource_type == 'stage':
-            json_path = stage.path.joinpath('sim_group.json')
+            json_path = stage.path.joinpath(json_fn)
+
         elif resource_type == 'scratch':
-            json_path = scratch.path.joinpath('sim_group.json')
+            json_path = scratch.path.joinpath(json_fn)
 
         state = sg_params
         state.update({
@@ -553,10 +564,20 @@ class SimGroup(object):
             'job_name': state.pop('name'),
         })
 
+        sg_id_db = state['db_id']
+
+        id_err = ('Sim group ID on database ({}) does not match that in '
+                  'the JSON file ({}).')
+
         with open(json_path, 'r') as sim_group_fp:
-            state.update({
-                **json.load(sim_group_fp)
-            })
+
+            json_data = json.load(sim_group_fp)
+            sg_id_json = json_data['db_id']
+
+            if sg_id_db != sg_id_json:
+                raise ValueError(id_err.format(sg_id_db, sg_id_json))
+
+            state.update({**json_data})
 
         # Load sim updates:
         sim_updates_ntv = []
@@ -678,7 +699,7 @@ class SimGroup(object):
                 'calc_paths': sim_paths_scratch,
                 'method': self.software_name,
                 'num_cores': run_group['num_cores'],
-                'is_sge': run_group['is_sge'],
+                'is_sge': self.scratch.sge,
                 'job_array': False,
                 'selective_submission': False,
                 'scratch_os': self.scratch.os_type,
@@ -690,7 +711,7 @@ class SimGroup(object):
                 'executable': soft_inst['executable'],
             }
 
-            if run_group['is_sge']:
+            if self.scratch.sge:
                 js_params.update({
                     'job_array': run_group['sge']['job_array'],
                     'selective_submission': run_group['sge']['selective_submission'],
@@ -709,29 +730,29 @@ class SimGroup(object):
         """
 
         conn = ResourceConnection(self.get_machine_resource()[0], self.scratch)
+
+        jobscript_ext = 'sh' if self.scratch.os_type == 'posix' else 'bat'
+        jobscript_fn = 'jobscript.{}'.format(jobscript_ext)
+
         sub_msg = ('Submitting run group: {}')
         for rg_idx in run_group_idx:
 
             run_group = self.run_opt['groups'][rg_idx]
 
-            # CD to the run group directory and submit the jobscript:
             print(sub_msg.format(rg_idx))
 
-            js_ext = 'sh' if self.scratch.os_type == 'posix' else 'bat'
-            js_fn = 'jobscript.{}'.format(js_ext)
             rg_path = '/'.join(['run_groups', str(rg_idx)])
 
-            if run_group['is_sge']:
-                cmd = ['qsub', '{}'.format(js_fn)]
+            if self.scratch.sge:
+                cmd = ['qsub', '{}'.format(jobscript_fn)]
             else:
-                cmd = [js_fn]
+                cmd = [jobscript_fn]
 
             # Execute command to get the hostname on Scratch:
-            hostname = conn.run_command(['hostname'], output=True, shell=True)
+            hostname = conn.run_command(['hostname'], block=True)
 
             # Execute command to submit the jobscript:
-            submit_out = conn.run_command(
-                cmd, cwd=rg_path, output=True, shell=True, new_proc=True)
+            submit_proc = conn.run_command(cmd, cwd=rg_path, block=False)
 
             # Get approximate time of execution, in a MySQL format:
             dt_fmt = '%Y-%m-%d %H:%M:%S'
@@ -741,15 +762,57 @@ class SimGroup(object):
             rg_id = run_group['id']
 
             # Update the database:
-            database.set_run_group_submitted(rg_id, hostname, submit_time)
+            # Set run state to 3 "in_queue" or 5 "running" (if not SGE)
+            run_state_id = 3 if self.scratch.sge else 5
+            database.set_run_group_submitted(
+                rg_id, hostname, submit_time, run_state_id)
 
-            if run_group['is_sge']:
+            # Check if submit process has ended:
 
+            pending_strs = ['|', '/', '-', '\\']
+            count = 0
+
+            if self.scratch.sge:
+                msg = 'Submitting to SGE - PENDING {}\r'
+                msg_done = 'Submitting to SGE - COMPLETE '
+            else:
+                msg = 'Running sims - PENDING {}\r'
+                msg_done = 'Running sims - COMPLETE '
+
+            # TODO use SpinnerThread class instead here
+            while True:
+                # Only poll the process every 1 second:
+                if int(count / 10) == count / 10:
+                    if submit_proc.poll() is not None:
+                        break
+
+                sys.stdout.write(msg.format(pending_strs[count % 4]))
+                sys.stdout.flush()
+                count += 1
+                time.sleep(0.1)
+
+            with submit_proc.stdout as submit_out:
+                submit_stdout = submit_out.read()
+
+            with submit_proc.stderr as submit_err:
+                submit_stderr = submit_err.read()
+
+            if not submit_stderr:
+                print(msg_done)
+
+            else:
+                msg = 'There was a problem with job submission: \n\n\t{}\n'
+                raise ValueError(msg.format(submit_stderr))
+
+            if self.scratch.sge:
                 # Get the Job-ID from the submit return
-                job_id_task_id = submit_out.split()[2]
+                job_id_task_id = submit_stdout.split()[2]
                 job_id = int(job_id_task_id.split('.')[0])
-
                 database.set_run_group_sge_jobid(rg_id, job_id)
+
+            else:
+                # Set run_states to 6 "pending_process":
+                database.set_all_run_states(rg_id, 6)
 
     def add_to_db(self):
         """Connect to database, add a sim_group entry, with this human_id and
@@ -780,7 +843,7 @@ class SimGroup(object):
         # Change state of all runs to 2 ("pending_run")
         run_groups = database.get_run_groups(self.db_id)
         for rg_id in [i['id'] for i in run_groups]:
-            database.set_run_state(rg_id, 2)
+            database.set_all_run_states(rg_id, 2)
 
     def get_machine_resource(self):
         """Returns a list of Resource (Stage and/or Scratch) this machine
@@ -806,9 +869,16 @@ class SimGroup(object):
     def check_is_stage_machine(self):
         """Check the current machine is the Stage machine for this group."""
 
-        if not isinstance(self.get_machine_resource()[0], Stage):
+        if CONFIG['machine_name'] != self.stage.machine_name:
             raise ValueError('This machine does not have the same ID as that '
                              'of the Stage associated with this SimGroup.')
+
+    def check_is_scratch_machine(self):
+        """Check the current machine is the Scratch machine for this group."""
+
+        if CONFIG['machine_name'] != self.scratch.machine_name:
+            raise ValueError('This machine does not have the same ID as that '
+                             'of the Scratch associated with this SimGroup.')
 
     def get_stage_to_scratch_conn(self):
         """Get a ResourceConnection between Stage and Scratch."""
@@ -851,20 +921,13 @@ class SimGroup(object):
 
         for sid_idx in range(len(seq_id['paths'])):
 
-            # prt(sid_idx, 'sid_idx')
-
             add_path = seq_id['paths'][sid_idx]
-            # add_path = sid['path']
 
             if self.path_options['sequence_names']:
-                # add_path = sid['name'] + '_' + add_path
                 add_path = seq_id['names'][sid_idx] + '_' + add_path
 
             if seq_id['nest_idx'][sid_idx] == nest_idx:
                 path[-1] += self.path_options['parallel_sims_join'] + add_path
-
-            # if sid['nest_idx'] == nest_idx:
-            #     path[-1] += self.path_options['parallel_sims_join'] + add_path
             else:
                 path.append(add_path)
 
@@ -887,5 +950,20 @@ class SimGroup(object):
 
         return run_path
 
-    def process(self):
-        """Find completed sims, parse results and save a JSON to archive."""
+    def check_run_success(self, sim_idx, run_idx):
+        """Check a given run of a given sim has succeeded."""
+
+        run_path = self.get_run_path(sim_idx, run_idx)
+        run_path_full = self.scratch.path.joinpath(*run_path)
+        success = self.sims[sim_idx].check_success(run_path_full)
+
+        return success
+
+    def parse_result(self, sim_idx, run_idx):
+        """Parse results for a given run of a given sim and add to the sim
+        results attribute."""
+
+        run_path = self.get_run_path(sim_idx, run_idx)
+        run_path_full = self.scratch.path.joinpath(*run_path)
+
+        self.sims[sim_idx].parse_result(run_path_full, run_idx)

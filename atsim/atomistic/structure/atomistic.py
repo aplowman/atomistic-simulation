@@ -9,7 +9,7 @@ from mendeleev import element
 from vecmaths import rotation
 
 from atsim import geometry, vectors, utils
-from atsim.utils import RestrictedDict, mut_exc_args
+from atsim.utils import RestrictedDict, mut_exc_args, prt
 from atsim.atomistic.structure import site_labs_from_jsonable, site_labs_to_jsonable
 from atsim.atomistic.structure.crystal import CrystalBox, CrystalStructure
 from atsim.atomistic.structure.visualise import visualise as struct_visualise
@@ -168,6 +168,10 @@ class AtomisticStructure(object):
             self.interstice_labels = state.get('interstice_labels')
 
             self.crystals = state['crystals']
+
+            # print('loaded AtomisticStructure from jsonable.')
+            # prt(self.crystals, 'self.crystals')
+
             self.crystal_structures = state['crystal_structures']
             self._overlap_tol = state['_overlap_tol']
 
@@ -205,6 +209,8 @@ class AtomisticStructure(object):
         # to jsonify meta keys allowed in it's own class.
         meta_js = {key: val for key, val in self.meta.items()
                    if key in AtomisticStructure.ok_meta}
+
+        # prt(self.crystals, 'self.crystals')
 
         crystals_js = []
         for crys in self.crystals:
@@ -293,7 +299,7 @@ class AtomisticStructure(object):
                 'interstice_labels': site_labs_from_jsonable(state['interstice_labels']),
             })
 
-        return cls(state=state)
+        return state
 
     def translate(self, shift):
         """

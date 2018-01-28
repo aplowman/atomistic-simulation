@@ -15,14 +15,14 @@ class AtomisticSimulation(Simulation):
 
     def __init__(self, options=None, state=None):
 
-        # prt(readwrite.format_dict(options), 'options')
-        # prt(state, 'state')
-
-        mut_exc_args({'options': options}, {'state': state})
+        mut_exc_args(
+            {'options': options},
+            {'state': state})
 
         if state:
             self.options = None
             self.structure = state['structure']
+            self.runs = state['runs']
 
         else:
             self.options = options
@@ -92,8 +92,6 @@ class AtomisticSimulation(Simulation):
 
         self.options['structure']['constraints']['atoms'] = valid_atom_cnst
         self.options['structure']['constraints']['cell'] = cell_const
-
-        prt(self.options, 'self.options (after AtSim processing)')
 
     def to_jsonable(self):
         """Generate a dict representation that can be JSON serialised."""

@@ -7,6 +7,7 @@ import subprocess
 import dropbox
 import fnmatch
 import os
+import sys
 import posixpath
 import ntpath
 from atsim import readwrite
@@ -1177,3 +1178,33 @@ def parse_times(format_str):
         time_parsed = time_parsed.replace('%r', rnd, 1)
 
     return time_parsed, rnd_all
+
+
+import threading
+
+
+class SpinnerThread(threading.Thread):
+
+    def __init__(self, label='Working', delay=0.1):
+        super(SpinnerThread, self).__init__()
+        self.label = label
+        self.delay = delay  # interval between updates
+        self.running = False
+
+    def start(self):
+        self.running = True
+        super(SpinnerThread, self).start()
+
+    def run(self):
+        label = '\r' + self.label + ' '
+        while self.running:
+            for c in ('-', '\\', '|', '/'):
+                sys.stdout.write(label + c)
+                sys.stdout.flush()
+                time.sleep(self.delay)
+
+    def stop(self):
+        self.running = False
+        self.join()  # wait for run() method to terminate
+        sys.stdout.write('\r' + len(self.label) * ' ' + '\r')  # clean-up
+        sys.stdout.flush()

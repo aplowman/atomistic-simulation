@@ -66,8 +66,6 @@ class Bicrystal(AtomisticStructure):
 
             super().__init__(state=state)
 
-            prt(self.meta, 'self.meta (after AtomisticStructure init')
-
             self.maintain_inv_sym = state['maintain_inv_sym']
             self.n_unit = state['n_unit']
             self.u_unit = state['u_unit']
@@ -177,9 +175,9 @@ class Bicrystal(AtomisticStructure):
     @classmethod
     def from_jsonable(cls, state):
 
-        prt(state, 'state')
-
         meta = state['meta']
+
+        state = super().from_jsonable(state)
 
         if meta.get('boundary_vac') is not None:
 

@@ -4,11 +4,20 @@ import sys
 
 import yaml
 
-from atsim import OPTSPEC, MAKESIMS_FN, PROCESS_FN, SEQ_FN, parse_opt
+from atsim import OPTSPEC, MAKESIMS_FN, UPDATE_FN, PROCESS_FN, SEQ_FN, parse_opt
 from atsim.utils import prt
 
 
 def main(args):
+
+    # Parse the sequences.yml sequence definitions:
+    with open(SEQ_FN, 'r') as seq_defn_fp:
+        seq_defn = yaml.safe_load(seq_defn_fp)
+
+    # Parse the update.yml options:
+    with open(UPDATE_FN, 'r') as up_opts_fp:
+        up_opts_raw = yaml.safe_load(up_opts_fp)
+    up_opts = parse_opt(up_opts_raw, OPTSPEC['update'])
 
     if len(args) == 1 or args[1] == 'make':
         from atsim.simulation import makesims
@@ -18,22 +27,17 @@ def main(args):
             ms_opts_raw = yaml.safe_load(ms_opts_fp)
         ms_opts = parse_opt(ms_opts_raw, OPTSPEC['makesims'])
 
-        # Parse the sequences.yml sequence definitions:
-        with open(SEQ_FN, 'r') as seq_defn_fp:
-            seq_defn = yaml.safe_load(seq_defn_fp)
-
         makesims.main(ms_opts, ms_opts_raw, seq_defn)
 
     elif args[1] == 'load':
         from atsim.simulation.simgroup import SimGroup
 
-        # Parse the sequences.yml sequence definitions:
-        with open(SEQ_FN, 'r') as seq_defn_fp:
-            seq_defn = yaml.safe_load(seq_defn_fp)
-
         sim_group = SimGroup.load_state(args[2], 'stage', seq_defn)
         prt(sim_group, 'sim_group')
-        exit()
+
+        print('loaded, now saving...')
+
+        sim_group.save_state('stage', path='testy_test')
 
     elif args[1] == 'process':
         from atsim.analysis import process
@@ -41,9 +45,13 @@ def main(args):
         # Parse the process.yml options:
         with open(PROCESS_FN, 'r') as pr_opts_fp:
             pr_opts_raw = yaml.safe_load(pr_opts_fp)
-        pr_opts = parse_opt(pr_opts_raw, OPTSPEC)
+        pr_opts = parse_opt(pr_opts_raw, OPTSPEC['process'])
 
-        # process.main(pr_opts)
+        process.main(pr_opts, seq_defn, up_opts)
+
+    elif args[1] == 'update':
+        from atsim import update
+        update.main(up_opts)
 
 
 if __name__ == '__main__':

@@ -1,8 +1,10 @@
 import os
 import pathlib
 import subprocess
+from datetime import datetime
+import copy
 import yaml
-from shutil import copytree
+import shutil
 from atsim import SET_UP_PATH, CONFIG
 from atsim import utils, database
 from atsim.utils import prt, dict_from_list, mut_exc_args
@@ -167,74 +169,108 @@ class ResourceConnection(object):
                 msg = 'Destination `base_path` "" does not exist.'
                 raise ValueError(msg.format(self.dst.base_path))
 
-    def copy_from_dest(self, path):
-        """Copy content from the destination resource to the source resource.
+    def file_exist_on_src(self, subpath=None):
+        """TODO"""
+        pass
 
-        """
-        self.check_conn()
+    def file_exist_on_dst(self, subpath=None):
+        """TODO"""
+        pass
 
-        msg = ('Copying from resource "{}" to{} resource "{}".')
-        is_rem_str = ' remote' if self.remote else ''
-        print(msg.format(self.dst.name, is_rem_str, self.src.name))
-
-        # if self.remote:
-
-        #     if self.src.os_type == 'nt':
-
-        #         # Convert path to posix style for use within "Bash on Windows":
-        #         path_args = ['/mnt', self.src.path.drive[0].lower(),
-        #                      *self.src.path.parts[1:]]
-        #         src_path = pathlib.PurePosixPath(*path_args)
-
-        #     elif self.src.os_type == 'posix':
-        #         src_path = self.src.path
-
-        #     # Add trailing slash to path (for rsync):
-        #     src_path = str(src_path) + '/'
-        #     utils.rsync_remote(src_path, self.host, self.dst.path, mkdirs=True)
-
-        # else:
-
-        #     if self.dst.path.exists():
-        #         raise ValueError(exists_msg)
-
-        #     copytree(self.src.path, self.dst.path)
-
-    def copy_to_dest(self):
+    def copy_to_dest(self, subpath=None, file_backup=False, ignore=None):
         """Copy content from the source resource to the destination resource.
 
+        Contents is mirrored from source to destination.
+
+        Parameters
+        ----------
+        subpath : list, optional
+            Copy from a given subpath with source (to the same subpath on
+            destination). Default is copy from the source `path`.
+        file_backup : bool, optional
+            Only applicable if `subpath` resolves to a file and the file path
+            already exists on destination. If True, the name of the file on
+            destination is prepended with a date time stamp.
+        ignore : sequence of str
+            Only applicable if `subpath` resolves to a directory. Patterns to
+            ignore when copying (glob style).
+
         """
-        exists_msg = 'Destination directory already exists.'
+
         self.check_conn()
 
         msg = ('Copying from resource "{}" to{} resource "{}".')
         is_rem_str = ' remote' if self.remote else ''
         print(msg.format(self.src.name, is_rem_str, self.dst.name))
 
+        if subpath:
+            src_path = self.src.path.joinpath(*subpath)
+            dst_path = self.dst.path.joinpath(*subpath)
+        else:
+            src_path = self.src.path
+            dst_path = self.dst.path
+
         if self.remote:
+
+            orig_src_path = copy.copy(src_path)
 
             if self.src.os_type == 'nt':
 
                 # Convert path to posix style for use within "Bash on Windows":
-                path_args = ['/mnt', self.src.path.drive[0].lower(),
-                             *self.src.path.parts[1:]]
+                path_args = ['/mnt', src_path.drive[0].lower(),
+                             *src_path.parts[1:]]
                 src_path = pathlib.PurePosixPath(*path_args)
 
-            elif self.src.os_type == 'posix':
-                src_path = self.src.path
+            if orig_src_path.is_file():
 
-            # Add trailing slash to path (for rsync):
-            src_path = str(src_path) + '/'
-            utils.rsync_remote(src_path, self.host, self.dst.path, mkdirs=True)
+                mkdirs = False
+
+                # Check if file exists on destination:
+                cmd = '[ -f {} ] && echo found'.format(dst_path)
+                check_file_exist = self.run_command([cmd]).rstrip('\n')
+
+                if check_file_exist == 'found' and file_backup:
+
+                    # Rename on destination:
+                    dt_fmt = '%Y-%m-%d-%H%M%S.'
+                    bk_ts = datetime.strftime(datetime.now(), dt_fmt)
+                    bk_dst_path = dst_path.with_name(bk_ts + dst_path.name)
+                    cmd = 'mv {} {}'.format(dst_path, bk_dst_path)
+                    self.run_command([cmd])
+
+            else:
+                # Add trailing slash to path (for rsync to copy contents of src):
+                src_path = str(src_path) + '/'
+                mkdirs = True
+
+            utils.rsync_remote(src_path, self.host, dst_path,
+                               mkdirs=mkdirs, exclude=ignore)
 
         else:
 
-            if self.dst.path.exists():
-                raise ValueError(exists_msg)
+            if src_path.is_file():
 
-            copytree(self.src.path, self.dst.path)
+                if dst_path.is_file() and file_backup:
 
-    def run_command(self, cmd, cwd=None, output=False, shell=True, new_proc=False):
+                    # Rename destination file
+                    dt_fmt = '%Y-%m-%d-%H%M%S.'
+                    bk_ts = datetime.strftime(datetime.now(), dt_fmt)
+                    bk_dst_path = dst_path.with_name(bk_ts + dst_path.name)
+                    shutil.move(str(dst_path), str(bk_dst_path))
+
+                # copy2 (and copy) will overwrite existing file:
+                shutil.copy2(src_path, dst_path)
+
+            else:
+                if ignore:
+                    ignore_func = shutil.ignore_patterns(*ignore)
+                else:
+                    ignore_func = None
+                shutil.copytree(src_path, dst_path, ignore=ignore_func)
+
+            print('copying source: {} to dest: {}'.format(src_path, dst_path))
+
+    def run_command(self, cmd, cwd=None, block=True):
         """Execute a command on the destination resource.
 
         Parameters
@@ -265,48 +301,40 @@ class ResourceConnection(object):
             run_args = ['bash', '-c']
             ssh_cmd = 'ssh {} "cd {} && {}"'
             run_args.append(ssh_cmd.format(self.host, cwd, cmd_str))
-
-            run_params = {
-                'args': run_args,
-                'shell': shell,
-                'encoding': 'utf-8',
-            }
-
-            if output:
-                run_params.update({
-                    'stdout': subprocess.PIPE,
-                    'stderr': subprocess.PIPE
-                })
-
-            print('run_params: \n{}\n'.format(run_params))
-            cmd_out = subprocess.run(**run_params)
+            cmd = run_args
 
         else:
 
+            # Change to desired directory:
+            os.chdir(cwd)
+
             if self.dst.os_type == 'nt':
-                run_params = {
-                    'args': cmd,
-                    'shell': shell,
-                    'cwd': cwd,
-                    'encoding': 'utf-8',
-                }
-
-                if output:
-                    run_params.update({
-                        'stdout': subprocess.PIPE,
-                        'stderr': subprocess.PIPE
-                    })
-
-                print('run_params: {}'.format(run_params))
-
-                if new_proc:
-                    cmd_out = subprocess.Popen(**run_params)
-
-                else:
-                    cmd_out = subprocess.run(**run_params)
+                pass
 
             elif self.dst.os_type == 'posix':
                 pass
+
+        run_params = {
+            'args': cmd,
+            'encoding': 'utf-8',
+            'stdout': subprocess.PIPE,
+            'stderr': subprocess.PIPE,
+        }
+
+        if block:
+
+            cmd_proc = subprocess.run(**run_params)
+            if cmd_proc.stderr:
+                msg = ('ResourceConnection could not run command '
+                       'on destination: {}'.format(cmd_proc.stderr))
+                raise ValueError(msg)
+            else:
+                return cmd_proc.stdout
+
+        else:
+            cmd_proc = subprocess.Popen(**run_params)
+
+            return cmd_proc
 
         #     if self.os_name == 'nt' and scratch.os_name == 'nt':
         #         if not os.path.isdir(scratch.path):
@@ -322,11 +350,3 @@ class ResourceConnection(object):
         #         js_path = os.path.join(scratch.path, 'jobscript.sh')
         #         os.chmod(js_path, 0o744)
         #         subprocess.Popen(js_path, shell=True)
-
-        if cmd_out.stderr:
-            msg = ('ResourceConnection could not invoke '
-                   'command: {}. Error is: {}')
-            raise ValueError(msg.format(cmd, cmd_out.stderr))
-
-        if output:
-            return cmd_out.stdout

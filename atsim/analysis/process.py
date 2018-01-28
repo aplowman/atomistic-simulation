@@ -1,3 +1,5 @@
+"""matsim.analysis.process"""
+
 import sys
 import os
 from copy import deepcopy
@@ -5,16 +7,11 @@ from distutils.dir_util import copy_tree
 import shutil
 import subprocess
 
-import atsim.dbhelpers as dbh
-from atsim.readwrite import read_pickle, write_pickle, find_files_in_dir_glob, factor_common_files
-from atsim import SET_UP_PATH, SCRIPTS_PATH
-from atsim.simsio import castep, lammps
 from atsim import database
-
-from atsim.simgroup import SimGroup
-from atsim import opt_parser
+from atsim import update
+from atsim.resources import ResourceConnection
 from atsim.utils import prt
-import yaml
+from atsim.simulation.simgroup import SimGroup
 
 
 def search_database_by_session_id(database, s_id):
@@ -128,103 +125,92 @@ def move_offline_files(s_id, src_path, offline_files):
         print('No offline files found.')
 
 
-def main(opts_path, opts_spec_path, config):
+def main(opts, seq_defn, up_opts):
+    """
+    Process a given SimGroup:
+    -   Run update to update run states in the database
+    -   Find all runs in state 6 ("pending_process")
+    -   Invoke check success method on each run
+    -   If check success True, parse results and add to result attribute in
+        SimGroup -> sim -> runs.
+    -   Overwrite JSON file to Scratch (make backup of previous on Scratch)
+    -   Copy new JSON file Archive (make backup of previous on Archive)
+
     """
 
-    human_id
-    scratch_name
+    # Update (SGE) run states in database:
+    # update.main(up_opts)
 
-    assume current machine is scratch machine (raise error if not)
+    # Instantiate SimGroup object:
+    sim_group = SimGroup.load_state(opts['human_id'], 'scratch', seq_defn)
+    sim_group.check_is_scratch_machine()
+    sg_id = sim_group.db_id
 
-    search on database for human id
-    get scratch path
+    # prt(sg_id, 'sg_id')
 
-    instantiate SimGroup object
+    # Find all runs belonging to this run group in state 6
+    pending_runs = database.get_sim_group_runs(sg_id, 6)
+    # prt(pending_runs, 'pending_runs')
 
-    """
+    # Set state to 7 ("processing") for these runs
+    run_ids = [i['id'] for i in pending_runs]
+    database.set_many_run_states(run_ids, 7)
 
-    with open(opts_spec_path, 'r') as opts_spec_path_fp:
-        opts_spec = yaml.safe_load(opts_spec_path_fp)['process']
-        opt_parser.validate_opt_spec(opts_spec)
+    no_errs_pen_idx = []
+    errs_pen_idx = []
+    sim_run_idx = []
 
-    with open(opts_path, 'r') as opts_path_fp:
-        opts_unparsed = yaml.safe_load(opts_path_fp)
+    for pen_run_idx, pen_run in enumerate(pending_runs):
 
-    opts_parsed = opt_parser.parse_opt(opts_unparsed, opts_spec)
-    hid = opts_parsed['human_id']
+        # Get path on scratch of run:
+        sim_idx = pen_run['sim_order_id'] - 1
+        run_idx = pen_run['run_group_order_id'] - 1
+        sim_run_idx.append([sim_idx, run_idx])
 
-    prt(opts_parsed, 'opts_parsed')
+        run_success = sim_group.check_run_success(sim_idx, run_idx)
 
-    db_conn = database.connect_db(config['db'])
-    prt(db_conn, 'db_conn')
+        if run_success:
+            no_errs_pen_idx.append(pen_run_idx)
+        else:
+            errs_pen_idx.append(pen_run_idx)
 
-    try:
-        with db_conn.cursor() as cursor:
-            # Read a single record
-            sql = "SELECT `path` FROM `sim_group` WHERE `human_id`=%s"
-            cursor.execute(sql, (hid,))
-            sim_group_path = cursor.fetchone()['path']
-    finally:
-        db_conn.close()
+    # Update states to 9 ("process_errors")
+    err_ids = [pending_runs[i]['id'] for i in errs_pen_idx]
+    database.set_many_run_states(err_ids, 9)
 
-    sg_path = os.path.join(sim_group_path, 'sim_group.json')
-    sim_group = SimGroup.from_jsonable(sg_path, opts_spec_path)
+    # Parse full output and add to sim.results[run_idx]
+    for pen_run_idx in no_errs_pen_idx:
+        sim_group.parse_result(*sim_run_idx[pen_run_idx])
 
-    prt(sim_group, 'sim_group')
+    # Update states to 8 ("process_no_errors")
+    no_err_ids = [pending_runs[i]['id'] for i in no_errs_pen_idx]
+    database.set_many_run_states(no_err_ids, 8)
 
-    # if opt['database']['dropbox']:
-    #     # Download database file:
-    #     dbx = dbh.get_dropbox()
-    #     tmp_db_path = os.path.join(SET_UP_PATH, 'temp_db')
-    #     db_path = opt['database']['path']
-    #     db_exists = dbh.check_dropbox_file_exist(dbx, db_path)
-    #     if not db_exists:
-    #         raise ValueError('Cannot find database on Dropbox. Exiting.')
-    #     dbh.download_dropbox_file(dbx, db_path, tmp_db_path)
-    #     db = read_pickle(tmp_db_path)
+    if no_errs_pen_idx:
 
-    # else:
-    #     db = read_pickle(opt['database']['path'])
+        # Copy new sim_group.json to Archive location
+        arch_conn = ResourceConnection(sim_group.scratch, sim_group.archive)
 
-    # # Find the base options for this sid:
-    # base_opt = search_database_by_session_id(db, s_id)
+        # Overwrite sim_group.json with new results:
+        sim_group.save_state('scratch')
 
-    # # For compatibility:
-    # if base_opt.get('set_up'):
-    #     base_opt = {**base_opt, **base_opt['set_up']}
+        if not database.check_archive_started(sg_id):
+            # Copy everything to archive apart from calcs directory:
+            arch_conn.copy_to_dest(ignore=['calcs'])
+            database.set_archive_started(sg_id)
 
-    # src_path = os.path.join(base_opt['scratch']['path'], s_id)
-    # dst_path = os.path.join(base_opt['archive']['path'], s_id)
-    # sms_path = os.path.join(src_path, 'sims.pickle')
+        else:
+            # Copy updated sim_group.json
+            subpath = ['sim_group.json']
+            arch_conn.copy_to_dest(subpath=subpath, file_backup=True)
 
-    # print('session_id: {}'.format(s_id))
-    # print('Source path: {}'.format(src_path))
-    # print('Destination path: {}'.format(dst_path))
+        archived_ids = []
+        for pen_run_idx in no_errs_pen_idx:
+            # Copy relevent sim/run/ directories to Archive location
+            subpath = sim_group.get_run_path(*sim_run_idx[pen_run_idx])
+            arch_conn.copy_to_dest(subpath=subpath)
 
-    # error_idx = check_errors(sms_path, src_path, opt.get('skip_idx'))
-    # if len(error_idx) > 0:
-    #     raise ValueError('Errors found! Exiting process.py.')
+            archived_ids.append(pending_runs[pen_run_idx]['id'])
 
-    # # off_fls = base_opt['scratch']['offline_files']
-    # # move_offline_files(s_id, src_path, off_fls)
-
-    # if not os.path.isdir(src_path):
-    #     raise ValueError('Source path is not a directory: {}'.format(src_path))
-
-    # arch_opt = base_opt['archive']
-    # is_dropbox = arch_opt.get('dropbox')
-    # exclude = opt.get('exclude')
-
-    # cpy_msg = 'remote Dropbox' if is_dropbox else 'local computer'
-    # print('Copying completed sims to archive (on {}).'.format(cpy_msg))
-    # print('From path: {}'.format(src_path))
-    # print('To path: {}'.format(dst_path))
-
-    # if is_dropbox is True:
-    #     dbh.upload_dropbox_dir(dbx, src_path, dst_path, exclude=exclude)
-    # else:
-    #     # If Archive is not on Dropbox, assume it is on the scratch machine
-    #     # i.e. the one from which this script (process.py) is run.
-    #     copy_tree(src_path, dst_path)
-
-    # print('Archive copying finished.')
+        # Update states to 10 ("archived")
+        database.set_many_run_states(archived_ids, 10)

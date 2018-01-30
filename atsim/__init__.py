@@ -20,6 +20,8 @@ ALLOWED_SERIES_KEYS = {
     'smearing_width': VLD_SRS_NM_VLS_SSS,
     'nextra_bands': VLD_SRS_NM_VLS_SSS,
     'geom_energy_tol': VLD_SRS_NM_VLS_SSS,
+    'geom_force_tol': VLD_SRS_NM_VLS_SSS,
+    'geom_disp_tol': VLD_SRS_NM_VLS_SSS,
     'geom_stress_tol': VLD_SRS_NM_VLS_SSS,
     'boundary_vac': VLD_SRS_NM_VLS_SSS,
     'boundary_vac_flat': VLD_SRS_NM_VLS_SSS,

@@ -662,6 +662,26 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
                 'series_id': {'name': sn, 'val': v, 'path': '{:.1e}'.format(v)}
             })
 
+    elif sn == 'geom_force_tol':
+
+        for v in vals:
+
+            v = float(v)  # TODO: parse data types in option file
+            out.append({
+                'castep': {'param': {sn: '{:.1e}'.format(v)}},
+                'series_id': {'name': sn, 'val': v, 'path': '{:.1e}'.format(v)}
+            })            
+
+    elif sn == 'geom_disp_tol':
+
+        for v in vals:
+
+            v = float(v)  # TODO: parse data types in option file
+            out.append({
+                'castep': {'param': {sn: '{:.1e}'.format(v)}},
+                'series_id': {'name': sn, 'val': v, 'path': '{:.1e}'.format(v)}
+            })  
+
     elif sn == 'geom_stress_tol':
 
         for v in vals:
@@ -1581,8 +1601,6 @@ def main(opt):
         # print('srs_opt[structure]: in upd loop: \n{}\n'.format(srs_opt['structure']))
 
         srs_as = make_structure(srs_opt['structure'], crys_structs)
-
-        print('makesimes: bv: {}'.format(srs_as.boundary_vac))
 
         try:
             srs_as.check_atomic_environment(checks_list_series)

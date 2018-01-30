@@ -38,7 +38,7 @@ def sigmoid(x, a, b, c, d):
     """
 
     e_arg = -b * (x - c)
-    f = np.empty_like(e_arg)
+    f = np.ones_like(e_arg, dtype=float) * np.nan
 
     lo_idx = np.where(e_arg < -50)[0]
     hi_idx = np.where(e_arg < +50)[0]

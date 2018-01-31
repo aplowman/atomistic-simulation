@@ -93,13 +93,12 @@ class LammpsSimulation(AtomisticSimulation):
         # `structure` and `options` are dealt with in the super-class:
         ret = super().to_jsonable()
 
-        runs = ret['runs']
-        runs_js = copy.deepcopy(runs)
+        runs_js = copy.deepcopy(self.runs)
 
         dumps_arr_keys = ['box', 'supercell', 'atom_sites', 'atom_types',
                           'atom_pot_energy', 'atom_disp', 'vor_vols', 'vor_faces']
 
-        for run_idx, run in enumerate(runs):
+        for run_idx, run in enumerate(self.runs):
 
             run_res = run['result']
             run_res_js = runs_js[run_idx]['result']
@@ -145,6 +144,12 @@ class LammpsSimulation(AtomisticSimulation):
             })
 
         ret['runs'] = runs_js
+
+        # print('saving state of LammpsSimulation...')
+        # prt(ret, 'ret')
+
+        # prt(self.runs[0]['result'], 'self.runs[0][result]')
+        # exit()
 
         return ret
 

@@ -37,3 +37,7 @@ PROCESS_FN = os.path.join(SET_UP_PATH, CONFIG['option_paths']['process'])
 
 # Jobscript template directory:
 JS_TEMPLATE_DIR = os.path.join(_SCRIPTS_PATH, 'set_up', 'jobscript_templates')
+
+# Parse the sequences.yml sequence definitions:
+with open(SEQ_FN, 'r') as seq_defn_fp:
+    SEQ_DEFN = yaml.safe_load(seq_defn_fp)

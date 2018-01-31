@@ -4,15 +4,11 @@ import sys
 
 import yaml
 
-from atsim import OPTSPEC, MAKESIMS_FN, UPDATE_FN, PROCESS_FN, SEQ_FN, parse_opt
+from atsim import OPTSPEC, MAKESIMS_FN, UPDATE_FN, PROCESS_FN, SEQ_DEFN, parse_opt
 from atsim.utils import prt
 
 
 def main(args):
-
-    # Parse the sequences.yml sequence definitions:
-    with open(SEQ_FN, 'r') as seq_defn_fp:
-        seq_defn = yaml.safe_load(seq_defn_fp)
 
     # Parse the update.yml options:
     with open(UPDATE_FN, 'r') as up_opts_fp:
@@ -27,12 +23,12 @@ def main(args):
             ms_opts_raw = yaml.safe_load(ms_opts_fp)
         ms_opts = parse_opt(ms_opts_raw, OPTSPEC['makesims'])
 
-        makesims.main(ms_opts, ms_opts_raw, seq_defn)
+        makesims.main(ms_opts, ms_opts_raw, SEQ_DEFN)
 
     elif args[1] == 'load':
         from atsim.simulation.simgroup import SimGroup
 
-        sim_group = SimGroup.load_state(args[2], 'stage', seq_defn)
+        sim_group = SimGroup.load_state(args[2], 'stage', SEQ_DEFN)
         prt(sim_group, 'sim_group')
 
         print('loaded, now saving...')
@@ -47,7 +43,7 @@ def main(args):
             pr_opts_raw = yaml.safe_load(pr_opts_fp)
         pr_opts = parse_opt(pr_opts_raw, OPTSPEC['process'])
 
-        process.main(pr_opts, seq_defn, up_opts)
+        process.main(pr_opts, SEQ_DEFN, up_opts)
 
     elif args[1] == 'update':
         from atsim import update

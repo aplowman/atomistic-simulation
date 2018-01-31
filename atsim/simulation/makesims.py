@@ -20,9 +20,10 @@ def main(makesim_opts, makesim_opts_raw, seq_defn):
     sim_group.save_state('stage')
 
     # Copy to scratch
-    sim_group.copy_to_scratch()
+    do_copy = sim_group.copy_to_scratch()
 
-    # Submit initial run groups on scratch
-    sim_group.submit_run_groups([0])
+    if do_copy:
+        # Submit initial run groups on scratch
+        sim_group.auto_submit_initial_runs()
 
     print('Finished setting up simulation group: {}'.format(sim_group.human_id))

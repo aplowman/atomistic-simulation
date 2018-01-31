@@ -519,8 +519,10 @@ class SimGroup(object):
         if path:
             json_path = json_path.with_name(json_path.name + '.' + path)
 
+        sg_js = self.to_jsonable()
+
         with json_path.open('w') as sim_group_fp:
-            json.dump(self.to_jsonable(), sim_group_fp, indent=2)
+            json.dump(sg_js, sim_group_fp, indent=2)
 
     @classmethod
     def load_state(cls, human_id, resource_type, seq_defn):
@@ -555,6 +557,9 @@ class SimGroup(object):
 
         elif resource_type == 'scratch':
             json_path = scratch.path.joinpath(json_fn)
+
+        elif resource_type == 'archive':
+            json_path = archive.path.joinpath(json_fn)
 
         state = sg_params
         state.update({
@@ -718,6 +723,37 @@ class SimGroup(object):
                 })
             write_jobscript(**js_params)
 
+    def auto_submit_initial_runs(self):
+        """Submit initial runs according the the run group flag `auto_submit`"""
+
+        auto_sub_idx = []
+        ask_sub_idx = []
+        no_sub_idx = []
+
+        for i_idx, i in enumerate(self.run_opt['groups']):
+
+            auto_sub = i.get('auto_submit', 'ask')
+            if auto_sub == 'ask':
+                ask_sub_idx.append(i_idx)
+            elif auto_sub is True:
+                auto_sub_idx.append(i_idx)
+            else:
+                no_sub_idx.append(i_idx)
+
+        if ask_sub_idx:
+            for ask_sub in ask_sub_idx:
+                if utils.confirm('Submit run group #{}?'.format(ask_sub)):
+                    self.submit_run_groups([ask_sub])
+                else:
+                    print('Run group #{} was NOT submitted.'.format(ask_sub))
+
+        if no_sub_idx:
+            print('Run groups: {} were not submitted.'.format(no_sub_idx))
+
+        if auto_sub_idx:
+            print('Auto-submitting run groups: {}'.format(auto_sub_idx))
+            self.submit_run_groups(auto_sub_idx)
+
     def submit_run_groups(self, run_group_idx):
         """Submit one or more run groups on Scratch. Can be invoked either on
         Stage (for submitting initial runs) or Scratch.
@@ -834,16 +870,32 @@ class SimGroup(object):
     def copy_to_scratch(self):
         """Copy group from Stage to Scratch."""
 
-        self.check_is_stage_machine()
+        copy_scratch = self.run_opt['copy_to_scratch']
+        do_copy = False
 
-        # Copy directory to scratch:
-        conn = self.get_stage_to_scratch_conn()
-        conn.copy_to_dest()
+        if copy_scratch == 'ask':
+            if utils.confirm('Copy sim group to scratch?'):
+                do_copy = True
 
-        # Change state of all runs to 2 ("pending_run")
-        run_groups = database.get_run_groups(self.db_id)
-        for rg_id in [i['id'] for i in run_groups]:
-            database.set_all_run_states(rg_id, 2)
+        elif copy_scratch is True:
+            do_copy = True
+
+        if not do_copy:
+            print('Sim group was NOT copied to scratch.')
+
+        else:
+            self.check_is_stage_machine()
+
+            # Copy directory to scratch:
+            conn = self.get_stage_to_scratch_conn()
+            conn.copy_to_dest()
+
+            # Change state of all runs to 2 ("pending_run")
+            run_groups = database.get_run_groups(self.db_id)
+            for rg_id in [i['id'] for i in run_groups]:
+                database.set_all_run_states(rg_id, 2)
+
+        return do_copy
 
     def get_machine_resource(self):
         """Returns a list of Resource (Stage and/or Scratch) this machine

@@ -1137,9 +1137,9 @@ def add_sim_group(sim_group, user_cred=None):
     return out
 
 
-def get_sim_group_runs(sim_group_id, state=None, user_cred=None):
-    """Get all runs associated with a given sim group, optionally in a given
-    state."""
+def get_sim_group_runs(sim_group_id, states=None, user_cred=None):
+    """Get all runs associated with a given sim group, optionally in given
+    states."""
 
     user_cred = user_cred or CONFIG['user']
     user_id = get_user_id(user_cred)
@@ -1156,9 +1156,9 @@ def get_sim_group_runs(sim_group_id, state=None, user_cred=None):
     )
     args = (sim_group_id, user_id)
 
-    if state:
-        sql += ' and r.run_state_id = %s'
-        args = (sim_group_id, user_id, state)
+    if states:
+        sql += ' and r.run_state_id in %s'
+        args = (sim_group_id, user_id, states)
 
     run_groups = exec_select(sql, args, fetch_all=True)
 

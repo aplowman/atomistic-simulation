@@ -148,19 +148,21 @@ def main(opts, seq_defn, up_opts):
 
     # prt(sg_id, 'sg_id')
 
-    # Find all runs belonging to this run group in state 6
-    pending_runs = database.get_sim_group_runs(sg_id, 6)
-    # prt(pending_runs, 'pending_runs')
+    # Find all runs belonging to this run group in states 6 "pending_process"
+    # or state 8 "process_no_errors" (which normally should only be a transient
+    # state):
+    pending_process = database.get_sim_group_runs(sg_id, [6, 8])
+    prt(pending_process, 'pending_process runs')
 
     # Set state to 7 ("processing") for these runs
-    run_ids = [i['id'] for i in pending_runs]
+    run_ids = [i['id'] for i in pending_process]
     database.set_many_run_states(run_ids, 7)
 
     no_errs_pen_idx = []
     errs_pen_idx = []
     sim_run_idx = []
 
-    for pen_run_idx, pen_run in enumerate(pending_runs):
+    for pen_run_idx, pen_run in enumerate(pending_process):
 
         # Get path on scratch of run:
         sim_idx = pen_run['sim_order_id'] - 1
@@ -175,7 +177,7 @@ def main(opts, seq_defn, up_opts):
             errs_pen_idx.append(pen_run_idx)
 
     # Update states to 9 ("process_errors")
-    err_ids = [pending_runs[i]['id'] for i in errs_pen_idx]
+    err_ids = [pending_process[i]['id'] for i in errs_pen_idx]
     database.set_many_run_states(err_ids, 9)
 
     # Parse full output and add to sim.results[run_idx]
@@ -183,7 +185,7 @@ def main(opts, seq_defn, up_opts):
         sim_group.parse_result(*sim_run_idx[pen_run_idx])
 
     # Update states to 8 ("process_no_errors")
-    no_err_ids = [pending_runs[i]['id'] for i in no_errs_pen_idx]
+    no_err_ids = [pending_process[i]['id'] for i in no_errs_pen_idx]
     database.set_many_run_states(no_err_ids, 8)
 
     if no_errs_pen_idx:
@@ -210,7 +212,7 @@ def main(opts, seq_defn, up_opts):
             subpath = sim_group.get_run_path(*sim_run_idx[pen_run_idx])
             arch_conn.copy_to_dest(subpath=subpath)
 
-            archived_ids.append(pending_runs[pen_run_idx]['id'])
+            archived_ids.append(pending_process[pen_run_idx]['id'])
 
         # Update states to 10 ("archived")
         database.set_many_run_states(archived_ids, 10)

@@ -3,7 +3,7 @@ import itertools
 import numpy as np
 from atsim import utils
 from atsim import readwrite
-from atsim.readwrite import format_arr
+from atsim.readwrite import format_arr, replace_in_file
 import mendeleev
 
 
@@ -1532,10 +1532,10 @@ def read_cell_file(cellfile):
 
 def map_species_to_castep(species, species_idx):
     """
-    Generate an index array which maps a species index array in the same way 
+    Generate an index array which maps a species index array in the same way
     that CASTEP internally reorders atoms.
 
-    CASTEP orders atoms first by atomic number (proton number) and then by 
+    CASTEP orders atoms first by atomic number (proton number) and then by
     their original order. This function can be used to reorder atom coordinates
     in this way.
 
@@ -1566,3 +1566,62 @@ def map_species_to_castep(species, species_idx):
     map_idx = np.concatenate(map_sort)
 
     return map_idx
+
+
+def castep_cell_modify_atom_species(cell_path, atom_idx, new_species):
+    """
+    Modify a CASTEP cell file: change the species of a single atom.
+
+    Parameters
+    ----------
+    cell_path : str
+        File name of cell file.
+    atom_idx: int
+        Zero-indexed atom index, whose species is to be modified.
+    new_species : str
+        Chemical species to change to.
+
+    """
+
+    atom_track = 0
+    existing_species = None
+    search_str = None
+    with open(cell_path, 'r') as f:
+
+        parse_atoms = False
+        for ln in f:
+
+            ln = ln.strip()
+
+            if parse_atoms:
+                if ln.upper() in ['%ENDBLOCK POSITIONS_FRAC',
+                                  '%ENDBLOCK POSITIONS_ABS']:
+
+                    if not search_str:
+                        msg ='Atom index {} does not exist.'
+                        raise ValueError(msg.format(atom_idx))
+
+                    parse_atoms = False
+                    break
+
+                if atom_idx == atom_track:
+                    search_str = ln
+                    existing_species = ln.split()[0]
+                    if existing_species == new_species:
+                        msg = 'Species at atom index {} is already {}'
+                        raise ValueError(msg.format(atom_idx, existing_species))
+                    break
+
+                atom_track += 1
+
+            elif ln.upper() in ['%BLOCK POSITIONS_FRAC',
+                                '%BLOCK POSITIONS_ABS']:
+                parse_atoms = True
+
+        if existing_species is None:
+            msg ='Failed to parse CELL file.'
+            raise ValueError(msg)
+
+    new_species_fmt = '{:2s}'.format(new_species)
+    rep_str = search_str.replace(existing_species, new_species_fmt)
+    replace_in_file(cell_path, search_str, rep_str)

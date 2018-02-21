@@ -608,8 +608,8 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
 
             v = float(v)  # TODO: parse data types in option file
             out.append({
-                'castep': {'cell': {'kpoint_mp_spacing': '{:.3f}'.format(v)}},
-                'series_id': {'name': sn, 'val': v, 'path': '{:.3f}'.format(v)}
+                'castep': {'cell': {'kpoint_mp_spacing': '{:.4f}'.format(v)}},
+                'series_id': {'name': sn, 'val': v, 'path': '{:.4f}'.format(v)}
             })
 
     elif sn == 'cut_off_energy':
@@ -670,7 +670,7 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
             out.append({
                 'castep': {'param': {sn: '{:.1e}'.format(v)}},
                 'series_id': {'name': sn, 'val': v, 'path': '{:.1e}'.format(v)}
-            })            
+            })
 
     elif sn == 'geom_disp_tol':
 
@@ -680,7 +680,7 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
             out.append({
                 'castep': {'param': {sn: '{:.1e}'.format(v)}},
                 'series_id': {'name': sn, 'val': v, 'path': '{:.1e}'.format(v)}
-            })  
+            })
 
     elif sn == 'geom_stress_tol':
 
@@ -730,7 +730,7 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
                 v_str = '{}_{}'.format(*v)
 
             out.append({
-                'structure': {'relative_shift_args': {'shift': v}},
+                'structure': {'relative_shift': {'shift': v, 'crystal_idx': 0}},
                 'series_id': {'name': sn, 'val': v,
                               'path': (pad_fmt + '__').format(v_idx) + v_str}
             })
@@ -742,7 +742,7 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
             out.append({
                 'structure': {'boundary_vac_args': {'vac_thickness': v}},
                 'series_id': {'name': sn, 'val': v,
-                              'path': '{:.2f}'.format(v)}
+                              'path': '{:.3f}'.format(v)}
             })
 
     elif sn == 'boundary_vac_flat':
@@ -752,7 +752,7 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
             out.append({
                 'structure': {'boundary_vac_flat_args': {'vac_thickness': v}},
                 'series_id': {'name': sn, 'val': v,
-                              'path': '{:.2f}'.format(v)}
+                              'path': '{:.3f}'.format(v)}
             })
 
     elif sn == 'boundary_vac_linear':
@@ -762,7 +762,7 @@ def prepare_series_update(series_spec, common_series_info, atomistic_structure):
             out.append({
                 'structure': {'boundary_vac_linear_args': {'vac_thickness': v}},
                 'series_id': {'name': sn, 'val': v,
-                              'path': '{:.2f}'.format(v)}
+                              'path': '{:.3f}'.format(v)}
             })
 
     elif sn == 'cs_vol_range':
@@ -898,6 +898,8 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
     ]
     """
 
+    # utils.arguments()
+
     # Replace each series dict with a list of update dicts:
     common_series_info = []
     srs_update = []
@@ -966,6 +968,8 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
     # Nest series:
     srs_update_nest = utils.nest_lists(srs_update)
 
+    # print('srs_update_nest: {}'.format(srs_update_nest))
+
     # Combine dicts into single update dict for each series element:
     all_updates = []
     for i in srs_update_nest:
@@ -992,22 +996,34 @@ def prepare_all_series_updates(all_series_spec, atomistic_structure):
 
         srs_id = i['series_id']
         # print('Parent series id: {}'.format(srs_id))
+        # print('par_srs: {}'.format(par_srs))
+        # print('par_vals: {}'.format(par_vals))
 
         # Loop through series ids
         for sid in srs_id:
 
+            # print('\tsid {}'.format(sid))
+
             # Loop through parent vals of lookup series
             for pv_idx, pvs in enumerate(par_vals):
 
+                # print('\t\tpvs {}'.format(pvs))
+
                 for psn, pv in zip(par_srs, pvs):
 
+                    # print('\t\t\tpv {}'.format(pv))
+
                     m = utils.dict_from_list(sid, {'name': psn, 'val': pv})
+
+                    # print('\t\t\tm {}'.format(m))
 
                     if m is not None:
                         chd_srs = lookup_defn['src']['child_series'][pv_idx]
                         new_srs = prepare_series_update(
                             chd_srs, common_series_info, atomistic_structure)
                         all_updates_lkup.append([[i], new_srs])
+
+    # print('all_updates_lkup: {}'.format(all_updates_lkup))
 
     # Nest:
     all_updates_lkup_nest = []
@@ -1299,6 +1315,9 @@ def make_structure(bs_opt, crystal_structures):
     if bs_opt.get('import') is None:
         remove_kys = ['type', 'import', 'sigma', 'crystal_structure_modify']
         struct_opt = {}
+
+        current_boundary_vac = bs_opt.get('boundary_vac', [])
+
         for k, v in bs_opt.items():
 
             if k in remove_kys:
@@ -1311,24 +1330,43 @@ def make_structure(bs_opt, crystal_structures):
                     cs = modify_crystal_structure(cs, **csm)
                 struct_opt.update({'crystal_structure': cs})
 
+            elif k == 'boundary_vac_args':
+
+                bv = {
+                    'thickness': v['vac_thickness'],
+                    'func': 'sigmoid',
+                }
+
+                new_boundary_vac = current_boundary_vac + [bv]
+                struct_opt.update({'boundary_vac': new_boundary_vac})
+
             elif k == 'boundary_vac_flat_args':
 
                 bv = {
                     'thickness': v['vac_thickness'],
                     'func': 'flat',
                 }
-                struct_opt.update({'boundary_vac': [bv]})
+                new_boundary_vac = current_boundary_vac + [bv]
+                struct_opt.update({'boundary_vac': new_boundary_vac})
 
             elif k == 'boundary_vac_linear_args':
                 bv = {
                     'thickness': v['vac_thicknss'],
                     'func': 'linear',
                 }
-                struct_opt.update({'boundary_vac': [bv]})
+                new_boundary_vac = current_boundary_vac + [bv]
+                struct_opt.update({'boundary_vac': new_boundary_vac})
 
             else:
 
                 struct_opt.update({k: v})
+
+        if ('bicrystal' in bs_opt['type'] and
+            'bulk' not in bs_opt['type'] and
+                'surface' not in bs_opt['type']):
+            if struct_opt.get('maintain_inv_sym') is not True:
+                if not utils.confirm('`maintain_inv_sym is OFF. OK?'):
+                    exit()
 
         base_as = STRUCT_LOOKUP[bs_opt['type']](**struct_opt)
 
@@ -1347,8 +1385,8 @@ def make_structure(bs_opt, crystal_structures):
         imp_pick = readwrite.read_pickle(imp_pick_pth)
         imp_as = imp_pick['all_sims'][imp_sim_idx]
 
-        kwargs = {key: val for key, val in bs_opt.items() 
-                    if key not in ['import', 'overlap_tol']}
+        kwargs = {key: val for key, val in bs_opt.items()
+                  if key not in ['import', 'overlap_tol']}
 
         if 'boundary_vac_flat_args' in kwargs:
             bv = kwargs.pop('boundary_vac_flat_args')
@@ -1640,7 +1678,8 @@ def main(opt):
                     'save_args': save_args,
                     'show_iplot': False,
                     'save': True,
-                    'group_atoms_by': ['species', 'crystal_idx',]# 'species_count']
+                    # 'species_count']
+                    'group_atoms_by': ['species', 'crystal_idx', ]
                 }
                 srs_as.visualise(**vs_opts)
 

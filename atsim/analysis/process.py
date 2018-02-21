@@ -70,14 +70,19 @@ def check_errors(sms_path, src_path, skip_idx=None):
 
         calc_path = os.path.join(src_path, 'calcs', *srs_paths)
 
-        if method == 'castep':
-            out = castep.read_castep_output(calc_path)
+        try:
+            if method == 'castep':
+                out = castep.read_castep_output(calc_path)
 
-        elif method == 'lammps':
-            out = lammps.read_lammps_output(calc_path)
+            elif method == 'lammps':
+                out = lammps.read_lammps_output(calc_path)
 
-        if len(out['errors']) > 0:
-            error_idx.append(s_idx)
+            if out['errors']:
+                error_idx.append(s_idx)
+
+        except OSError:
+            print('Skipping sim index: {} (No output files?)'.format(s_idx))
+            continue
 
     return error_idx
 

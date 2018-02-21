@@ -116,7 +116,7 @@ class AtomisticStructure(object):
         self.crystal_structures = crystal_structures
         self._overlap_tol = overlap_tol
 
-        self.check_overlapping_atoms(overlap_tol)
+        # self.check_overlapping_atoms(overlap_tol)
 
         # Check handedness:
         if self.volume < 0:

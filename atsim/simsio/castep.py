@@ -443,7 +443,8 @@ def read_castep_output(dir_path, seedname=None, ignore_missing_output=False):
             raise IOError(
                 'File not found: {} in directory {}'.format(geom_fn, dir_path))
 
-        out['geom'] = read_castep_geom_file(geom_path)
+        if not ignore_missing_output:
+            out['geom'] = read_castep_geom_file(geom_path)
 
     return out
 
